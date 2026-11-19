@@ -89,6 +89,11 @@ export class Hud {
     this.lastDistrict = '';
     this.toast = null;
     this.suppressToasts = false;
+    this.lastHealth = null;
+    this.lastArmor = null;
+    this.healthFlash = 0;
+    this.armorFlash = 0;
+    this.hitFlash = 0;
     this.map = this.buildMinimap();
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -217,6 +222,15 @@ export class Hud {
   update(dt, state) {
     this.time += dt;
     if (!this.visible) return;
+    const health = state.player.health;
+    const armor = state.player.armor;
+    if (this.lastHealth !== null && health < this.lastHealth - 0.01) this.healthFlash = 1;
+    if (this.lastArmor !== null && armor < this.lastArmor - 0.01) this.armorFlash = 1;
+    this.lastHealth = health;
+    this.lastArmor = armor;
+    this.healthFlash = Math.max(0, this.healthFlash - dt * 2.1);
+    this.armorFlash = Math.max(0, this.armorFlash - dt * 2.1);
+    this.hitFlash = Math.max(0, (state.weapons?.hitMarker ?? 0));
     if (state.district && state.district !== this.lastDistrict) {
       if (!this.suppressToasts) {
         this.toast = {
@@ -245,14 +259,18 @@ export class Hud {
     ctx.lineCap = 'round';
 
     this.drawVitals(ctx, state.player);
-    this.drawMoneyAndStars(ctx, state.player);
+    this.drawMoneyAndStars(ctx, state.player, state.police);
     this.drawDistrict(ctx, state);
     this.drawMinimap(ctx, state);
     this.drawObjective(ctx, state);
     this.drawRadio(ctx, state);
     this.drawSpeed(ctx, state);
+    this.drawWeapon(ctx, state);
     this.drawPrompt(ctx, state);
+    this.drawCrosshair(ctx, state);
     if (this.toast) this.drawToast(ctx, this.toast);
+    this.drawDamage(ctx, state);
+    if (state.down) this.drawDown(ctx, state.down);
   }
 
   drawVitals(ctx, player) {
@@ -273,6 +291,25 @@ export class Hud {
     this.drawBar(ctx, barX, y + 49, barWidth * 0.78, 6, player.armor / 100, TEAL, '#9af8eb');
     label(ctx, 'AR', barX, y + 47, { size: 7, color: 'rgba(247,232,210,0.36)', spacing: '1px' });
     label(ctx, String(Math.round(player.armor)), x + width - 16, y + 56, { size: 10, color: CREAM_DIM, align: 'right', font: MONO });
+
+    if (this.healthFlash > 0.02) {
+      ctx.save();
+      chamferPath(ctx, x, y, width, height, 13);
+      ctx.strokeStyle = `rgba(255,84,70,${0.25 + this.healthFlash * 0.65})`;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = CORAL;
+      ctx.shadowBlur = 16 * this.healthFlash;
+      ctx.stroke();
+      ctx.restore();
+      label(ctx, 'HIT', x + width - 16, y + 21, { size: 8, color: CORAL, spacing: '1.5px', align: 'right', weight: 800 });
+    } else if (this.armorFlash > 0.02 && player.armor < 100) {
+      ctx.save();
+      chamferPath(ctx, x, y, width, height, 13);
+      ctx.strokeStyle = `rgba(63,224,207,${0.2 + this.armorFlash * 0.4})`;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   drawBar(ctx, x, y, width, height, value, color, highlight) {
@@ -297,7 +334,7 @@ export class Hud {
     ctx.restore();
   }
 
-  drawMoneyAndStars(ctx, player) {
+  drawMoneyAndStars(ctx, player, police = null) {
     const right = this.width - 28;
     label(ctx, 'CASH', right, 40, { size: 9, color: 'rgba(247,232,210,0.46)', spacing: '3px', align: 'right' });
     ctx.save();
@@ -309,18 +346,24 @@ export class Hud {
     ctx.fillText(cashString(player.cash), right, 76);
     ctx.restore();
 
+    const wanted = police?.wanted ?? player.wanted ?? 0;
+    const flash = police?.wantedFlash ?? 0;
     label(ctx, 'WANTED', right, 101, { size: 8, color: 'rgba(247,232,210,0.4)', spacing: '2.5px', align: 'right' });
     const starRadius = 9;
     const gap = 23;
     for (let i = 0; i < 5; i += 1) {
       const cx = right - (4 - i) * gap - starRadius;
       const cy = 122;
+      const active = i < wanted;
+      const scale = active ? 1 + flash * 0.24 : 1;
       ctx.save();
-      starPath(ctx, cx, cy, starRadius);
-      if (i < player.wanted) {
-        ctx.fillStyle = GOLD;
-        ctx.shadowColor = GOLD;
-        ctx.shadowBlur = 8;
+      ctx.translate(cx, cy);
+      ctx.scale(scale, scale);
+      starPath(ctx, 0, 0, starRadius);
+      if (active) {
+        ctx.fillStyle = flash > 0.45 && Math.sin(this.time * 28) > 0 ? '#fff3c9' : GOLD;
+        ctx.shadowColor = 'rgba(255,120,80,0.9)';
+        ctx.shadowBlur = 8 + flash * 14;
         ctx.fill();
       } else {
         ctx.strokeStyle = 'rgba(247,232,210,0.22)';
@@ -328,6 +371,33 @@ export class Hud {
         ctx.stroke();
       }
       ctx.restore();
+    }
+
+    if (wanted > 0) {
+      const searching = police?.status === 'search';
+      const units = police?.units?.length ?? 0;
+      const blink = Math.sin(this.time * 7.5) > 0;
+      const statusColor = searching ? GOLD : CORAL;
+      ctx.save();
+      ctx.fillStyle = statusColor;
+      ctx.globalAlpha = 0.55 + 0.45 * (blink ? 1 : 0.4);
+      ctx.fillRect(right - 8, 136, 5, 5);
+      ctx.restore();
+      label(
+        ctx,
+        searching ? 'SEARCHING · LAST KNOWN AREA' : `PURSUIT · ${units} UNIT${units === 1 ? '' : 'S'}`,
+        right,
+        145,
+        { size: 8, color: statusColor, spacing: '1.7px', align: 'right', weight: 800 },
+      );
+      const bust = police?.bustProgress ?? 0;
+      if (bust > 0.01) {
+        label(ctx, 'BUSTED', right - 86, 160, { size: 7, color: CREAM, spacing: '1.6px', align: 'right', weight: 800 });
+        ctx.fillStyle = 'rgba(247,232,210,0.16)';
+        ctx.fillRect(right - 80, 154, 80, 4);
+        ctx.fillStyle = CORAL;
+        ctx.fillRect(right - 80, 154, 80 * Math.min(1, bust), 4);
+      }
     }
   }
 
@@ -409,6 +479,7 @@ export class Hud {
 
     const vehicles = state.vehicles ?? [];
     for (const vehicle of vehicles) {
+      if (vehicle.kind === 'police' && !vehicle.player) continue;
       const dx = (vehicle.x - state.player.position.x) * destScale;
       const dy = (vehicle.z - state.player.position.z) * destScale;
       if (Math.hypot(dx, dy) > size / 2 - 10) continue;
@@ -416,9 +487,54 @@ export class Hud {
       ctx.translate(centerX + dx, centerY + dy);
       ctx.rotate(Math.PI - vehicle.yaw);
       ctx.globalAlpha = vehicle.player ? 0.95 : vehicle.parked ? 0.42 : 0.82;
-      ctx.fillStyle = vehicle.player ? CREAM : vehicle.kind === 'police' ? '#7d9cff' : GOLD;
+      ctx.fillStyle = vehicle.player ? CREAM : GOLD;
       ctx.fillRect(-2.4, -5, 4.8, 10);
       ctx.restore();
+    }
+
+    // Cruiser and officer blips sit above the traffic blips. They alternate
+    // red and blue in step with the light bar so the minimap reads "police"
+    // even when the cars themselves are off the top of the frame.
+    const police = state.police;
+    if (police && police.wanted > 0) {
+      const limit = size / 2 - 12;
+      for (let i = 0; i < police.units.length; i += 1) {
+        const unit = police.units[i];
+        let dx = (unit.x - state.player.position.x) * destScale;
+        let dy = (unit.z - state.player.position.z) * destScale;
+        const distance = Math.hypot(dx, dy);
+        if (distance > limit) {
+          dx = (dx / distance) * limit;
+          dy = (dy / distance) * limit;
+        }
+        const red = Math.sin(this.time * 9 + i * 2.1) > 0;
+        ctx.save();
+        ctx.translate(centerX + dx, centerY + dy);
+        ctx.shadowColor = red ? '#ff4a3c' : '#5b7dff';
+        ctx.shadowBlur = 9;
+        ctx.fillStyle = red ? '#ff4a3c' : '#5b7dff';
+        ctx.beginPath();
+        ctx.arc(0, 0, 4.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(247,232,210,0.86)';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.arc(0, 0, 6.4, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      for (const officer of police.officers) {
+        const dx = (officer.x - state.player.position.x) * destScale;
+        const dy = (officer.z - state.player.position.z) * destScale;
+        if (Math.hypot(dx, dy) > limit) continue;
+        ctx.save();
+        ctx.fillStyle = 'rgba(126,156,255,0.95)';
+        ctx.shadowColor = '#5b7dff';
+        ctx.shadowBlur = 6;
+        ctx.fillRect(centerX + dx - 2, centerY + dy - 2, 4, 4);
+        ctx.restore();
+      }
     }
 
     ctx.save();
@@ -504,11 +620,181 @@ export class Hud {
     );
     label(
       ctx,
-      enabled ? (state.radio?.track || 'Harbor Lights — Sable Youth') : 'PRESS R TO TUNE IN',
+      enabled ? (state.radio?.track || 'Harbor Lights — Sable Youth') : 'PRESS T TO TUNE IN',
       right,
       y + 5,
       { size: 8, color: 'rgba(247,232,210,0.46)', spacing: '0.8px', align: 'right', weight: 500 },
     );
+  }
+
+  drawWeapon(ctx, state) {
+    const weapons = state.weapons;
+    if (!weapons || weapons.dead || state.player.driving) return;
+    const width = 200;
+    const height = 64;
+    const x = this.width - width - 28;
+    const y = this.height - 262;
+    const low = weapons.ammo <= Math.max(1, Math.floor(weapons.mag * 0.2));
+    drawPanel(ctx, x, y, width, height, {
+      cut: 10,
+      fill: 'rgba(9,6,16,0.78)',
+      stroke: 'rgba(247,232,210,0.18)',
+      accent: low ? CORAL : GOLD,
+    });
+    label(ctx, weapons.name.toUpperCase(), x + 14, y + 18, { size: 9, color: CREAM, spacing: '1.3px', weight: 800 });
+    label(ctx, weapons.short, x + width - 12, y + 18, { size: 7, color: 'rgba(255,201,92,0.75)', spacing: '1.3px', align: 'right', weight: 700 });
+    ctx.save();
+    ctx.textAlign = 'right';
+    ctx.font = `900 28px ${DISPLAY}`;
+    ctx.fillStyle = low ? CORAL : CREAM;
+    ctx.fillText(String(weapons.ammo), x + width - 44, y + 48);
+    ctx.font = `600 11px ${MONO}`;
+    ctx.fillStyle = 'rgba(247,232,210,0.48)';
+    ctx.fillText(`/ ${weapons.reserve}`, x + width - 12, y + 47);
+    ctx.restore();
+    const barX = x + 14;
+    const barY = y + 25;
+    const barWidth = width - 82;
+    ctx.fillStyle = 'rgba(247,232,210,0.1)';
+    ctx.fillRect(barX, barY, barWidth, 4);
+    const fill = Math.max(0, Math.min(1, weapons.ammo / Math.max(1, weapons.mag)));
+    ctx.fillStyle = low ? CORAL : GOLD;
+    ctx.fillRect(barX, barY, barWidth * fill, 4);
+    label(ctx, weapons.reloading ? 'RELOADING' : (weapons.aiming ? 'AIMED · RMB' : 'HIP · RMB TO AIM'), barX, y + 54, {
+      size: 6.5,
+      color: weapons.reloading ? TEAL : 'rgba(247,232,210,0.36)',
+      spacing: '1.1px',
+      weight: 700,
+    });
+    label(ctx, weapons.ownedSmg ? '1 / 2 · R' : '1 · R', x + width - 12, y + 54, {
+      size: 6.5,
+      color: 'rgba(247,232,210,0.34)',
+      spacing: '1px',
+      align: 'right',
+    });
+    if (weapons.reloading) {
+      ctx.fillStyle = TEAL;
+      ctx.fillRect(barX, barY, barWidth * Math.max(0, Math.min(1, weapons.reloadProgress)), 4);
+    }
+  }
+
+  drawCrosshair(ctx, state) {
+    const weapons = state.weapons;
+    if (!weapons || weapons.dead || state.player.driving) return;
+    const cx = this.width / 2;
+    const cy = this.height / 2;
+    const gap = Math.max(4, Math.min(26, weapons.crosshair));
+    ctx.save();
+    ctx.strokeStyle = weapons.aiming ? 'rgba(247,232,210,0.92)' : 'rgba(247,232,210,0.55)';
+    ctx.fillStyle = weapons.aiming ? 'rgba(255,201,92,0.95)' : 'rgba(247,232,210,0.7)';
+    ctx.lineWidth = 1.2;
+    const tick = weapons.aiming ? 5 : 3.5;
+    ctx.beginPath();
+    ctx.moveTo(cx - gap - tick, cy); ctx.lineTo(cx - gap, cy);
+    ctx.moveTo(cx + gap, cy); ctx.lineTo(cx + gap + tick, cy);
+    ctx.moveTo(cx, cy - gap - tick); ctx.lineTo(cx, cy - gap);
+    ctx.moveTo(cx, cy + gap); ctx.lineTo(cx, cy + gap + tick);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 1.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (weapons.hitMarker > 0.02) {
+      const a = Math.min(1, weapons.hitMarker);
+      const spread = 7 + (1 - a) * 6;
+      ctx.strokeStyle = `rgba(255,110,90,${a})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx - spread, cy - spread); ctx.lineTo(cx - spread + 4, cy - spread + 4);
+      ctx.moveTo(cx + spread, cy - spread); ctx.lineTo(cx + spread - 4, cy - spread + 4);
+      ctx.moveTo(cx - spread, cy + spread); ctx.lineTo(cx - spread + 4, cy + spread - 4);
+      ctx.moveTo(cx + spread, cy + spread); ctx.lineTo(cx + spread - 4, cy + spread - 4);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  drawDamage(ctx, state) {
+    const hurt = state.effects?.hurt ?? 0;
+    const health = state.player.health;
+    const low = health < 32 && !state.player.driving ? 0.16 + Math.sin(this.time * 5.4) * 0.07 : 0;
+    const flash = Math.max(hurt, low, this.healthFlash * 0.32, (state.effects?.flash ?? 0) * 0.22);
+    if (flash < 0.015) return;
+    const cx = this.width / 2;
+    const cy = this.height / 2;
+    const inner = Math.min(this.width, this.height) * 0.28;
+    const outer = Math.max(this.width, this.height) * 0.68;
+    const gradient = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+    gradient.addColorStop(0, 'rgba(170,18,32,0)');
+    gradient.addColorStop(0.72, `rgba(170,18,32,${Math.min(0.26, flash * 0.32)})`);
+    gradient.addColorStop(1, `rgba(120,8,22,${Math.min(0.72, flash * 0.8)})`);
+    ctx.save();
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, this.width, this.height);
+    ctx.strokeStyle = `rgba(255,80,64,${Math.min(0.5, flash * 0.45)})`;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, this.width - 2, this.height - 2);
+    ctx.restore();
+  }
+
+  drawDown(ctx, down) {
+    const elapsed = down.duration - down.timer;
+    const alpha = Math.min(1, Math.max(0, elapsed * 5), Math.max(0.25, down.timer * 1.4));
+    if (alpha <= 0) return;
+    const busted = down.type === 'busted';
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    const gradient = ctx.createRadialGradient(
+      this.width / 2, this.height / 2, 40,
+      this.width / 2, this.height / 2, this.width * 0.72,
+    );
+    if (busted) {
+      gradient.addColorStop(0, 'rgba(18,26,48,0.9)');
+      gradient.addColorStop(0.7, 'rgba(10,14,32,0.94)');
+      gradient.addColorStop(1, 'rgba(4,6,16,0.99)');
+    } else {
+      gradient.addColorStop(0, 'rgba(58,10,18,0.9)');
+      gradient.addColorStop(0.7, 'rgba(26,5,12,0.95)');
+      gradient.addColorStop(1, 'rgba(8,3,8,0.99)');
+    }
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, this.width, this.height);
+
+    ctx.fillStyle = busted ? 'rgba(86,120,255,0.16)' : 'rgba(255,72,58,0.14)';
+    for (let i = -this.height; i < this.width; i += 46) {
+      ctx.save();
+      ctx.translate(i, 0);
+      ctx.rotate(-0.36);
+      ctx.fillRect(0, -this.height, 3, this.height * 3);
+      ctx.restore();
+    }
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `900 ${Math.min(138, this.width * 0.115)}px ${DISPLAY}`;
+    ctx.fillStyle = busted ? '#dae4ff' : '#ffe3d8';
+    ctx.shadowColor = busted ? 'rgba(76,118,255,0.85)' : 'rgba(255,72,48,0.8)';
+    ctx.shadowBlur = 34;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '10px';
+    ctx.fillText(busted ? 'BUSTED' : 'WASTED', this.width / 2, this.height / 2 - 18);
+    ctx.shadowBlur = 0;
+    ctx.font = `600 12px ${UI}`;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '4px';
+    ctx.fillStyle = busted ? 'rgba(200,216,255,0.78)' : 'rgba(255,190,175,0.75)';
+    ctx.fillText(
+      busted ? 'HARBOR PD HAS YOU · THE CITY KEEPS ITS CUT' : 'THE HARBOR CLAIMS ANOTHER · YOU WAKE ON THE STRIP',
+      this.width / 2,
+      this.height / 2 + 74,
+    );
+    ctx.strokeStyle = busted ? 'rgba(120,150,255,0.5)' : 'rgba(255,110,90,0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(this.width / 2 - 190, this.height / 2 + 46);
+    ctx.lineTo(this.width / 2 - 70, this.height / 2 + 46);
+    ctx.moveTo(this.width / 2 + 70, this.height / 2 + 46);
+    ctx.lineTo(this.width / 2 + 190, this.height / 2 + 46);
+    ctx.stroke();
+    ctx.restore();
   }
 
   drawSpeed(ctx, state) {

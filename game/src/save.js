@@ -1,6 +1,7 @@
-// localStorage persistence for the single save slot and the player's quality
-// setting. Every read is guarded and every value is sanity-checked: a corrupt
-// save should read as "no save", never take the game down.
+// localStorage persistence for the single save slot, the carried weapons and
+// the audio/quality settings. Every read is guarded and every value is
+// sanity-checked: a corrupt save should read as "no save", never take the game
+// down.
 
 import { PLAYER } from './config.js';
 
@@ -34,6 +35,8 @@ export const SaveStore = {
         wanted: clamp(Math.round(finite(parsed.wanted, 0)), 0, 5),
         mission: clamp(Math.round(finite(parsed.mission, 0)), 0, 99),
         playSeconds: Math.max(0, finite(parsed.playSeconds, 0)),
+        weaponKey: parsed.weaponKey === 'smg' ? 'smg' : 'pistol',
+        weapons: parsed.weapons && typeof parsed.weapons === 'object' ? parsed.weapons : null,
         savedAt: finite(parsed.savedAt, 0),
         cameraYaw: finite(parsed.cameraYaw, PLAYER.spawnCameraYaw),
         cameraPitch: clamp(finite(parsed.cameraPitch, 0.17), -0.18, 1.02),
@@ -68,6 +71,8 @@ export const SaveStore = {
           wanted: progress.wanted ?? 0,
           mission: progress.mission ?? 0,
           playSeconds: progress.playSeconds ?? 0,
+          weaponKey: progress.weaponKey ?? 'pistol',
+          weapons: progress.weapons ?? null,
           cameraYaw: progress.cameraYaw,
           cameraPitch: progress.cameraPitch,
           position: { x: progress.position.x, y: progress.position.y, z: progress.position.z },
@@ -103,11 +108,15 @@ export const SaveStore = {
 
   loadSettings() {
     const store = storage();
-    const defaults = { quality: 'high' };
+    const defaults = { quality: 'high', volume: 0.72, muted: false };
     if (!store) return defaults;
     try {
       const parsed = JSON.parse(store.getItem(SETTINGS_KEY) || 'null');
-      return { quality: parsed?.quality === 'low' ? 'low' : 'high' };
+      return {
+        quality: parsed?.quality === 'low' ? 'low' : 'high',
+        volume: clamp(finite(parsed?.volume, 0.72), 0, 1),
+        muted: parsed?.muted === true,
+      };
     } catch {
       return defaults;
     }
@@ -117,7 +126,11 @@ export const SaveStore = {
     const store = storage();
     if (!store) return;
     try {
-      store.setItem(SETTINGS_KEY, JSON.stringify({ quality: settings.quality === 'low' ? 'low' : 'high' }));
+      store.setItem(SETTINGS_KEY, JSON.stringify({
+        quality: settings.quality === 'low' ? 'low' : 'high',
+        volume: clamp(finite(settings.volume, 0.72), 0, 1),
+        muted: settings.muted === true,
+      }));
     } catch {
       /* settings are a nicety; ignore storage errors */
     }

@@ -2172,6 +2172,82 @@ export class World {
     return false;
   }
 
+  /**
+   * Nearest building/prop slab hit along a ray, for hitscan, muzzle checks and
+   * line-of-sight. Ground is treated as a flat plane at road level; the beach
+   * and pier sit close enough that a missed low shot still lands in the dust.
+   */
+  raycast(origin, direction, maxDistance = 120) {
+    let best = null;
+    const invX = direction.x !== 0 ? 1 / direction.x : 1e9;
+    const invY = direction.y !== 0 ? 1 / direction.y : 1e9;
+    const invZ = direction.z !== 0 ? 1 / direction.z : 1e9;
+    for (const box of this.colliders) {
+      let tMin = 0;
+      let tMax = maxDistance;
+      let axis = 0;
+      let sign = -1;
+      let hit = true;
+      for (let i = 0; i < 3; i += 1) {
+        const originValue = i === 0 ? origin.x : i === 1 ? origin.y : origin.z;
+        const inverse = i === 0 ? invX : i === 1 ? invY : invZ;
+        const min = i === 0 ? box.minX : i === 1 ? box.minY : box.minZ;
+        const max = i === 0 ? box.maxX : i === 1 ? box.maxY : box.maxZ;
+        if (Math.abs(inverse) > 1e8) {
+          if (originValue < min || originValue > max) { hit = false; break; }
+          continue;
+        }
+        let t1 = (min - originValue) * inverse;
+        let t2 = (max - originValue) * inverse;
+        let nearSign = -1;
+        if (t1 > t2) {
+          const swap = t1;
+          t1 = t2;
+          t2 = swap;
+          nearSign = 1;
+        }
+        if (t1 > tMin) {
+          tMin = t1;
+          axis = i;
+          sign = nearSign;
+        }
+        if (t2 < tMax) tMax = t2;
+        if (tMin > tMax) { hit = false; break; }
+      }
+      if (!hit || tMin <= 0.02 || tMin > maxDistance) continue;
+      if (!best || tMin < best.distance) {
+        best = {
+          distance: tMin,
+          point: new THREE.Vector3(origin.x + direction.x * tMin, origin.y + direction.y * tMin, origin.z + direction.z * tMin),
+          normal: new THREE.Vector3(axis === 0 ? sign : 0, axis === 1 ? sign : 0, axis === 2 ? sign : 0),
+          kind: box.kind ?? 'building',
+        };
+      }
+    }
+    if (direction.y < -0.005 && origin.y > 0.02) {
+      const groundT = (origin.y - 0.02) / -direction.y;
+      if (groundT > 0.02 && groundT < maxDistance && (!best || groundT < best.distance)) {
+        best = {
+          distance: groundT,
+          point: new THREE.Vector3(origin.x + direction.x * groundT, 0.02, origin.z + direction.z * groundT),
+          normal: new THREE.Vector3(0, 1, 0),
+          kind: 'ground',
+        };
+      }
+    }
+    return best;
+  }
+
+  lineBlocked(fromX, fromY, fromZ, toX, toY, toZ, padding = 0.8) {
+    _origin.set(fromX, fromY, fromZ);
+    _direction.set(toX - fromX, toY - fromY, toZ - fromZ);
+    const length = _direction.length();
+    if (length < 0.001) return false;
+    _direction.divideScalar(length);
+    const hit = this.raycast(_origin, _direction, length - padding);
+    return Boolean(hit);
+  }
+
   clipCamera(from, to, radius, out) {
     out.copy(to);
     _origin.copy(from);

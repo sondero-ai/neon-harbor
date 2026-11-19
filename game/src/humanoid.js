@@ -32,6 +32,8 @@ export class Humanoid {
     this.idleTime = 0;
     this.motion = 0;
     this.air = 0;
+    this.aiming = false;
+    this.aimAmount = 0;
 
     const jacket = material(0xdf5961, { roughness: 0.72 });
     const jacketDark = material(0x9c3b45, { roughness: 0.8 });
@@ -209,6 +211,22 @@ export class Humanoid {
     this.arms.right.shoulderPivot.rotation.z = -0.055 - airTuck * 0.65;
     this.arms.left.elbowPivot.rotation.x = -0.12 - Math.max(0, swing) * 0.28 - airTuck * 0.25;
     this.arms.right.elbowPivot.rotation.x = -0.12 - Math.max(0, counter) * 0.28 - airTuck * 0.35;
+
+    // Raise both arms into a two-handed aim without disturbing the walk cycle:
+    // the blend is damped so lowering the pistol still reads as a motion.
+    this.aimAmount = damp(this.aimAmount, this.aiming ? 1 : 0, 14, dt);
+    if (this.aimAmount > 0.001) {
+      const aim = this.aimAmount;
+      this.arms.right.shoulderPivot.rotation.x = -1.47 * aim + (1 - aim) * this.arms.right.shoulderPivot.rotation.x;
+      this.arms.right.shoulderPivot.rotation.z = -0.1 * aim + (1 - aim) * this.arms.right.shoulderPivot.rotation.z;
+      this.arms.right.elbowPivot.rotation.x = -0.18 * aim + (1 - aim) * this.arms.right.elbowPivot.rotation.x;
+      this.arms.left.shoulderPivot.rotation.x = -1.37 * aim + (1 - aim) * this.arms.left.shoulderPivot.rotation.x;
+      this.arms.left.shoulderPivot.rotation.z = 0.38 * aim + (1 - aim) * this.arms.left.shoulderPivot.rotation.z;
+      this.arms.left.elbowPivot.rotation.x = -0.62 * aim + (1 - aim) * this.arms.left.elbowPivot.rotation.x;
+      this.torso.rotation.y = -0.13 * aim;
+    } else {
+      this.torso.rotation.y = 0;
+    }
 
     const bob = Math.abs(Math.sin(this.phase)) * 0.038 * stride;
     const breath = Math.sin(this.idleTime * 1.7) * 0.006 * (1 - clamp(this.motion, 0, 1));

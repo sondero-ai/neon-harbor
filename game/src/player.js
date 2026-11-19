@@ -5,7 +5,7 @@
 // free-look orbit, and the enter/exit handshake with vehicles.js.
 
 import * as THREE from '../vendor/three.module.js';
-import { CAMERA, PLAYER } from './config.js';
+import { CAMERA, PLAYER, WEAPONS } from './config.js';
 import { Humanoid } from './humanoid.js';
 
 const clamp = THREE.MathUtils.clamp;
@@ -54,6 +54,27 @@ export class Player {
     this.drivePitch = 0.13;
     this.driveLookHold = 0;
 
+    // Combat. The pistol is Rae's; the SMG is found in the city. Ammo is kept
+    // per weapon so switching never silently shares a magazine.
+    this.weaponKey = 'pistol';
+    this.weapons = {
+      pistol: { owned: true, ammo: WEAPONS.pistol.mag, reserve: WEAPONS.pistol.reserve },
+      smg: { owned: false, ammo: 0, reserve: 0 },
+    };
+    this.aiming = false;
+    this.fireCooldown = 0;
+    this.reloadTimer = 0;
+    this.reloadTotal = 0;
+    this.recoil = 0;
+    this.hitMarker = 0;
+    this.damageFlash = 0;
+    this.dead = false;
+    this.lastGunfire = -99;
+    this.effects = null;
+    this.audio = null;
+    this.police = null;
+    this.buildWeapons();
+
     this.resetToSpawn();
   }
 
@@ -82,16 +103,76 @@ export class Player {
     if (this.position.y < ground) this.position.y = ground;
     this.velocity.set(0, 0, 0);
     this.cash = save.cash;
-    this.health = save.health;
+    this.health = Math.max(1, save.health);
     this.armor = save.armor;
     this.wanted = save.wanted;
     this.mission = save.mission;
     this.playSeconds = save.playSeconds;
+    if (save.weapons) {
+      const pistol = save.weapons.pistol;
+      const smg = save.weapons.smg;
+      this.weapons.pistol = {
+        owned: pistol?.owned !== false,
+        ammo: clamp(Math.round(Number(pistol?.ammo) || 0), 0, WEAPONS.pistol.mag),
+        reserve: clamp(Math.round(Number(pistol?.reserve) || 0), 0, 999),
+      };
+      this.weapons.smg = {
+        owned: smg?.owned === true,
+        ammo: clamp(Math.round(Number(smg?.ammo) || 0), 0, WEAPONS.smg.mag),
+        reserve: clamp(Math.round(Number(smg?.reserve) || 0), 0, 999),
+      };
+      this.weaponKey = save.weaponKey === 'smg' && this.weapons.smg.owned ? 'smg' : 'pistol';
+      this.syncGunModel();
+    }
     this.cameraYaw = save.cameraYaw;
     this.cameraPitch = clamp(save.cameraPitch, CAMERA.minPitch, CAMERA.maxPitch);
     this.facing = this.cameraYaw - Math.PI;
     this.applyTransform();
     this.snapCamera();
+  }
+
+  buildWeapons() {
+    const steel = new THREE.MeshStandardMaterial({ color: 0x3b3a46, roughness: 0.35, metalness: 0.7 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x17141c, roughness: 0.62, metalness: 0.35 });
+    const accent = new THREE.MeshStandardMaterial({ color: 0x3fe0cf, roughness: 0.5, metalness: 0.2 });
+
+    this.pistolModel = new THREE.Group();
+    const pistolSlide = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.095, 0.3), steel);
+    pistolSlide.position.set(0, 0.02, 0.1);
+    const pistolGrip = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.17, 0.08), dark);
+    pistolGrip.position.set(0, -0.1, -0.01);
+    pistolGrip.rotation.x = 0.24;
+    const pistolSight = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.022, 0.03), accent);
+    pistolSight.position.set(0, 0.08, 0.22);
+    this.pistolModel.add(pistolSlide, pistolGrip, pistolSight);
+
+    this.smgModel = new THREE.Group();
+    const smgBody = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.11, 0.38), steel);
+    smgBody.position.set(0, 0.015, 0.12);
+    const smgStock = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.13, 0.12), dark);
+    smgStock.position.set(0, -0.015, -0.11);
+    const smgMag = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.2, 0.07), dark);
+    smgMag.position.set(0, -0.11, 0.11);
+    smgMag.rotation.x = -0.08;
+    const smgSight = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.03, 0.04), accent);
+    smgSight.position.set(0, 0.085, 0.26);
+    this.smgModel.add(smgBody, smgStock, smgMag, smgSight);
+
+    this.inputBlocked = false;
+    this.gun = new THREE.Group();
+    this.gun.add(this.pistolModel, this.smgModel);
+    this.gun.position.set(0, -0.37, 0.055);
+    this.gun.visible = false;
+    this.humanoid.arms.right.elbowPivot.add(this.gun);
+    this.gun.traverse((object) => {
+      if (object.isMesh) object.castShadow = true;
+    });
+    this.syncGunModel();
+  }
+
+  syncGunModel() {
+    this.pistolModel.visible = this.weaponKey === 'pistol';
+    this.smgModel.visible = this.weaponKey === 'smg';
   }
 
   applyTransform() {
@@ -111,6 +192,11 @@ export class Player {
       wanted: this.wanted,
       mission: this.mission,
       playSeconds: this.playSeconds,
+      weaponKey: this.weaponKey,
+      weapons: {
+        pistol: { ...this.weapons.pistol },
+        smg: { ...this.weapons.smg },
+      },
       cameraYaw: this.cameraYaw,
       cameraPitch: this.cameraPitch,
       position: { x: this.position.x, y: this.position.y, z: this.position.z },
@@ -122,10 +208,24 @@ export class Player {
     if (this.exitCooldown > 0) this.exitCooldown -= dt;
     const mouse = input.consumeMouse();
 
+    if (this.dead) {
+      this.aiming = false;
+      this.humanoid.aiming = false;
+      this.speed = 0;
+      this.nearVehicle = null;
+      this.humanoid.update(dt, 0, false);
+      return;
+    }
+
     if (this.driving) {
+      this.aiming = false;
+      this.humanoid.aiming = false;
       this.updateDriving(dt, input, mouse);
       return;
     }
+
+    this.aiming = input.isMouseDown(2) && !this.inputBlocked;
+    this.humanoid.aiming = this.aiming;
 
     if (mouse.x !== 0) this.cameraYaw -= mouse.x * CAMERA.sensitivity;
     if (mouse.y !== 0) this.cameraPitch = clamp(this.cameraPitch + mouse.y * CAMERA.sensitivity, CAMERA.minPitch, CAMERA.maxPitch);
@@ -133,9 +233,11 @@ export class Player {
       this.cameraDistance = clamp(this.cameraDistance + mouse.wheel * 0.0035, CAMERA.minDistance, CAMERA.maxDistance);
     }
 
-    const { forward, strafe } = input.moveAxis();
+    const axes = this.inputBlocked ? { forward: 0, strafe: 0 } : input.moveAxis();
+    const forward = axes.forward;
+    const strafe = axes.strafe;
     const hasInput = forward !== 0 || strafe !== 0;
-    const sprint = input.isDown('ShiftLeft', 'ShiftRight');
+    const sprint = !this.inputBlocked && input.isDown('ShiftLeft', 'ShiftRight');
     const sin = Math.sin(this.cameraYaw);
     const cos = Math.cos(this.cameraYaw);
     let wishX = -sin * forward + cos * strafe;
@@ -146,7 +248,7 @@ export class Player {
       wishZ /= wishLength;
     }
 
-    const maxSpeed = sprint ? PLAYER.runSpeed : PLAYER.walkSpeed;
+    const maxSpeed = this.aiming ? 2.65 : sprint ? PLAYER.runSpeed : PLAYER.walkSpeed;
     const targetX = hasInput ? wishX * maxSpeed : 0;
     const targetZ = hasInput ? wishZ * maxSpeed : 0;
     const acceleration = (this.grounded ? PLAYER.acceleration : PLAYER.airAcceleration) * dt;
@@ -159,7 +261,7 @@ export class Player {
       this.velocity.z = moveTowards(this.velocity.z, 0, friction);
     }
 
-    if (input.wasPressed('Space') && this.grounded) {
+    if (!this.inputBlocked && input.wasPressed('Space') && this.grounded) {
       this.velocity.y = PLAYER.jumpSpeed;
       this.grounded = false;
     }
@@ -180,7 +282,9 @@ export class Player {
 
     const horizontal = Math.hypot(this.velocity.x, this.velocity.z);
     this.speed = damp(this.speed, horizontal, 14, dt);
-    if (horizontal > 0.25) {
+    if (this.aiming) {
+      this.facing = dampAngle(this.facing, this.cameraYaw - Math.PI, 18, dt);
+    } else if (horizontal > 0.25) {
       const desiredFacing = Math.atan2(this.velocity.x, this.velocity.z);
       this.facing = dampAngle(this.facing, desiredFacing, 13, dt);
     }
@@ -210,11 +314,11 @@ export class Player {
     if (this.driveLookHold > 0) this.driveLookHold -= dt;
     else this.driveOrbitYaw = damp(this.driveOrbitYaw, 0, 1.8, dt);
 
-    const { forward, strafe } = input.moveAxis();
+    const { forward, strafe } = this.inputBlocked ? { forward: 0, strafe: 0 } : input.moveAxis();
     car.controls.throttle = forward;
     car.controls.steer = -strafe;
-    car.controls.brake = 0;
-    car.controls.handbrake = input.isDown('Space');
+    car.controls.brake = this.inputBlocked ? 1 : 0;
+    car.controls.handbrake = this.inputBlocked || input.isDown('Space');
     car.controls.engine = true;
 
     this.position.copy(car.position);
@@ -231,6 +335,224 @@ export class Player {
     this.applyTransform();
   }
 
+  // ---------------------------------------------------------------- combat
+
+  get weaponSpec() {
+    return WEAPONS[this.weaponKey];
+  }
+
+  get weaponAmmo() {
+    return this.weapons[this.weaponKey];
+  }
+
+  get combatState() {
+    const spec = this.weaponSpec;
+    const ammo = this.weaponAmmo;
+    const moveBloom = Math.min(16, this.speed * 1.5);
+    const baseBloom = this.aiming ? 2.5 : 8;
+    return {
+      key: this.weaponKey,
+      name: spec.name,
+      short: spec.short,
+      ammo: ammo.ammo,
+      mag: spec.mag,
+      reserve: ammo.reserve,
+      ownedSmg: this.weapons.smg.owned,
+      reloading: this.reloadTimer > 0,
+      reloadProgress: this.reloadTimer > 0 ? 1 - this.reloadTimer / Math.max(0.01, this.reloadTotal) : 1,
+      aiming: this.aiming,
+      hitMarker: this.hitMarker,
+      damageFlash: this.damageFlash,
+      crosshair: spec.spread * 620 + baseBloom + moveBloom,
+      dead: this.dead,
+    };
+  }
+
+  selectWeapon(key) {
+    if (!WEAPONS[key] || !this.weapons[key]?.owned) return;
+    if (key === this.weaponKey) return;
+    this.weaponKey = key;
+    this.reloadTimer = 0;
+    this.syncGunModel();
+    if (this.audio) this.audio.uiClick();
+  }
+
+  startReload() {
+    const spec = this.weaponSpec;
+    const ammo = this.weaponAmmo;
+    if (this.reloadTimer > 0 || ammo.ammo >= spec.mag || ammo.reserve <= 0) return;
+    this.reloadTimer = spec.reload;
+    this.reloadTotal = spec.reload;
+    if (this.audio) this.audio.reload();
+  }
+
+  finishReload() {
+    const spec = this.weaponSpec;
+    const ammo = this.weaponAmmo;
+    const needed = spec.mag - ammo.ammo;
+    const taken = Math.min(needed, ammo.reserve);
+    ammo.ammo += taken;
+    ammo.reserve -= taken;
+  }
+
+  updateCombat(dt, input, camera) {
+    if (this.dead) {
+      this.gun.visible = false;
+      return;
+    }
+    this.fireCooldown = Math.max(0, this.fireCooldown - dt);
+    this.hitMarker = Math.max(0, this.hitMarker - dt * 5.5);
+    this.damageFlash = Math.max(0, this.damageFlash - dt * 2.2);
+    this.recoil = Math.max(0, this.recoil - dt * 0.24);
+
+    if (input.wasPressed('Digit1')) this.selectWeapon('pistol');
+    if (input.wasPressed('Digit2')) this.selectWeapon('smg');
+    if (input.wasPressed('KeyR')) this.startReload();
+
+    if (this.reloadTimer > 0) {
+      this.reloadTimer -= dt;
+      if (this.reloadTimer <= 0) {
+        this.reloadTimer = 0;
+        this.finishReload();
+        if (this.audio) this.audio.uiClick();
+      }
+    }
+
+    if (this.driving) {
+      this.gun.visible = false;
+      if (input.wasMousePressed(0) || input.wasPressed('KeyH')) {
+        if (this.audio) this.audio.horn();
+      }
+      return;
+    }
+
+    this.gun.visible = this.aiming || this.fireCooldown > 0.16;
+    this.gun.rotation.x = damp(this.gun.rotation.x, this.aiming ? Math.PI / 2 : 0, 18, dt);
+    const wantsFire = this.weaponSpec.auto ? input.isMouseDown(0) : input.wasMousePressed(0);
+    if (wantsFire) this.fireWeapon(camera);
+  }
+
+  fireWeapon(camera) {
+    const spec = this.weaponSpec;
+    const ammo = this.weaponAmmo;
+    if (this.reloadTimer > 0 || this.fireCooldown > 0) return;
+    if (ammo.ammo <= 0) {
+      if (this.audio) this.audio.uiClick();
+      this.startReload();
+      return;
+    }
+    ammo.ammo -= 1;
+    this.fireCooldown = 1 / spec.fireRate;
+    this.recoil = Math.min(0.09, this.recoil + spec.kick);
+    this.lastGunfire = this.playSeconds;
+    // Hip fire turns the body with the camera so the tracer starts where the
+    // weapon is actually pointing.
+    this.facing = this.cameraYaw - Math.PI;
+    this.humanoid.setFacing(this.facing);
+
+    const origin = camera.position.clone();
+    const direction = camera.getWorldDirection(new THREE.Vector3());
+    const spread = this.aiming ? spec.spread : spec.spread + spec.movingSpread;
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+    direction.addScaledVector(right, (Math.random() - 0.5) * spread * 2);
+    direction.addScaledVector(up, (Math.random() - 0.5) * spread * 2);
+    direction.normalize();
+
+    const worldHit = this.world.raycast(origin, direction, spec.range);
+    const maxDistance = worldHit ? worldHit.distance : spec.range;
+    const target = this.police ? this.police.traceShot(origin, direction, maxDistance) : null;
+    const endpoint = new THREE.Vector3();
+    if (target) {
+      endpoint.copy(target.point);
+      this.hitMarker = 1;
+      if (this.police) this.police.applyPlayerHit(target, spec.damage, { weapon: this.weaponKey });
+    } else if (worldHit) {
+      endpoint.copy(worldHit.point);
+      if (this.effects) this.effects.impact(worldHit.point, worldHit.normal, worldHit.kind === 'building' ? 'concrete' : 'concrete');
+    } else {
+      endpoint.copy(origin).addScaledVector(direction, spec.range);
+    }
+
+    const muzzle = new THREE.Vector3(
+      this.position.x + Math.sin(this.facing) * 0.62,
+      this.position.y + 1.36,
+      this.position.z + Math.cos(this.facing) * 0.62,
+    );
+    if (this.effects) {
+      this.effects.muzzle(muzzle.x, muzzle.y, muzzle.z, 0xffd79a);
+      this.effects.tracer(muzzle, endpoint, spec.tracer);
+      this.effects.shake(spec.auto ? 0.09 : 0.16);
+    }
+    if (this.audio) this.audio.gunshot(this.weaponKey);
+    if (this.police) this.police.reportGunfire(this.position.x, this.position.z);
+    if (this.weaponAmmo.ammo <= 0 && this.weaponAmmo.reserve > 0) this.startReload();
+  }
+
+  applyDamage(amount, fromX = null, fromZ = null) {
+    if (this.dead) return true;
+    let remaining = Math.max(0, amount);
+    if (this.armor > 0) {
+      const absorbed = Math.min(this.armor, remaining * 0.62);
+      this.armor -= absorbed;
+      remaining -= absorbed;
+    }
+    this.health = Math.max(0, this.health - remaining);
+    this.damageFlash = Math.min(1.4, this.damageFlash + 0.55 + amount * 0.012);
+    if (this.effects) {
+      this.effects.hurt(Math.min(0.7, amount * 0.024 + 0.08));
+      this.effects.shake(Math.min(0.55, amount * 0.026));
+    }
+    if (this.audio) this.audio.hurt();
+    if (fromX !== null && fromZ !== null) {
+      this.lastHitAngle = Math.atan2(fromX - this.position.x, fromZ - this.position.z);
+    }
+    if (this.health <= 0) {
+      this.dead = true;
+      this.aiming = false;
+      this.humanoid.aiming = false;
+      this.gun.visible = false;
+    }
+    return this.dead;
+  }
+
+  heal(amount) {
+    if (this.dead) return 0;
+    const before = this.health;
+    this.health = Math.min(100, this.health + amount);
+    return this.health - before;
+  }
+
+  addArmor(amount) {
+    if (this.dead) return 0;
+    const before = this.armor;
+    this.armor = Math.min(100, this.armor + amount);
+    return this.armor - before;
+  }
+
+  grantWeapon(key, reserve = 0) {
+    if (!WEAPONS[key]) return;
+    const slot = this.weapons[key];
+    const fresh = !slot.owned;
+    slot.owned = true;
+    slot.reserve = Math.min(999, slot.reserve + reserve);
+    if (fresh) slot.ammo = Math.min(WEAPONS[key].mag, slot.reserve);
+    if (fresh) this.selectWeapon(key);
+  }
+
+  revive(x = PLAYER.spawn.x, z = PLAYER.spawn.z, facing = PLAYER.spawnFacing, cameraYaw = facing + Math.PI) {
+    this.dead = false;
+    this.health = PLAYER.health;
+    this.armor = PLAYER.armor;
+    this.damageFlash = 0;
+    this.reloadTimer = 0;
+    this.aiming = false;
+    this.humanoid.aiming = false;
+    this.humanoid.group.rotation.z = 0;
+    this.group.visible = true;
+    this.teleport(x, z, facing, cameraYaw);
+  }
+
   handleVehicleInput(input) {
     if (input.wasPressed('KeyF', 'KeyE')) {
       if (this.driving) {
@@ -244,6 +566,7 @@ export class Player {
 
   enterVehicle(car) {
     if (!car || this.driving) return;
+    if (car.type === 'police' && this.police) this.police.reportCarTheft(car);
     this.driving = car;
     car.driver = 'player';
     car.ai = null;
@@ -344,12 +667,20 @@ export class Player {
   }
 
   computeCameraDesired(out) {
+    const aiming = this.aiming && !this.driving;
+    const distance = aiming ? 3.05 : this.cameraDistance;
+    const pitch = aiming ? Math.min(this.cameraPitch, 0.12) : this.cameraPitch;
     const target = this.cameraTarget.set(this.position.x, this.position.y + CAMERA.lookHeight, this.position.z);
-    const distance = this.cameraDistance;
-    const horizontal = Math.cos(this.cameraPitch) * distance;
+    if (aiming) {
+      // Shift the whole framing to the player's right so the shoulder and the
+      // crosshair do not fight for the same pixels.
+      target.x += Math.cos(this.cameraYaw) * 0.48;
+      target.z -= Math.sin(this.cameraYaw) * 0.48;
+    }
+    const horizontal = Math.cos(pitch) * distance;
     out.set(
       target.x + Math.sin(this.cameraYaw) * horizontal,
-      target.y + Math.sin(this.cameraPitch) * distance + CAMERA.heightOffset,
+      target.y + Math.sin(pitch) * distance + CAMERA.heightOffset,
       target.z + Math.cos(this.cameraYaw) * horizontal,
     );
     return out;
@@ -384,8 +715,13 @@ export class Player {
     }
     camera.position.copy(this._smoothCamera);
     camera.lookAt(this.cameraTarget);
-    if (Math.abs(camera.fov - CAMERA.fov) > 0.02) {
-      camera.fov = damp(camera.fov, CAMERA.fov, 6, dt);
+    if (this.recoil > 0.0002) {
+      camera.rotation.x += this.recoil * 0.8;
+      camera.rotation.z += Math.sin(this.playSeconds * 83) * this.recoil * 0.12;
+    }
+    const targetFov = this.aiming ? 49 : CAMERA.fov;
+    if (Math.abs(camera.fov - targetFov) > 0.02) {
+      camera.fov = damp(camera.fov, targetFov, 11, dt);
       camera.updateProjectionMatrix();
     }
   }

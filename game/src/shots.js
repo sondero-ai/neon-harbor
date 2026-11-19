@@ -52,6 +52,43 @@ export const SHOTS = {
     objective: START_OBJECTIVE,
     toast: false,
   },
+  chase: {
+    name: 'chase',
+    mode: 'playing',
+    time: 2.65,
+    prewarm: 26,
+    drive: {
+      type: 'muscle',
+      color: 0x8c2f2f,
+      x: -60,
+      z: 30.2,
+      yaw: Math.PI / 2,
+      speed: 22,
+      cameraPitch: 0.16,
+      cameraOrbit: -0.24,
+    },
+    chase: {
+      wanted: 4,
+      units: [
+        { x: -43, z: 21.3, yaw: -Math.PI / 2, speed: 9, shootTimer: 0.34 },
+        { x: -37, z: 27.0, yaw: -Math.PI / 2, speed: 8, shootTimer: 0.52 },
+        { x: -26, z: 27.0, yaw: 0, mode: 'block', shootTimer: 0.8 },
+      ],
+      officers: [
+        { x: -31.5, z: 18.2, yaw: 0.4, shootTimer: 0.3 },
+        { x: -28.5, z: 35.8, yaw: -0.4, shootTimer: 0.7 },
+      ],
+    },
+    objective: {
+      title: 'Break the Blockade',
+      sub: 'Blast through the Harbor PD line, then lose the heat.',
+      marker: { x: 0, z: 27 },
+      reward: 0,
+    },
+    health: 64,
+    armor: 18,
+    toast: false,
+  },
   pier: {
     name: 'pier',
     mode: 'playing',

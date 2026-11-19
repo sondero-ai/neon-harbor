@@ -7,6 +7,7 @@
 import * as THREE from '../vendor/three.module.js';
 import { WORLD } from './config.js';
 import { canvasTexture, makeGlowSprite, mergeGeometries } from './geo.js';
+import { SkidMarks } from './effects.js';
 
 const clamp = THREE.MathUtils.clamp;
 const damp = THREE.MathUtils.damp;
@@ -436,66 +437,6 @@ export function pickVehicleColor(rng, type) {
   return palette[Math.floor(rng() * palette.length) % palette.length];
 }
 
-export class SkidMarks {
-  constructor(scene, maxQuads = 900) {
-    this.maxQuads = maxQuads;
-    this.cursor = 0;
-    this.positions = new Float32Array(maxQuads * 6 * 3);
-    this.positions.fill(-80);
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
-    geometry.setDrawRange(0, maxQuads * 6);
-    this.mesh = new THREE.Mesh(
-      geometry,
-      new THREE.MeshBasicMaterial({
-        color: 0x0b0910,
-        transparent: true,
-        opacity: 0.52,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        polygonOffset: true,
-        polygonOffsetFactor: -2,
-      }),
-    );
-    this.mesh.frustumCulled = false;
-    this.mesh.renderOrder = 1;
-    this.mesh.receiveShadow = false;
-    scene.add(this.mesh);
-  }
-
-  reset() {
-    this.cursor = 0;
-    this.positions.fill(-80);
-    this.mesh.geometry.attributes.position.needsUpdate = true;
-  }
-
-  add(x, z, directionX, directionZ, y, width = 0.26, length = 0.72) {
-    const sideX = -directionZ;
-    const sideZ = directionX;
-    const halfWidth = width / 2;
-    const halfLength = length / 2;
-    const ax = x - directionX * halfLength + sideX * halfWidth;
-    const az = z - directionZ * halfLength + sideZ * halfWidth;
-    const bx = x + directionX * halfLength + sideX * halfWidth;
-    const bz = z + directionZ * halfLength + sideZ * halfWidth;
-    const cx = x + directionX * halfLength - sideX * halfWidth;
-    const cz = z + directionZ * halfLength - sideZ * halfWidth;
-    const dx = x - directionX * halfLength - sideX * halfWidth;
-    const dz = z - directionZ * halfLength - sideZ * halfWidth;
-    const offset = this.cursor * 18;
-    const p = this.positions;
-    const height = y + 0.028;
-    p[offset] = ax; p[offset + 1] = height; p[offset + 2] = az;
-    p[offset + 3] = bx; p[offset + 4] = height; p[offset + 5] = bz;
-    p[offset + 6] = cx; p[offset + 7] = height; p[offset + 8] = cz;
-    p[offset + 9] = ax; p[offset + 10] = height; p[offset + 11] = az;
-    p[offset + 12] = cx; p[offset + 13] = height; p[offset + 14] = cz;
-    p[offset + 15] = dx; p[offset + 16] = height; p[offset + 17] = dz;
-    this.mesh.geometry.attributes.position.needsUpdate = true;
-    this.cursor = (this.cursor + 1) % this.maxQuads;
-  }
-}
-
 const _local = new THREE.Vector3();
 
 export class Vehicle {
@@ -579,10 +520,10 @@ export class Vehicle {
       );
       this.lightbarBlue.position.set(0.27, 0.06, 0);
       this.lightbarBase.add(this.lightbarRed, this.lightbarBlue);
-      this.lightGlowRed = makeGlowSprite(0xff4938, 1.5, 0.55);
-      this.lightGlowBlue = makeGlowSprite(0x4e7bff, 1.5, 0.55);
-      this.lightGlowRed.position.set(-0.27, 0.08, 0);
-      this.lightGlowBlue.position.set(0.27, 0.08, 0);
+      this.lightGlowRed = makeGlowSprite(0xff4938, [2.9, 1.5], 0.8);
+      this.lightGlowBlue = makeGlowSprite(0x4e7bff, [2.9, 1.5], 0.8);
+      this.lightGlowRed.position.set(-0.27, 0.1, 0);
+      this.lightGlowBlue.position.set(0.27, 0.1, 0);
       this.lightbarBase.add(this.lightGlowRed, this.lightGlowBlue);
     }
 
@@ -896,8 +837,8 @@ export class Vehicle {
       const blueOn = phase === 2 || phase === 3;
       this.lightbarRed.material.color.setHex(redOn ? 0xff3526 : 0x43090b);
       this.lightbarBlue.material.color.setHex(blueOn ? 0x3d63ff : 0x0a0d3a);
-      this.lightGlowRed.material.opacity = redOn ? 0.68 : 0.06;
-      this.lightGlowBlue.material.opacity = blueOn ? 0.68 : 0.06;
+      this.lightGlowRed.material.opacity = redOn ? 0.88 : 0.04;
+      this.lightGlowBlue.material.opacity = blueOn ? 0.88 : 0.04;
     }
   }
 

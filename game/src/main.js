@@ -25,6 +25,10 @@ import { Input } from './input.js';
 import { Hud } from './hud.js';
 import { SaveStore } from './save.js';
 import { readShot } from './shots.js';
+import { Effects } from './effects.js';
+import { AudioSystem } from './audio.js';
+import { Police } from './police.js';
+import { Pickups } from './pickups.js';
 
 const STEP = 1 / 60;
 const MAX_STEPS = 5;
@@ -87,6 +91,13 @@ class Game {
     this.titleView = DEFAULT_TITLE_VIEW;
     this.lastHudState = null;
     this.radioEnabled = true;
+    this.radioIndex = 0;
+    this.down = null;
+    this.audio = new AudioSystem();
+    this.settings.volume = Number.isFinite(this.settings.volume) ? this.settings.volume : 0.72;
+    this.audio.setVolume(this.settings.volume);
+    this.audio.muted = Boolean(this.settings.muted);
+    if (this.audio.master) this.audio.master.gain.value = this.audio.muted ? 0 : this.audio.volume;
 
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
@@ -106,12 +117,26 @@ class Game {
     this.camera = new THREE.PerspectiveCamera(CAMERA.fov, 16 / 9, CAMERA.near, CAMERA.far);
     this.world = new World(this.scene, { quality: this.quality });
     this.world.setObjectiveMarker(START_OBJECTIVE.marker.x, START_OBJECTIVE.marker.z);
+    this.effects = new Effects(this.scene, { quality: this.quality });
     this.vehicles = new Vehicles(this.scene, this.world);
     this.player = new Player(this.scene, this.world, this.vehicles);
+    this.player.effects = this.effects;
+    this.player.audio = this.audio;
     this.traffic = new Traffic(this.scene, this.world, this.vehicles, this.player);
+    this.police = new Police(this.scene, this.world, this.vehicles, this.player, this.traffic, this.effects, this.audio, {
+      onDown: (type) => this.beginDown(type),
+    });
+    this.player.police = this.police;
+    this.pickups = new Pickups(this.scene, this.world, this.effects, {
+      audio: this.audio,
+      onPickup: (message) => {
+        if (!this.hud.suppressToasts) this.hud.toast = { title: message, sub: 'COLLECTED', life: 2.2 };
+      },
+    });
     this.input = new Input(this.canvas);
     this.input.allowLock = false;
     this.hud = new Hud(this.ui.hud, this.world);
+    this.audio.setRadio(this.radioEnabled, this.radioIndex);
 
     this.bindScreens();
     this.bindWindow();
@@ -143,6 +168,8 @@ class Game {
       element.addEventListener('click', (event) => {
         event.currentTarget.blur();
         event.preventDefault();
+        this.audio.unlock();
+        this.audio.uiClick();
         action();
       });
     };
@@ -177,6 +204,7 @@ class Game {
     this.renderer.setPixelRatio(ratio);
     this.renderer.shadowMap.enabled = preset.shadows;
     if (this.world) this.world.setQuality(this.quality);
+    if (this.effects) this.effects.setQuality(this.quality);
     if (resize) this.resize();
   }
 
@@ -221,7 +249,7 @@ class Game {
 
   updateLookHint() {
     if (!this.ui.lookHint) return;
-    this.ui.lookHint.hidden = !(this.mode === 'playing' && !this.input.locked && !this.shotLocked);
+    this.ui.lookHint.hidden = !(this.mode === 'playing' && !this.input.locked && !this.shotLocked && !this.down);
   }
 
   enterTitle() {
@@ -230,10 +258,14 @@ class Game {
     setHidden(this.ui.pause, true);
     setHidden(this.ui.controls, true);
     this.player.group.visible = false;
+    this.player.inputBlocked = true;
+    this.player.gun.visible = false;
     this.hud.setVisible(false);
     this.input.allowLock = false;
     this.input.releaseLock();
     this.input.consumeMouse();
+    this.audio.setEngine({ on: false, rpm: 0, load: 0, speed: 0 });
+    this.audio.setSiren(0, 0);
     this.updateLookHint();
     this.updateContinueButton();
     this.world.focusAt(this.titleView.target[0], this.titleView.target[2]);
@@ -246,11 +278,13 @@ class Game {
     setHidden(this.ui.pause, true);
     setHidden(this.ui.controls, true);
     this.player.group.visible = true;
+    this.player.inputBlocked = false;
     this.hud.setVisible(true);
     if (toast) {
       this.hud.lastDistrict = '';
       this.hud.toast = null;
     }
+    this.audio.setRadio(this.radioEnabled, this.radioIndex);
     this.input.allowLock = lock;
     this.input.consumeMouse();
     this.world.focusAt(this.player.position.x, this.player.position.z);
@@ -261,14 +295,26 @@ class Game {
   startNewGame() {
     this.hud.suppressToasts = false;
     this.objective = START_OBJECTIVE;
+    this.down = null;
     this.player.driving = null;
     this.player.group.visible = true;
+    this.player.dead = false;
+    this.player.inputBlocked = false;
+    this.player.aiming = false;
+    this.player.humanoid.group.rotation.z = 0;
     this.player.health = PLAYER.health;
     this.player.armor = PLAYER.armor;
     this.player.cash = PLAYER.cash;
     this.player.wanted = 0;
     this.player.mission = 0;
     this.player.playSeconds = 0;
+    this.player.weaponKey = 'pistol';
+    this.player.weapons.pistol = { owned: true, ammo: 12, reserve: 60 };
+    this.player.weapons.smg = { owned: false, ammo: 0, reserve: 0 };
+    this.player.syncGunModel();
+    this.player.gun.visible = false;
+    this.police.resetAfterDown();
+    this.pickups.reset();
     this.clockMinutes = HOURS * 60 + MINUTES;
     this.player.teleport(PLAYER.spawn.x, PLAYER.spawn.z, PLAYER.spawnFacing, PLAYER.spawnCameraYaw);
     this.player.cameraPitch = CAMERA.pitch;
@@ -284,15 +330,24 @@ class Game {
     const save = SaveStore.load();
     if (!save) return;
     this.hud.suppressToasts = false;
+    this.down = null;
+    this.player.inputBlocked = false;
+    this.player.dead = false;
+    this.player.humanoid.group.rotation.z = 0;
+    this.police.resetAfterDown();
+    this.pickups.reset();
     this.player.loadFromSave(save);
     this.objective = START_OBJECTIVE;
     this.clockMinutes = HOURS * 60 + MINUTES + save.playSeconds * GAME_MINUTES_PER_SECOND;
     this.resetCityLife();
+    if (save.wanted > 0) this.police.setWanted(save.wanted, { silent: true });
     this.player.updateCamera(this.camera, 0, true);
     this.enterPlaying({ toast: true });
   }
 
   resetCityLife() {
+    this.police.clearUnits();
+    this.police.clearOfficers();
     this.vehicles.clear();
     this.traffic.reset();
     this.spawnOpeningCars();
@@ -323,12 +378,53 @@ class Game {
     cruiser.setDriver(null);
   }
 
+  radioState() {
+    const station = RADIO.stations[this.radioIndex] ?? RADIO.stations[0];
+    return { station: station.station, track: station.track, enabled: this.radioEnabled, index: this.radioIndex };
+  }
+
   toggleRadio() {
     this.radioEnabled = !this.radioEnabled;
+    this.audio.unlock();
+    this.audio.setRadio(this.radioEnabled, this.radioIndex);
     if (!this.hud.suppressToasts) {
+      const station = this.radioState();
       this.hud.toast = this.radioEnabled
-        ? { title: RADIO.station, sub: RADIO.track.toUpperCase(), life: 2.6 }
-        : { title: 'Radio Off', sub: 'PRESS R TO TUNE IN', life: 2.0 };
+        ? { title: station.station, sub: station.track.toUpperCase(), life: 2.6 }
+        : { title: 'Radio Off', sub: 'PRESS T TO TUNE IN', life: 2.0 };
+    }
+  }
+
+  cycleStation(direction) {
+    this.radioIndex = (this.radioIndex + direction + RADIO.stations.length) % RADIO.stations.length;
+    this.radioEnabled = true;
+    this.audio.unlock();
+    this.audio.setRadio(true, this.radioIndex);
+    const station = this.radioState();
+    if (!this.hud.suppressToasts) {
+      this.hud.toast = { title: station.station, sub: station.track.toUpperCase(), life: 2.6 };
+    }
+  }
+
+  toggleMute() {
+    this.audio.unlock();
+    const muted = this.audio.toggleMute();
+    this.settings.muted = muted;
+    SaveStore.saveSettings(this.settings);
+    if (!this.hud.suppressToasts) {
+      this.hud.toast = { title: muted ? 'Audio Muted' : 'Audio On', sub: muted ? 'PRESS M TO RESTORE' : 'NIGHT TIDE MIX', life: 2.0 };
+    }
+  }
+
+  changeVolume(delta) {
+    this.audio.unlock();
+    this.audio.setVolume(this.audio.volume + delta);
+    this.settings.volume = this.audio.volume;
+    this.settings.muted = false;
+    this.audio.muted = false;
+    SaveStore.saveSettings(this.settings);
+    if (!this.hud.suppressToasts) {
+      this.hud.toast = { title: `Volume ${Math.round(this.audio.volume * 100)}%`, sub: 'MINUS / EQUALS', life: 1.6 };
     }
   }
 
@@ -349,9 +445,67 @@ class Game {
     }
   }
 
+  beginDown(type) {
+    if (this.down) return;
+    const duration = type === 'busted' ? 3.1 : 3.3;
+    this.down = { type, timer: duration, duration };
+    this.player.inputBlocked = true;
+    this.player.aiming = false;
+    this.player.humanoid.aiming = false;
+    this.player.gun.visible = false;
+    if (this.player.driving) {
+      this.player.driving.controls.throttle = 0;
+      this.player.driving.controls.brake = 1;
+      this.player.driving.controls.handbrake = true;
+    }
+    if (type === 'wasted') this.player.humanoid.group.rotation.z = 1.25;
+    this.audio.setEngine({ on: false, rpm: 0, load: 0, speed: 0 });
+    this.effects.hurt(1);
+    this.effects.shake(0.7);
+    this.hud.toast = null;
+  }
+
+  finishDown() {
+    const type = this.down?.type ?? 'wasted';
+    const rate = type === 'busted' ? 0.15 : 0.1;
+    const loss = Math.round(this.player.cash * rate);
+    this.player.cash = Math.max(0, this.player.cash - loss);
+    if (this.player.driving) {
+      const car = this.player.driving;
+      this.player.driving = null;
+      car.driver = null;
+      car.setDriver(null);
+      car.controls.brake = 1;
+      car.controls.handbrake = true;
+      this.player.group.visible = true;
+    }
+    this.police.resetAfterDown();
+    this.down = null;
+    this.player.wanted = 0;
+    this.player.revive(PLAYER.spawn.x, PLAYER.spawn.z, PLAYER.spawnFacing, PLAYER.spawnCameraYaw);
+    this.player.health = 100;
+    this.player.armor = type === 'busted' ? 30 : 0;
+    this.player.cameraPitch = CAMERA.pitch;
+    this.player.cameraDistance = CAMERA.distance;
+    this.player.inputBlocked = false;
+    this.player.updateCamera(this.camera, 0, true);
+    this.objective = START_OBJECTIVE;
+    this.hud.suppressToasts = false;
+    this.hud.toast = {
+      title: type === 'busted' ? 'Out on Bail' : 'Back on the Street',
+      sub: `$ ${loss} LOST · HARBOR PD STOOD DOWN`,
+      life: 3.4,
+    };
+    this.world.focusAt(this.player.position.x, this.player.position.z);
+    SaveStore.write(this.player.saveState);
+    this.updateContinueButton();
+  }
+
   pause() {
     if (this.mode !== 'playing') return;
     this.mode = 'paused';
+    this.audio.setEngine({ on: false, rpm: 0, load: 0, speed: 0 });
+    this.audio.setSiren(0, 0);
     this.input.allowLock = false;
     this.input.releaseLock();
     this.input.consumeMouse();
@@ -365,6 +519,7 @@ class Game {
     if (this.mode !== 'paused') return;
     this.mode = 'playing';
     setHidden(this.ui.pause, true);
+    this.audio.setRadio(this.radioEnabled, this.radioIndex);
     this.input.allowLock = true;
     this.input.consumeMouse();
     this.input.requestLock();
@@ -444,12 +599,21 @@ class Game {
     return {
       player,
       objective: this.objective,
-      radio: { ...RADIO, enabled: this.radioEnabled },
+      radio: this.radioState(),
       clock: this.clockString(),
       district: districtAt(player.position.x, player.position.z),
       vehicles: blips,
       density: this.traffic.density,
       vehiclePrompt,
+      police: this.police.hudState,
+      weapons: this.player.combatState,
+      down: this.down,
+      effects: {
+        hurt: this.effects.hurtLevel,
+        lowHealth: player.health < 32,
+        flash: player.damageFlash,
+      },
+      pickup: this.pickups.hint,
     };
   }
 
@@ -487,6 +651,9 @@ class Game {
       this.enterTitle();
       for (let i = 0; i < steps; i += 1) this.tick(STEP);
     } else {
+      this.down = null;
+      this.police.resetAfterDown();
+      this.pickups.reset();
       this.enterPlaying({ lock: false, toast: shot.toast === true });
       this.objective = shot.objective ?? START_OBJECTIVE;
       this.player.health = PLAYER.health;
@@ -495,10 +662,26 @@ class Game {
       this.player.wanted = 0;
       this.player.mission = 0;
       this.player.playSeconds = 0;
+      this.player.dead = false;
+      this.player.inputBlocked = false;
+      this.player.humanoid.group.rotation.z = 0;
+      this.player.gun.visible = false;
       if (shot.drive) {
+        this.police.clearUnits();
         this.vehicles.clear();
         this.traffic.reset({ spawnBeach: false });
         this.stageDriveShot(shot.drive);
+        if (shot.chase) this.police.stageChase(shot.chase, this.player.driving);
+        this.player.updateCamera(this.camera, 0, true);
+        for (let i = 0; i < steps; i += 1) this.tick(STEP);
+        if (Number.isFinite(shot.health)) this.player.health = shot.health;
+        if (Number.isFinite(shot.armor)) this.player.armor = shot.armor;
+        this.player.damageFlash = 0;
+        if (shot.chase) this.stageChaseDrama();
+        this.hud.lastHealth = this.player.health;
+        this.hud.lastArmor = this.player.armor;
+        this.hud.healthFlash = 0;
+        this.hud.armorFlash = 0;
       } else {
         const pose = shot.player;
         this.player.teleport(pose.x, pose.z, pose.facing, pose.cameraYaw);
@@ -515,6 +698,41 @@ class Game {
     if (this.hud.visible) this.hud.update(0, this.lastHudState);
     this.updateLookHint();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  stageChaseDrama() {
+    let best = null;
+    let bestFacing = -Infinity;
+    for (const unit of this.police.units) {
+      if (!unit.car || unit.car.removed) continue;
+      const car = unit.car;
+      const dx = this.player.position.x - car.position.x;
+      const dz = this.player.position.z - car.position.z;
+      const length = Math.hypot(dx, dz) || 1;
+      const facing = (Math.sin(car.yaw) * dx + Math.cos(car.yaw) * dz) / length;
+      if (facing > bestFacing) {
+        bestFacing = facing;
+        best = car;
+      }
+    }
+    if (!best) return;
+    const forwardX = Math.sin(best.yaw);
+    const forwardZ = Math.cos(best.yaw);
+    const muzzle = new THREE.Vector3(
+      best.position.x + forwardX * (best.halfLength + 0.35),
+      best.position.y + 1.08,
+      best.position.z + forwardZ * (best.halfLength + 0.35),
+    );
+    this.effects.smokePuff(best.position.x + forwardX * 1.4, best.position.y + 0.9, best.position.z + forwardZ * 1.4, {
+      scale: 2.2,
+      life: 2.2,
+      color: 0x5c5156,
+      rise: 1.2,
+    });
+    this.effects.update(0.42, null);
+    this.effects.tracer(muzzle, new THREE.Vector3(this.player.position.x, this.player.position.y + 0.9, this.player.position.z), 0xffd08a);
+    this.effects.muzzle(muzzle.x, muzzle.y, muzzle.z, 0xffd79a);
+    this.player.damageFlash = 0.55;
   }
 
   stageDriveShot(drive) {
@@ -535,6 +753,7 @@ class Game {
     this.player.driveOrbitYaw = drive.cameraOrbit ?? 0;
     this.player.driveLookHold = 0;
     this.player.syncFromVehicle();
+    this.effects.registerVehicle(car);
     this.traffic.stageDrive(car);
     this.world.focusAt(car.position.x, car.position.z);
     this.player.updateView(this.camera, 0, true);
@@ -547,24 +766,61 @@ class Game {
     this.simTime += dt;
 
     if (this.mode === 'playing') {
-      const wasDriving = this.player.driving;
-      this.player.handleVehicleInput(input);
-      if (wasDriving !== this.player.driving) {
-        this.announceVehicle(this.player.driving, wasDriving);
-      }
-      if (input.wasPressed('KeyR')) this.toggleRadio();
-      this.player.update(dt, input);
-      this.traffic.update(dt, this.simTime);
-      this.vehicles.update(dt, this.simTime);
-      this.player.syncFromVehicle();
-      this.player.updateView(this.camera, dt);
-      this.clockMinutes += dt * GAME_MINUTES_PER_SECOND;
-      this.world.focusAt(this.player.position.x, this.player.position.z);
-      if (input.wasPressed('Escape', 'KeyP')) this.pause();
-      else {
+      if (this.down) {
+        this.down.timer -= dt;
+        this.player.update(dt, input);
+        this.traffic.update(dt, this.simTime);
+        this.police.update(dt, this.simTime);
+        this.player.wanted = this.police.wanted;
+        this.vehicles.update(dt, this.simTime);
+        this.player.syncFromVehicle();
+        this.player.updateView(this.camera, dt);
+        this.effects.update(dt, this.camera);
+        this.audio.setEngine({ on: false, rpm: 0, load: 0, speed: 0 });
+        this.world.focusAt(this.player.position.x, this.player.position.z);
+        if (this.down.timer <= 0) this.finishDown();
         this.lastHudState = this.hudState();
         this.hud.update(dt, this.lastHudState);
         this.updateLookHint();
+      } else {
+        const wasDriving = this.player.driving;
+        this.player.handleVehicleInput(input);
+        if (wasDriving !== this.player.driving && this.player.driving) {
+          this.effects.registerVehicle(this.player.driving);
+        }
+        if (wasDriving !== this.player.driving) {
+          this.announceVehicle(this.player.driving, wasDriving);
+        }
+        if (input.wasPressed('KeyT')) this.toggleRadio();
+        if (input.wasPressed('BracketLeft')) this.cycleStation(-1);
+        if (input.wasPressed('BracketRight')) this.cycleStation(1);
+        if (input.wasPressed('KeyM')) this.toggleMute();
+        if (input.wasPressed('Minus')) this.changeVolume(-0.08);
+        if (input.wasPressed('Equal')) this.changeVolume(0.08);
+        this.player.update(dt, input);
+        this.traffic.update(dt, this.simTime);
+        this.police.update(dt, this.simTime);
+        this.player.wanted = this.police.wanted;
+        this.vehicles.update(dt, this.simTime);
+        this.player.syncFromVehicle();
+        this.player.updateView(this.camera, dt);
+        this.player.updateCombat(dt, input, this.camera);
+        this.pickups.update(dt, this.player);
+        this.effects.update(dt, this.camera);
+        const car = this.player.driving;
+        this.audio.setEngine(car
+          ? { ...car.engineState, speed: car.speed }
+          : { on: false, rpm: 0, load: 0, speed: 0 });
+        this.clockMinutes += dt * GAME_MINUTES_PER_SECOND;
+        this.world.focusAt(this.player.position.x, this.player.position.z);
+        const notice = this.police.consumeNotice();
+        if (notice && !this.hud.suppressToasts) this.hud.toast = notice;
+        if (input.wasPressed('Escape', 'KeyP')) this.pause();
+        else {
+          this.lastHudState = this.hudState();
+          this.hud.update(dt, this.lastHudState);
+          this.updateLookHint();
+        }
       }
     } else if (this.mode === 'title') {
       this.updateTitleCamera();
@@ -644,8 +900,54 @@ try {
       const density = game.traffic.density;
       return { cars: density.cars, walkers: density.walkers, totalVehicles: game.vehicles.count };
     },
+    get police() {
+      const hud = game.police.hudState;
+      return {
+        wanted: game.police.wanted,
+        status: game.police.status,
+        units: hud.units.length,
+        officers: hud.officers.length,
+        unitList: hud.units.map((unit) => ({ x: Math.round(unit.x * 10) / 10, z: Math.round(unit.z * 10) / 10, mode: unit.mode })),
+        officerList: hud.officers.map((officer) => ({ x: Math.round(officer.x * 10) / 10, z: Math.round(officer.z * 10) / 10 })),
+      };
+    },
+    get down() {
+      return game.down ? { type: game.down.type, timer: Math.round(game.down.timer * 100) / 100 } : null;
+    },
+    get combat() {
+      return {
+        health: game.player.health,
+        armor: game.player.armor,
+        weapon: game.player.weaponKey,
+        ammo: game.player.weaponAmmo.ammo,
+        reserve: game.player.weaponAmmo.reserve,
+      };
+    },
+    get audio() {
+      return {
+        ready: game.audio.ready,
+        state: game.audio.ctx?.state ?? null,
+        radio: { ...game.audio.radio },
+        siren: Math.round(game.audio.sirenLevel * 100) / 100,
+        volume: Math.round(game.audio.volume * 100) / 100,
+        muted: game.audio.muted,
+      };
+    },
     get draws() {
       return game.renderer.info.render.calls;
+    },
+    setWanted(stars) {
+      game.police.setWanted(stars, { silent: true });
+    },
+    clearWanted() {
+      game.police.clearWanted({ quiet: true });
+    },
+    damagePlayer(amount) {
+      game.police.damagePlayer(amount, game.player.position.x + 3, game.player.position.z);
+    },
+    teleport(x, z) {
+      game.player.teleport(x, z);
+      game.player.updateCamera(game.camera, 0, true);
     },
   };
 } catch (error) {

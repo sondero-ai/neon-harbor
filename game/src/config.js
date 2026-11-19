@@ -77,10 +77,93 @@ export const START_OBJECTIVE = {
   reward: 0,
 };
 
+// Three original stations. The sequencer in audio.js reads the same tempo and
+// mood names, and the HUD shows whichever station the player has tuned.
 export const RADIO = {
-  station: 'Night Tide 88.3',
-  track: 'Harbor Lights — Sable Youth',
+  stations: [
+    {
+      station: 'Night Tide 88.3',
+      track: 'Harbor Lights — Sable Youth',
+      style: 'synthwave',
+      bpm: 96,
+    },
+    {
+      station: 'KNRV 104.7',
+      track: 'Chrome Weather — The Static',
+      style: 'chiptune',
+      bpm: 118,
+    },
+    {
+      station: 'The Breakwater 97.1',
+      track: 'Low Tide Riot — Pier Saints',
+      style: 'surf',
+      bpm: 132,
+    },
+  ],
 };
+
+// The two carried weapons. Damage is per pellet-free hitscan shot; fireRate is
+// shots per second and the spread is in radians before movement penalties.
+export const WEAPONS = {
+  pistol: {
+    name: 'Solano 9',
+    short: 'PISTOL',
+    damage: 34,
+    fireRate: 4.4,
+    mag: 12,
+    reserve: 60,
+    reload: 1.15,
+    spread: 0.0055,
+    movingSpread: 0.022,
+    range: 88,
+    tracer: 0xffd49a,
+    kick: 0.011,
+    auto: false,
+  },
+  smg: {
+    name: 'Kestrel SMG',
+    short: 'SMG',
+    damage: 19,
+    fireRate: 11.5,
+    mag: 32,
+    reserve: 96,
+    reload: 1.65,
+    spread: 0.016,
+    movingSpread: 0.034,
+    range: 72,
+    tracer: 0xffbc84,
+    kick: 0.006,
+    auto: true,
+  },
+};
+
+export const POLICE = {
+  /** Stars above which cruisers use their sidearms, dismount and set blocks. */
+  shootFromStars: 3,
+  officersFromStars: 3,
+  roadblockFromStars: 4,
+  cruiseSpeed: 0.94,
+  maxCruisers: 4,
+  maxOfficers: 4,
+  sightRange: 62,
+  lostSightSeconds: 4.2,
+  searchSeconds: 7.5,
+  decayStepSeconds: 3.4,
+  bustSeconds: 2.4,
+  /** Metres at which an officer can put the cuffs on. */
+  bustRange: 4.0,
+};
+
+export const PICKUPS = [
+  { kind: 'smg', x: -105.5, z: 21.2, label: 'Kestrel SMG' },
+  { kind: 'pistol', x: -88, z: 36.4, label: 'Solano 9' },
+  { kind: 'health', x: -52.5, z: 18.2, label: 'Medkit' },
+  { kind: 'armor', x: 16, z: 36.4, label: 'Armor Vest' },
+  { kind: 'smg', x: -170, z: 67.5, label: 'Kestrel SMG' },
+  { kind: 'health', x: 64, z: 21.2, label: 'Medkit' },
+  { kind: 'armor', x: -196, z: 118, label: 'Armor Vest' },
+  { kind: 'pistol', x: 108, z: 36.4, label: 'Solano 9' },
+];
 
 export const HOURS = 18;
 export const MINUTES = 42;

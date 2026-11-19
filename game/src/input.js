@@ -13,6 +13,7 @@ export class Input {
     this.mouseDY = 0;
     this.wheel = 0;
     this.buttons = new Set();
+    this.mousePressed = new Set();
     this.dragging = false;
     this.lockRequested = false;
     this.allowLock = true;
@@ -61,6 +62,7 @@ export class Input {
 
   onMouseDown(event) {
     if (event.target !== this.canvas) return;
+    if (!this.buttons.has(event.button)) this.mousePressed.add(event.button);
     this.buttons.add(event.button);
     if (!this.locked && this.allowLock) {
       this.dragging = true;
@@ -82,6 +84,7 @@ export class Input {
   onBlur() {
     this.keys.clear();
     this.buttons.clear();
+    this.mousePressed.clear();
     this.dragging = false;
     this.pressed.clear();
   }
@@ -112,6 +115,14 @@ export class Input {
     return this.buttons.has(button);
   }
 
+  wasMousePressed(button = 0) {
+    return this.mousePressed.has(button);
+  }
+
+  isMouseDown(button = 0) {
+    return this.buttons.has(button);
+  }
+
   consumeMouse() {
     const delta = { x: this.mouseDX, y: this.mouseDY, wheel: this.wheel };
     this.mouseDX = 0;
@@ -122,6 +133,7 @@ export class Input {
 
   endFrame() {
     this.pressed.clear();
+    this.mousePressed.clear();
   }
 
   moveAxis() {
