@@ -1,483 +1,510 @@
-// Boot, the fixed-step loop and the screen state machine. The world, its people and the story are
-// built once; each frame advances the simulation in exact 1/60 s steps and then paints the 3D view
-// and the HUD. ?shot=start|street|chase|mission stages a deterministic scene for the screenshots.
+// Boot, the fixed-step loop, and the small state machine that owns the title,
+// play, pause and controls screens. World, player, HUD and save are separate
+// modules; this file is the wiring between them and the moment-to-moment
+// decisions: when the pointer is captured, when a pause writes the save, and
+// how a deterministic screenshot becomes a frozen frame.
+
 import * as THREE from '../vendor/three.module.js';
-import { CITY, CRIME, DISTRICTS, PLAYER, RADIO, STEP, WORLD_SEED } from './config.js';
-import { createRandom } from './random.js';
-import { createWorld } from './world.js';
-import { createEffects } from './effects.js';
-import { createAudio } from './audio.js';
-import { createVehicleSystem } from './vehicles.js';
-import { createTraffic } from './traffic.js';
-import { createPolice } from './police.js';
-import { createPlayer } from './player.js';
-import { createMissions, CAST } from './missions.js';
-import { createHud } from './hud.js';
-import { createInput } from './input.js';
-import { readSave, writeSave, clearSave, hasSave } from './save.js';
-import { stageShot } from './shots.js';
+import {
+  CAMERA,
+  HOURS,
+  MINUTES,
+  PALETTE,
+  PLAYER,
+  QUALITY_PRESETS,
+  RADIO,
+  START_OBJECTIVE,
+  districtAt,
+} from './config.js';
+import { World } from './world.js';
+import { Player } from './player.js';
+import { Input } from './input.js';
+import { Hud } from './hud.js';
+import { SaveStore } from './save.js';
+import { readShot } from './shots.js';
 
-const params = new URLSearchParams(window.location.search);
-const shotName = params.get('shot');
-const seedParam = Number.parseInt(params.get('seed') ?? '', 10);
-const seed = Number.isInteger(seedParam) ? seedParam : WORLD_SEED;
+const STEP = 1 / 60;
+const MAX_STEPS = 5;
+const GAME_MINUTES_PER_SECOND = 1 / 45;
 
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(62, 16 / 9, 0.1, 6500);
-const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', alpha: false });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.06;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.shadowMap.enabled = false;
-document.getElementById('scene').replaceWith(renderer.domElement);
-renderer.domElement.id = 'scene';
-renderer.domElement.tabIndex = 0;
-
-const random = createRandom(seed);
-const world = createWorld(scene, random);
-const effects = createEffects(scene, camera);
-const audio = createAudio();
-const vehicles = createVehicleSystem(scene, world, effects, audio);
-const traffic = createTraffic(scene, world, vehicles, effects, audio, random);
-const police = createPolice(scene, world, vehicles, effects, audio, random);
-const player = createPlayer(scene, world, effects, audio);
-const missions = createMissions({ player, world, vehicles, traffic, police, effects, audio, scene });
-const hud = createHud(document.getElementById('hud'), world);
-
-const input = createInput(renderer.domElement);
-
-// Browsers start audio on a gesture; both a click and a keypress count.
-window.addEventListener('pointerdown', () => audio.start(), { once: true });
-window.addEventListener('keydown', () => audio.start(), { once: true });
-
-const state = {
-  mode: shotName ? 'play' : 'loading',
-  time: 0,
-  menuIndex: 0,
-  quality: 'high',
-  muted: false,
-  toasts: [],
-  objective: '',
-  missionTitle: '',
-  alert: null,
-  respawn: 0,
-  modeTimer: 0,
-  loading: 0,
-  radio: 0,
-  district: 'Vega Heights',
-  clock: 19 * 60 + 42,
-  hasSave: hasSave(),
+const DEFAULT_TITLE_VIEW = {
+  position: [132, 64, 156],
+  target: [-210, 2, 42],
+  drift: [6.0, 1.4, 4.0],
+  speed: 0.03,
 };
 
-// ---- wiring --------------------------------------------------------------
-player.callbacks.onCrime = (kind) => {
-  const amounts = { gunshot: CRIME.gunshot, pedestrian: CRIME.pedestrian, carjack: CRIME.carjack, police: CRIME.police };
-  police.addHeat(amounts[kind] ?? 0.2);
-  if (kind === 'gunshot') traffic.onGunshot(player.pos);
-};
-player.callbacks.onCarjack = (car) => {
-  traffic.onCarjack(car);
-  toast('CARJACKED');
-};
-player.callbacks.targets = () => {
-  const list = [...traffic.shootables(), ...police.shootables()];
-  for (const car of vehicles.cars) {
-    if (car.wrecked) continue;
-    list.push({ x: car.pos.x, y: 0.95, z: car.pos.z, radius: 2.0, dead: false, kind: 'vehicle', ref: car, hurt: (amount) => vehicles.damage(car, amount) });
-  }
-  return list;
-};
-player.callbacks.onHit = (kind, target) => {
-  if (kind === 'bullet' && (target.kind === 'pedestrian')) police.addHeat(0.35);
-  if (kind === 'bullet' && (target.kind === 'police')) police.addHeat(0.25);
-  effects.shake(0.08);
-};
-player.callbacks.onDeath = () => {
-  state.mode = 'wasted';
-  state.modeTimer = PLAYER.respawnTime;
-  if (missions.active) missions.failMission('You were wasted.');
-};
-player.callbacks.onEnterCar = () => toast('ENGINE ON');
-player.callbacks.onExitCar = () => toast('ON FOOT');
-police.callbacks.onBusted = () => {
-  if (state.mode !== 'play') return;
-  state.mode = 'busted';
-  state.modeTimer = 3.4;
-  player.health = Math.max(12, player.health);
-  player.cash = Math.max(0, player.cash - 250);
-  police.clear();
-  if (missions.active) missions.failMission('You were busted.');
-  audio.ui();
-};
-police.callbacks.onStars = (stars) => {
-  if (stars > 0) toast(`WANTED LEVEL ${stars}`);
-};
-missions.callbacks.onObjective = (objective) => { state.objective = objective; };
-missions.callbacks.onToast = (text) => toast(text);
-missions.callbacks.onSave = () => saveGame(true);
-missions.callbacks.onComplete = () => {
-  state.mode = 'epilogue';
-  saveGame(true);
-};
-
-function toast(text) {
-  state.toasts.push({ text, time: 4 });
-  if (state.toasts.length > 6) state.toasts.shift();
+function byId(id) {
+  return document.getElementById(id);
 }
 
-function saveGame(silent = false) {
-  const ok = writeSave({
-    x: player.pos.x, z: player.pos.z, heading: player.heading,
-    cash: player.cash, health: player.health, armor: player.armor,
-    mission: Math.max(0, missions.state.index), wanted: police.stars,
-    weapon: player.weapon, radio: state.radio,
-    pistolClip: player.weapons.pistol.clip, pistolReserve: player.weapons.pistol.reserve,
-    smgClip: player.weapons.smg.clip, smgReserve: player.weapons.smg.reserve,
-  });
-  state.hasSave = ok;
-  if (!silent) toast('GAME SAVED');
+function formatCash(value) {
+  return `$ ${Math.max(0, Math.round(value)).toLocaleString('en-US')}`;
 }
 
-function loadGame() {
-  const data = readSave();
-  if (!data) { newGame(); return; }
-  traffic.reset();
-  traffic.spawnCrowd();
-  police.clear();
-  player.pos.set(data.x ?? world.landmarks.spawn.x, 0, data.z ?? world.landmarks.spawn.z);
-  player.pos.y = world.surfaceHeight(player.pos.x, player.pos.z);
-  player.heading = data.heading ?? 0;
-  player.orbitYaw = player.heading;
-  player.cash = data.cash ?? 420;
-  player.health = Math.min(player.maxHealth, data.health ?? PLAYER.maxHealth);
-  player.armor = data.armor ?? 0;
-  player.weapons.pistol.clip = data.pistolClip ?? 12;
-  player.weapons.pistol.reserve = data.pistolReserve ?? 90;
-  player.weapons.smg.clip = data.smgClip ?? 30;
-  player.weapons.smg.reserve = data.smgReserve ?? 240;
-  player.selectWeapon(data.weapon ?? 'pistol');
-  state.radio = data.radio ?? 0;
-  state.mode = 'play';
-  missions.begin(Math.min(3, data.mission ?? 0));
-  toast('WELCOME BACK, RAE');
-  input.setLockAllowed(true);
-  input.lock();
+function formatDuration(seconds) {
+  const total = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(total / 60);
+  const remainder = String(total % 60).padStart(2, '0');
+  return `${minutes}:${remainder}`;
 }
 
-function newGame() {
-  clearSave();
-  state.hasSave = false;
-  traffic.reset();
-  traffic.spawnCrowd();
-  police.clear();
-  player.health = player.maxHealth;
-  player.armor = 0;
-  player.cash = 420;
-  player.wanted = 0;
-  player.pos.set(world.landmarks.spawn.x, world.surfaceHeight(world.landmarks.spawn.x, world.landmarks.spawn.z), world.landmarks.spawn.z);
-  player.heading = world.landmarks.spawn.heading;
-  player.orbitYaw = player.heading;
-  player.weapons.pistol.clip = 12;
-  player.weapons.pistol.reserve = 90;
-  player.weapons.smg.clip = 30;
-  player.weapons.smg.reserve = 240;
-  player.selectWeapon('pistol');
-  state.mode = 'play';
-  state.toasts = [];
-  missions.begin(0);
-  toast('MOTOR POOL — TALK TO DEJAY');
-  input.setLockAllowed(true);
-  input.lock();
+function setHidden(element, hidden) {
+  if (element) element.hidden = hidden;
 }
 
-function menuItems() {
-  if (state.mode === 'title') {
-    return [
-      { label: 'NEW GAME' },
-      { label: 'CONTINUE', disabled: !state.hasSave },
-      { label: 'QUALITY', value: state.quality.toUpperCase() },
-      { label: 'CONTROLS' },
-    ];
-  }
-  return [
-    { label: 'RESUME' },
-    { label: 'QUALITY', value: state.quality.toUpperCase() },
-    { label: 'CONTROLS' },
-    { label: 'SAVE GAME' },
-    { label: 'QUIT TO TITLE' },
-  ];
-}
+class Game {
+  constructor() {
+    this.canvas = byId('scene');
+    this.ui = {
+      title: byId('screen-title'),
+      pause: byId('screen-pause'),
+      controls: byId('screen-controls'),
+      hud: byId('hud'),
+      lookHint: byId('look-hint'),
+      continueNote: byId('continue-note'),
+      qualityNote: byId('quality-note'),
+      pauseCash: byId('pause-cash'),
+      pauseDistrict: byId('pause-district'),
+      pauseClock: byId('pause-clock'),
+      lookButton: byId('btn-continue'),
+    };
 
-function selectMenu() {
-  const items = menuItems();
-  const item = items[Math.max(0, Math.min(items.length - 1, state.menuIndex))];
-  if (!item || item.disabled) { audio.ui(); return; }
-  if (item.label === 'NEW GAME') { newGame(); return; }
-  if (item.label === 'CONTINUE') { loadGame(); return; }
-  if (item.label === 'QUALITY') {
-    state.quality = state.quality === 'high' ? 'low' : 'high';
-    renderer.setPixelRatio(state.quality === 'high' ? Math.min(window.devicePixelRatio || 1, 1.5) : 1);
-    toast(`QUALITY: ${state.quality.toUpperCase()}`);
-    audio.ui();
-    return;
-  }
-  if (item.label === 'CONTROLS') { state.mode = 'controls'; return; }
-  if (item.label === 'RESUME') { state.mode = 'play'; input.setLockAllowed(true); input.lock(); saveGame(true); return; }
-  if (item.label === 'SAVE GAME') { saveGame(); return; }
-  if (item.label === 'QUIT TO TITLE') {
-    saveGame(true);
-    state.mode = 'title';
-    state.menuIndex = 0;
-    input.setLockAllowed(false);
-    document.exitPointerLock?.();
-    return;
-  }
-}
+    this.settings = SaveStore.loadSettings();
+    this.quality = this.settings.quality === 'low' ? 'low' : 'high';
+    this.mode = 'title';
+    this.controlsReturn = 'title';
+    this.shot = null;
+    this.shotLocked = false;
+    this.simTime = 0;
+    this.accumulator = 0;
+    this.lastFrame = 0;
+    this.clockMinutes = HOURS * 60 + MINUTES;
+    this.objective = START_OBJECTIVE;
+    this.titleView = DEFAULT_TITLE_VIEW;
+    this.lastHudState = null;
 
-function updateMenu(dt) {
-  if (input.take('menuUp')) { state.menuIndex = (state.menuIndex + menuItems().length - 1) % menuItems().length; audio.ui(); }
-  if (input.take('menuDown')) { state.menuIndex = (state.menuIndex + 1) % menuItems().length; audio.ui(); }
-  if (input.take('confirm') || input.take('enter')) selectMenu();
-  if (state.mode === 'title' && input.take('pause')) { audio.ui(); }
-}
+    this.renderer = new THREE.WebGLRenderer({
+      canvas: this.canvas,
+      antialias: true,
+      powerPreference: 'high-performance',
+      alpha: false,
+      stencil: false,
+    });
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.17;
+    this.renderer.setClearColor(0x1a1228, 1);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-// ---- simulation ----------------------------------------------------------
-function stepWorld(dt) {
-  state.time += dt;
-  state.clock += dt * 0.25;
-  state.district = DISTRICTS.reduce((best, district) => {
-    const distance = Math.hypot(player.pos.x - district.x, player.pos.z - district.z);
-    return distance < best.distance ? { district, distance } : best;
-  }, { district: DISTRICTS[0], distance: Infinity }).district.name;
-  const minutes = Math.floor(state.clock) % 1440;
-  state.clockText = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-  world.update(dt, state.time);
-  if (state.mode === 'title' || state.mode === 'loading') {
-    traffic.update(dt, player);
-    vehicles.update(dt);
-    effects.update(dt);
-    return;
-  }
-  if (state.mode === 'play' || state.mode === 'failed') {
-    if (!missions.state.failed || state.mode !== 'failed') {
-      player.update(dt, input, vehicles, camera);
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(CAMERA.fov, 16 / 9, CAMERA.near, CAMERA.far);
+    this.world = new World(this.scene, { quality: this.quality });
+    this.world.setObjectiveMarker(START_OBJECTIVE.marker.x, START_OBJECTIVE.marker.z);
+    this.player = new Player(this.scene, this.world);
+    this.input = new Input(this.canvas);
+    this.input.allowLock = false;
+    this.hud = new Hud(this.ui.hud, this.world);
+
+    this.bindScreens();
+    this.bindWindow();
+    this.applyQualityVisuals(false);
+    this.refreshQualityLabel();
+    this.resize();
+    this.player.group.visible = false;
+    this.hud.setVisible(false);
+    this.enterTitle();
+
+    const shot = readShot();
+    if (shot) {
+      document.body.classList.add('shot');
+      this.applyShot(shot);
     }
-    vehicles.update(dt);
-    traffic.update(dt, player);
-    police.update(dt, player);
-    missions.update(dt, input);
-    effects.update(dt);
-    audio.update(dt, player);
-    // Pickups.
-    for (const pickup of world.pickups) {
-      if (!pickup.active) continue;
-      if (Math.hypot(player.pos.x - pickup.x, player.pos.z - pickup.z) < 2.2) {
-        world.collectPickup(pickup);
-        if (pickup.type === 'health') { player.heal(35); toast('HEALTH +35'); }
-        else { player.addArmor(30); toast('ARMOR +30'); }
-        audio.pickup();
-      }
-    }
-    // Police alerts feed the HUD band.
-    if (police.state.alerts.length > 0) {
-      state.alert = { text: police.state.alerts[police.state.alerts.length - 1].text, time: police.state.alerts[police.state.alerts.length - 1].time };
-    } else state.alert = null;
-    if (missions.state.failed && state.mode === 'play') {
-      state.mode = 'failed';
-      input.setLockAllowed(false);
-      document.exitPointerLock?.();
-    }
-    if (state.mode === 'failed' && !missions.state.failed) {
-      state.mode = 'play';
-      input.setLockAllowed(true);
-      input.lock();
-    }
-    if (state.mode === 'play' && player.dead) {
-      state.mode = 'wasted';
-      state.modeTimer = PLAYER.respawnTime;
-    }
-  } else if (state.mode === 'wasted' || state.mode === 'busted') {
-    player.update(dt, { held: {}, take: () => false, readMouse: () => ({ dx: 0, dy: 0, wheel: 0 }) }, vehicles, camera);
-    vehicles.update(dt);
-    traffic.update(dt, player);
-    effects.update(dt);
-    state.modeTimer -= dt;
-    if (state.mode === 'busted' && state.modeTimer <= 0) {
-      player.pos.set(world.landmarks.hospital.x, 0.3, world.landmarks.hospital.z);
-      player.heading = world.landmarks.hospital.heading;
-      player.orbitYaw = player.heading;
-      player.health = Math.max(30, player.health);
-      state.mode = 'play';
-      input.setLockAllowed(true);
-      input.lock();
-    } else if (state.mode === 'wasted' && !player.dead) {
-      state.mode = 'play';
-      input.setLockAllowed(true);
-      input.lock();
-    }
-  } else if (state.mode === 'epilogue' || state.mode === 'paused' || state.mode === 'controls') {
-    effects.update(dt);
-  }
-  for (const item of state.toasts) item.time -= dt;
-  state.toasts = state.toasts.filter((item) => item.time > 0);
-}
 
-function handleGlobalKeys() {
-  if (input.take('mute')) {
-    state.muted = !state.muted;
-    audio.setMuted(state.muted);
-    toast(state.muted ? 'AUDIO MUTED' : 'AUDIO ON');
+    this.frame = this.frame.bind(this);
+    this.lastFrame = performance.now() / 1000;
+    window.requestAnimationFrame(this.frame);
+    window.__neonReady = true;
   }
-  if (input.take('pause')) {
-    if (state.mode === 'play') {
-      state.mode = 'paused';
-      state.menuIndex = 0;
-      saveGame(true);
-      input.setLockAllowed(false);
-      document.exitPointerLock?.();
-    } else if (state.mode === 'paused') {
-      state.mode = 'play';
-      input.setLockAllowed(true);
-      input.lock();
-    } else if (state.mode === 'controls') {
-      state.mode = state.menuReturn ?? 'title';
+
+  // ---------------------------------------------------------------- setup
+
+  bindScreens() {
+    const click = (id, action) => {
+      const element = byId(id);
+      if (!element) return;
+      element.addEventListener('click', (event) => {
+        event.currentTarget.blur();
+        event.preventDefault();
+        action();
+      });
+    };
+
+    click('btn-new', () => this.startNewGame());
+    click('btn-continue', () => this.startContinue());
+    click('btn-controls', () => this.showControls('title'));
+    click('btn-quality', () => this.toggleQuality());
+    click('btn-resume', () => this.resume());
+    click('btn-pause-controls', () => this.showControls('paused'));
+    click('btn-save-title', () => this.saveAndReturn());
+    click('btn-controls-back', () => this.backFromControls());
+  }
+
+  bindWindow() {
+    window.addEventListener('resize', () => this.resize());
+    window.addEventListener('blur', () => {
+      if (this.mode === 'playing' && !this.shot) this.pause();
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && this.mode === 'playing' && !this.shot) this.pause();
+    });
+    document.addEventListener('pointerlockchange', () => this.updateLookHint());
+    window.addEventListener('beforeunload', () => {
+      if (this.mode === 'playing' && !this.shot) SaveStore.write(this.player.saveState);
+    });
+  }
+
+  applyQualityVisuals(resize = true) {
+    const preset = QUALITY_PRESETS[this.quality] ?? QUALITY_PRESETS.high;
+    const ratio = Math.min(window.devicePixelRatio || 1, preset.pixelRatio);
+    this.renderer.setPixelRatio(ratio);
+    this.renderer.shadowMap.enabled = preset.shadows;
+    if (this.world) this.world.setQuality(this.quality);
+    if (resize) this.resize();
+  }
+
+  refreshQualityLabel() {
+    if (this.ui.qualityNote) this.ui.qualityNote.textContent = this.quality === 'high' ? 'High' : 'Low';
+  }
+
+  resize() {
+    const width = Math.max(1, window.innerWidth);
+    const height = Math.max(1, window.innerHeight);
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(width, height, true);
+    if (this.hud?.visible && this.lastHudState) this.hud.update(0, this.lastHudState);
+  }
+
+  // ---------------------------------------------------------------- screens
+
+  menuFocused() {
+    const active = document.activeElement;
+    if (!active || active === document.body || active === this.canvas) return false;
+    return ['BUTTON', 'A', 'INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName);
+  }
+
+  updateContinueButton() {
+    const save = SaveStore.load();
+    const button = byId('btn-continue');
+    if (!button) return;
+    button.disabled = !save;
+    if (this.ui.continueNote) {
+      this.ui.continueNote.textContent = save
+        ? `${formatCash(save.cash)} · ${formatDuration(save.playSeconds)}`
+        : 'No save yet';
     }
   }
-  if (state.mode === 'controls') state.menuReturn = state.menuReturn ?? 'title';
-  if (state.mode === 'epilogue' && input.take('confirm')) {
-    state.mode = 'title';
-    state.menuIndex = 0;
-    input.setLockAllowed(false);
-    document.exitPointerLock?.();
+
+  updatePauseStats() {
+    if (this.ui.pauseCash) this.ui.pauseCash.textContent = formatCash(this.player.cash);
+    if (this.ui.pauseDistrict) this.ui.pauseDistrict.textContent = districtAt(this.player.position.x, this.player.position.z);
+    if (this.ui.pauseClock) this.ui.pauseClock.textContent = this.clockString();
   }
-  if (input.take('radio')) state.radio = (state.radio + 1) % RADIO.length;
-}
 
-// ---- title camera --------------------------------------------------------
-function updateTitleCamera(dt) {
-  const angle = 2.2 + Math.sin(state.time * 0.035) * 0.5;
-  const radius = 250;
-  const targetX = 40, targetZ = -40;
-  camera.position.set(targetX + Math.cos(angle) * radius, 62 + Math.sin(state.time * 0.1) * 4, targetZ + Math.sin(angle) * radius);
-  camera.lookAt(targetX - 20, 24, targetZ);
-  camera.fov = 55;
-  camera.updateProjectionMatrix();
-}
-
-function hudState() {
-  return {
-    mode: state.mode,
-    time: state.time,
-    menu: menuItems(),
-    menuIndex: state.menuIndex,
-    quality: state.quality,
-    muted: state.muted,
-    hasSave: state.hasSave,
-    player,
-    wanted: police.stars,
-    cars: vehicles.cars,
-    mission: {
-      active: missions.active,
-      title: missions.MISSIONS[Math.max(0, missions.state.index)]?.title ?? '',
-      objective: state.objective,
-      timeLeft: missions.state.timer,
-      failed: missions.state.failed,
-    },
-    missionMarker: { x: missions.marker.x, z: missions.marker.z, visible: missions.marker.group.visible },
-    dialogue: missions.dialogue,
-    alert: state.alert,
-    prompt: player.prompt,
-    radioName: RADIO[state.radio].name,
-    toasts: state.toasts,
-    loading: state.loading,
-    respawn: player.deadTimer,
-    clockText: state.clockText,
-    district: state.district,
-  };
-}
-
-// ---- frame loop ----------------------------------------------------------
-let last = performance.now();
-let accumulator = 0;
-
-function render() {
-  renderer.render(scene, camera);
-  try {
-    lastHudState = hudState();
-    hud.draw(lastHudState);
-  } catch (error) {
-    console.error('HUD', error);
-    throw error;
+  updateLookHint() {
+    if (!this.ui.lookHint) return;
+    this.ui.lookHint.hidden = !(this.mode === 'playing' && !this.input.locked && !this.shotLocked);
   }
-}
-let lastHudState = null;
 
-function frame(now) {
-  requestAnimationFrame(frame);
-  const delta = Math.min(0.25, (now - last) / 1000);
-  last = now;
-  accumulator += delta;
-  while (accumulator >= STEP) {
-    accumulator -= STEP;
-    if (state.mode === 'loading') {
-      state.loading = Math.min(1, state.loading + STEP / 1.4);
-      if (state.loading >= 1) enterTitle();
+  enterTitle() {
+    this.mode = 'title';
+    setHidden(this.ui.title, false);
+    setHidden(this.ui.pause, true);
+    setHidden(this.ui.controls, true);
+    this.player.group.visible = false;
+    this.hud.setVisible(false);
+    this.input.allowLock = false;
+    this.input.releaseLock();
+    this.input.consumeMouse();
+    this.updateLookHint();
+    this.updateContinueButton();
+    this.world.focusAt(this.titleView.target[0], this.titleView.target[2]);
+    this.setTitleCamera();
+  }
+
+  enterPlaying({ lock = true, toast = false } = {}) {
+    this.mode = 'playing';
+    setHidden(this.ui.title, true);
+    setHidden(this.ui.pause, true);
+    setHidden(this.ui.controls, true);
+    this.player.group.visible = true;
+    this.hud.setVisible(true);
+    if (toast) {
+      this.hud.lastDistrict = '';
+      this.hud.toast = null;
+    }
+    this.input.allowLock = lock;
+    this.input.consumeMouse();
+    this.world.focusAt(this.player.position.x, this.player.position.z);
+    this.updateLookHint();
+    if (lock) this.input.requestLock();
+  }
+
+  startNewGame() {
+    this.hud.suppressToasts = false;
+    this.objective = START_OBJECTIVE;
+    this.player.health = PLAYER.health;
+    this.player.armor = PLAYER.armor;
+    this.player.cash = PLAYER.cash;
+    this.player.wanted = 0;
+    this.player.mission = 0;
+    this.player.playSeconds = 0;
+    this.clockMinutes = HOURS * 60 + MINUTES;
+    this.player.teleport(PLAYER.spawn.x, PLAYER.spawn.z, PLAYER.spawnFacing, PLAYER.spawnCameraYaw);
+    this.player.cameraPitch = CAMERA.pitch;
+    this.player.cameraDistance = CAMERA.distance;
+    this.player.updateCamera(this.camera, 0, true);
+    this.enterPlaying({ toast: true });
+    SaveStore.write(this.player.saveState);
+    this.updateContinueButton();
+  }
+
+  startContinue() {
+    const save = SaveStore.load();
+    if (!save) return;
+    this.hud.suppressToasts = false;
+    this.player.loadFromSave(save);
+    this.objective = START_OBJECTIVE;
+    this.clockMinutes = HOURS * 60 + MINUTES + save.playSeconds * GAME_MINUTES_PER_SECOND;
+    this.enterPlaying({ toast: true });
+  }
+
+  pause() {
+    if (this.mode !== 'playing') return;
+    this.mode = 'paused';
+    this.input.allowLock = false;
+    this.input.releaseLock();
+    this.input.consumeMouse();
+    this.updatePauseStats();
+    SaveStore.write(this.player.saveState);
+    setHidden(this.ui.pause, false);
+    this.updateLookHint();
+  }
+
+  resume() {
+    if (this.mode !== 'paused') return;
+    this.mode = 'playing';
+    setHidden(this.ui.pause, true);
+    this.input.allowLock = true;
+    this.input.consumeMouse();
+    this.input.requestLock();
+    this.updateLookHint();
+  }
+
+  showControls(from) {
+    this.controlsReturn = from;
+    this.mode = 'controls';
+    setHidden(this.ui.title, true);
+    setHidden(this.ui.pause, true);
+    setHidden(this.ui.controls, false);
+    this.input.allowLock = false;
+    this.input.releaseLock();
+    this.updateLookHint();
+  }
+
+  backFromControls() {
+    setHidden(this.ui.controls, true);
+    if (this.controlsReturn === 'paused') {
+      this.mode = 'paused';
+      setHidden(this.ui.pause, false);
     } else {
-      stepWorld(STEP);
-      handleGlobalKeys();
-      if (state.mode === 'title' || state.mode === 'paused' || state.mode === 'controls') updateMenu(STEP);
+      this.mode = 'title';
+      setHidden(this.ui.title, false);
     }
-    input.clear();
+    this.updateLookHint();
   }
-  if (state.mode === 'title') updateTitleCamera(delta);
-  if (state.mode === 'epilogue' && state.modeTimer <= 0) state.modeTimer = 0;
-  render();
+
+  saveAndReturn() {
+    SaveStore.write(this.player.saveState);
+    this.enterTitle();
+  }
+
+  toggleQuality() {
+    this.quality = this.quality === 'high' ? 'low' : 'high';
+    this.settings.quality = this.quality;
+    SaveStore.saveSettings(this.settings);
+    this.applyQualityVisuals(true);
+    this.refreshQualityLabel();
+  }
+
+  clockString() {
+    const total = Math.min(1439, Math.max(0, Math.floor(this.clockMinutes))) % 1440;
+    const hours = String(Math.floor(total / 60)).padStart(2, '0');
+    const minutes = String(total % 60).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  }
+
+  hudState() {
+    return {
+      player: this.player,
+      objective: this.objective,
+      radio: RADIO,
+      clock: this.clockString(),
+      district: districtAt(this.player.position.x, this.player.position.z),
+    };
+  }
+
+  // ---------------------------------------------------------------- title camera
+
+  setTitleCamera() {
+    this.updateTitleCamera();
+  }
+
+  updateTitleCamera() {
+    const view = this.titleView;
+    const [x, y, z] = view.position;
+    const [dx, dy, dz] = view.drift;
+    const t = this.simTime * view.speed;
+    this.camera.position.set(
+      x + Math.sin(t) * dx,
+      y + Math.sin(t * 0.73 + 1.2) * dy,
+      z + Math.cos(t * 0.86) * dz,
+    );
+    this.camera.lookAt(view.target[0], view.target[1], view.target[2]);
+  }
+
+  // ---------------------------------------------------------------- deterministic shots
+
+  applyShot(shot) {
+    this.shot = shot;
+    this.simTime = shot.time ?? 0;
+    this.clockMinutes = HOURS * 60 + MINUTES;
+    this.hud.suppressToasts = true;
+    this.hud.toast = null;
+    const steps = Math.max(0, shot.prewarm ?? 0);
+
+    if (shot.mode === 'title') {
+      this.titleView = shot.titleCamera ?? DEFAULT_TITLE_VIEW;
+      this.enterTitle();
+      for (let i = 0; i < steps; i += 1) this.tick(STEP);
+    } else {
+      this.enterPlaying({ lock: false, toast: shot.toast === true });
+      this.objective = shot.objective ?? START_OBJECTIVE;
+      this.player.health = PLAYER.health;
+      this.player.armor = PLAYER.armor;
+      this.player.cash = PLAYER.cash;
+      this.player.wanted = 0;
+      this.player.mission = 0;
+      this.player.playSeconds = 0;
+      const pose = shot.player;
+      this.player.teleport(pose.x, pose.z, pose.facing, pose.cameraYaw);
+      this.player.cameraPitch = pose.cameraPitch;
+      this.player.cameraDistance = pose.distance;
+      this.player.updateCamera(this.camera, 0, true);
+      for (let i = 0; i < steps; i += 1) this.tick(STEP);
+    }
+
+    this.shotLocked = true;
+    this.lastHudState = this.hudState();
+    if (this.hud.visible) this.hud.update(0, this.lastHudState);
+    this.updateLookHint();
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  // ---------------------------------------------------------------- loop
+
+  tick(dt) {
+    const input = this.input;
+    this.simTime += dt;
+
+    if (this.mode === 'playing') {
+      this.player.update(dt, input);
+      this.clockMinutes += dt * GAME_MINUTES_PER_SECOND;
+      this.world.focusAt(this.player.position.x, this.player.position.z);
+      if (input.wasPressed('Escape', 'KeyP')) this.pause();
+      else {
+        this.lastHudState = this.hudState();
+        this.hud.update(dt, this.lastHudState);
+        this.updateLookHint();
+      }
+    } else if (this.mode === 'title') {
+      this.updateTitleCamera();
+      this.world.focusAt(this.titleView.target[0], this.titleView.target[2]);
+      if (input.wasPressed('Enter', 'NumpadEnter') && !this.menuFocused()) this.startNewGame();
+    } else if (this.mode === 'paused') {
+      if (input.wasPressed('Escape', 'KeyP')) this.resume();
+      else if (input.wasPressed('Enter', 'NumpadEnter') && !this.menuFocused()) this.resume();
+    } else if (this.mode === 'controls') {
+      if (input.wasPressed('Escape', 'KeyP')) this.backFromControls();
+      else if (input.wasPressed('Enter', 'NumpadEnter') && !this.menuFocused()) this.backFromControls();
+    }
+
+    this.world.update(dt, this.simTime, this.camera);
+    input.endFrame();
+  }
+
+  frame(nowMs) {
+    window.requestAnimationFrame(this.frame);
+    if (this.shotLocked) {
+      if (this.hud.visible && this.lastHudState) this.hud.update(0, this.lastHudState);
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
+
+    const now = nowMs / 1000;
+    let dt = now - this.lastFrame;
+    this.lastFrame = now;
+    if (!Number.isFinite(dt) || dt < 0) dt = 0;
+    dt = Math.min(dt, 0.1);
+    this.accumulator += dt;
+
+    let steps = 0;
+    while (this.accumulator >= STEP && steps < MAX_STEPS) {
+      this.tick(STEP);
+      this.accumulator -= STEP;
+      steps += 1;
+    }
+    if (steps === MAX_STEPS) this.accumulator = 0;
+
+    this.renderer.render(this.scene, this.camera);
+  }
 }
 
-function enterTitle() {
-  state.mode = 'title';
-  state.menuIndex = 0;
-  input.setLockAllowed(false);
-  traffic.reset();
-  traffic.spawnCrowd();
-  updateTitleCamera(0);
-  render();
+function showBootError(error) {
+  const box = byId('boot-error');
+  const text = byId('boot-error-text');
+  if (box && text) {
+    box.hidden = false;
+    text.textContent = error?.stack || error?.message || String(error);
+  }
+  document.title = 'Neon Harbor — error';
 }
 
-window.addEventListener('resize', () => {
-  if (shotName) {
-    hud.setSize(1280, 480);
-    if (lastHudState) hud.draw(lastHudState);
-    return;
-  }
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  camera.aspect = window.innerWidth / Math.max(1, window.innerHeight);
-  camera.updateProjectionMatrix();
-  hud.resize();
-});
-
-// ---- shots ---------------------------------------------------------------
-if (shotName) {
-  renderer.setPixelRatio(1);
-  renderer.setSize(1280, 480);
-  camera.aspect = 1280 / 480;
-  camera.updateProjectionMatrix();
-  hud.setSize(1280, 480);
-  state.mode = 'play';
-  stageShot(shotName, {
-    scene, camera, renderer, world, player, vehicles, traffic, police, missions, effects, hud, state, input, toast,
-    THREE,
-  });
-  render();
-  window.__shotReady = true;
-  // The headless viewport settles after the first frame; keep the 2D HUD painted on the final size.
-  setInterval(() => { if (lastHudState) hud.draw(lastHudState); }, 250);
-} else {
-  // Start on the title backdrop while the loader ticks.
-  enterTitle();
-  state.mode = 'loading';
-  state.loading = 0;
-  requestAnimationFrame(frame);
+try {
+  const game = new Game();
+  window.__neon = {
+    get mode() {
+      return game.mode;
+    },
+    get shot() {
+      return game.shot?.name ?? null;
+    },
+    get player() {
+      return {
+        x: game.player.position.x,
+        y: game.player.position.y,
+        z: game.player.position.z,
+        facing: game.player.facing,
+        speed: game.player.speed,
+      };
+    },
+    get draws() {
+      return game.renderer.info.render.calls;
+    },
+  };
+} catch (error) {
+  showBootError(error);
+  console.error(error);
 }

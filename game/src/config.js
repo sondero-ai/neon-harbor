@@ -1,95 +1,127 @@
-// Every tuning number, name and colour the game uses, in one place. World units are metres:
-// the city is 1.4 km square, the sun sits low over the ocean to the east, and one simulation
-// step is 1/60 second so the game runs the same on any display.
+// Shared numbers for Neon Harbor. One place for the city grid, player feel,
+// camera framing and the colors the HUD and world agree on.
 
-export const STEP = 1 / 60;
-export const WORLD_SEED = 7;
+export const SEED = 20261119;
 
-/** The street grid: avenue centre lines on both axes, the road width and the block pavement. */
-export const CITY = {
-  lines: [-640, -520, -400, -280, -160, -40, 80, 200, 320, 440],
-  roadWidth: 16,
-  blockInset: 5,
-  blockSize: 104,
-  beachEdge: 452,
-  waterEdge: 512,
-  landSize: 1400,
-  downtown: { x: -80, z: -60, radius: 330 },
-  names: ['Palm Row', 'Coral Ave', 'Vega St', 'Sunset Blvd', 'Harbor Dr', 'Ember St', 'Marina Way', 'Drift Ave', 'Lumen St', 'Pier Rd'],
+// Road centerlines. The same seven values run in both axes, giving six blocks
+// between them and a 14 m road corridor at every line.
+export const ROADS = [-135, -81, -27, 27, 81, 135, 189];
+export const BLOCK_CENTERS = ROADS.slice(0, -1).map((value, index) => (value + ROADS[index + 1]) / 2);
+
+export const WORLD = {
+  roadWidth: 14,
+  blockSize: 40,
+  sidewalkHeight: 0.15,
+  cityMin: -142,
+  cityMax: 196,
+  beachMinX: -248,
+  beachMaxX: -142,
+  shorelineX: -232,
+  beachMinZ: -260,
+  beachMaxZ: 260,
+  /** Player movement limits, generous enough to include the pier. */
+  bounds: { minX: -326, maxX: 200, minZ: -198, maxZ: 202 },
+  pier: {
+    z: 70,
+    minX: -316,
+    maxX: -172,
+    halfWidth: 9,
+    deckY: 1.58,
+    rampMinX: -172,
+    rampMaxX: -156,
+    rampHalfWidth: 5.4,
+  },
+  sunDir: [-0.74, 0.31, 0.46],
 };
 
-export const COLORS = {
-  skyTop: '#1b2340',
-  skyMid: '#6d3f6b',
-  horizon: '#ff9a5a',
-  sun: '#ffd9a0',
-  fog: '#c98a74',
-  asphalt: '#23222b',
-  asphaltLight: '#2c2b35',
-  sidewalk: '#4b4650',
-  curb: '#605a63',
-  sand: '#b08a63',
-  water: '#1b4a5e',
-  neon: ['#ff3d8b', '#28e0d0', '#ff7a2f', '#a06bff', '#ffe45c', '#4bd2ff'],
-  car: ['#c8402f', '#2f6fc8', '#e8c33a', '#dcdce4', '#2b2a33', '#39a06b', '#8d4bc8', '#e07a2c'],
-};
-
-/** On-foot movement and combat. */
 export const PLAYER = {
-  walk: 4.4,
-  run: 8.6,
-  sprint: 12.2,
-  jump: 7.2,
-  gravity: 26,
-  turn: 12,
-  radius: 0.5,
-  height: 1.85,
-  maxHealth: 100,
-  maxArmor: 100,
-  respawnTime: 4,
+  radius: 0.46,
+  height: 1.78,
+  walkSpeed: 4.15,
+  runSpeed: 8.1,
+  acceleration: 30,
+  airAcceleration: 9,
+  friction: 14,
+  jumpSpeed: 7.4,
+  gravity: 23,
+  spawn: { x: -62, z: 27.5 },
+  spawnFacing: -Math.PI / 2, // west, toward the water
+  spawnCameraYaw: Math.PI / 2,
+  health: 100,
+  armor: 30,
+  cash: 1250,
 };
 
-export const WEAPONS = {
-  fists: { name: 'Fists', damage: 12, rate: 0.5, range: 1.9, spread: 0, ammo: Infinity, clip: Infinity, reload: 0, auto: false, tracer: false },
-  pistol: { name: 'Pistol', damage: 26, rate: 0.28, range: 90, spread: 0.008, ammo: 90, clip: 12, reload: 1.3, auto: false, tracer: true },
-  smg: { name: 'SMG', damage: 14, rate: 0.085, range: 70, spread: 0.022, ammo: 240, clip: 30, reload: 1.9, auto: true, tracer: true },
+export const CAMERA = {
+  fov: 61,
+  near: 0.08,
+  far: 1500,
+  distance: 5.8,
+  minDistance: 3.1,
+  maxDistance: 9.2,
+  heightOffset: 0.82,
+  lookHeight: 1.42,
+  pitch: 0.17,
+  minPitch: -0.18,
+  maxPitch: 1.02,
+  sensitivity: 0.00225,
+  damping: 11,
 };
 
-/** Wanted heat added by a crime, and how long a hidden player must stay out of sight. */
-export const CRIME = {
-  gunshot: 0.34,
-  pedestrian: 1.1,
-  carjack: 1.6,
-  police: 2.0,
-  explosion: 2.4,
-  vehicle: 0.5,
-  coolDelay: 9,
-  coolRate: 0.42,
+export const START_OBJECTIVE = {
+  title: 'Find Pier 9',
+  sub: 'Head west along Vega Strip, then south to the water.',
+  marker: { x: -168, z: 70 },
+  reward: 0,
 };
 
-/** The car classes, with the numbers the arcade physics reads. */
-export const CARS = [
-  { id: 'sedan', name: 'Kestrel 88', body: '#b8b6bf', accent: '#2a2a33', length: 4.5, width: 1.9, height: 1.42, top: 42, accel: 15, grip: 0.9, mass: 1.0, seats: 4 },
-  { id: 'sports', name: 'Vanto GT', body: '#d9442f', accent: '#1b1b22', length: 4.4, width: 1.98, height: 1.12, top: 62, accel: 24, grip: 1.02, mass: 0.86, seats: 2 },
-  { id: 'van', name: 'Mule 240', body: '#d8d2c2', accent: '#5a5348', length: 5.5, width: 2.2, height: 2.35, top: 33, accel: 9.5, grip: 0.76, mass: 1.5, seats: 3 },
-  { id: 'taxi', name: 'Sunny Cab', body: '#f2c12f', accent: '#24242c', length: 4.6, width: 1.95, height: 1.5, top: 44, accel: 15.5, grip: 0.9, mass: 1.0, seats: 4 },
-  { id: 'police', name: 'Cruiser', body: '#e8eaf0', accent: '#1a2740', length: 4.9, width: 2.0, height: 1.5, top: 52, accel: 19, grip: 0.98, mass: 1.15, seats: 4 },
-  { id: 'muscle', name: 'Ranchero V8', body: '#2f6b4f', accent: '#141418', length: 4.9, width: 2.02, height: 1.3, top: 55, accel: 21, grip: 0.94, mass: 1.05, seats: 2 },
-  { id: 'truck', name: 'Flatbed', body: '#8a6d4a', accent: '#3a322a', length: 6.2, width: 2.35, height: 2.1, top: 30, accel: 8, grip: 0.72, mass: 1.8, seats: 2 },
-];
+export const RADIO = {
+  station: 'Night Tide 88.3',
+  track: 'Harbor Lights — Sable Youth',
+};
 
-export const RADIO = [
-  { name: 'WAVE 98.4 — NEON SYNTH', mood: 'synth' },
-  { name: 'KPAL 102.7 — BEACH GOLD', mood: 'chill' },
-  { name: 'HARBOR PIRATE RADIO', mood: 'dark' },
-];
+export const HOURS = 18;
+export const MINUTES = 42;
 
-/** Districts named on the HUD and the minimap; each rectangle is in world x/z. */
-export const DISTRICTS = [
-  { name: 'Harbor Pier', x: 520, z: 0, r: 240 },
-  { name: 'Vega Heights', x: -80, z: -60, r: 300 },
-  { name: 'Palm Row', x: -420, z: 200, r: 260 },
-  { name: 'Coral Docks', x: 220, z: 330, r: 260 },
-  { name: 'Ember Yards', x: -380, z: -360, r: 240 },
-  { name: 'Sunset Strip', x: 260, z: -240, r: 240 },
-];
+export const PALETTE = {
+  ink: '#0a0712',
+  plum: '#160f22',
+  cream: '#f7e8d2',
+  creamDim: '#cdb59c',
+  coral: '#ff6f61',
+  coralDeep: '#d63f4a',
+  teal: '#3fe0cf',
+  gold: '#ffc95c',
+  fog: 0xe3a087,
+  skyHorizon: 0xffb183,
+  skyMid: 0x9a5d8d,
+  skyTop: 0x241d4a,
+  sun: 0xffb06b,
+  asphalt: 0x1d1a24,
+  concrete: 0x6b5a60,
+  sand: 0xd6ae78,
+  oceanDeep: 0x0d2c39,
+  windowWarm: 0xffc26e,
+  windowCool: 0x54e0d3,
+  windowPink: 0xff7e9a,
+};
+
+export const QUALITY_PRESETS = {
+  high: { shadows: true, pixelRatio: 2, shadowMap: 2048, glow: 1 },
+  low: { shadows: false, pixelRatio: 1.25, shadowMap: 1024, glow: 0.72 },
+};
+
+export function roadHalf() {
+  return WORLD.roadWidth / 2;
+}
+
+export function districtAt(x, z) {
+  if (x < -144 && z > 20 && z < 130) return 'Pier 9';
+  if (x < -144) return 'Casa Luna Beach';
+  if (z < -90 && x < 20) return 'North Point';
+  if (x > 120) return 'Motor Row';
+  if (z > 110) return 'Sunset Row';
+  if (Math.abs(x - 0) < 38 && Math.abs(z - 0) < 38) return 'Luna Plaza';
+  if (Math.abs(z - 27) < 34 && x < 100) return 'Vega Strip';
+  return 'Neon Harbor';
+}
