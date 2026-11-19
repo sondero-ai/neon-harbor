@@ -73,6 +73,7 @@ export class Player {
     this.effects = null;
     this.audio = null;
     this.police = null;
+    this.missions = null;
     this.buildWeapons();
 
     this.resetToSpawn();
@@ -461,12 +462,19 @@ export class Player {
 
     const worldHit = this.world.raycast(origin, direction, spec.range);
     const maxDistance = worldHit ? worldHit.distance : spec.range;
-    const target = this.police ? this.police.traceShot(origin, direction, maxDistance) : null;
+    const policeTarget = this.police ? this.police.traceShot(origin, direction, maxDistance) : null;
+    const missionTarget = this.missions ? this.missions.traceShot(origin, direction, maxDistance) : null;
+    let target = policeTarget;
+    if (missionTarget && (!target || missionTarget.distance < target.distance)) target = missionTarget;
     const endpoint = new THREE.Vector3();
     if (target) {
       endpoint.copy(target.point);
       this.hitMarker = 1;
-      if (this.police) this.police.applyPlayerHit(target, spec.damage, { weapon: this.weaponKey });
+      if (target.enemy && this.missions) {
+        this.missions.applyPlayerHit(target, spec.damage, { weapon: this.weaponKey });
+      } else if (this.police) {
+        this.police.applyPlayerHit(target, spec.damage, { weapon: this.weaponKey });
+      }
     } else if (worldHit) {
       endpoint.copy(worldHit.point);
       if (this.effects) this.effects.impact(worldHit.point, worldHit.normal, worldHit.kind === 'building' ? 'concrete' : 'concrete');

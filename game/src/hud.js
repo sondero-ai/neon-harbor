@@ -76,6 +76,19 @@ function cashString(value) {
   return `$ ${Math.max(0, Math.round(value)).toLocaleString('en-US')}`;
 }
 
+function timerString(seconds) {
+  const total = Math.max(0, Math.ceil(seconds));
+  const minutes = Math.floor(total / 60);
+  const rest = String(total % 60).padStart(2, '0');
+  return `${minutes}:${rest}`;
+}
+
+function speakerColor(speaker) {
+  if (speaker === 'TOMAS' || speaker === 'AURELIO') return CORAL;
+  if (speaker === 'MIRA') return GOLD;
+  return TEAL;
+}
+
 export class Hud {
   constructor(canvas, world) {
     this.canvas = canvas;
@@ -88,6 +101,8 @@ export class Hud {
     this.time = 0;
     this.lastDistrict = '';
     this.toast = null;
+    this.reward = null;
+    this.ending = null;
     this.suppressToasts = false;
     this.lastHealth = null;
     this.lastArmor = null;
@@ -247,6 +262,14 @@ export class Hud {
       this.toast.life -= dt;
       if (this.toast.life <= 0) this.toast = null;
     }
+    if (this.reward) {
+      this.reward.life -= dt;
+      if (this.reward.life <= 0) this.reward = null;
+    }
+    if (this.ending) {
+      this.ending.life -= dt;
+      if (this.ending.life <= 0) this.ending = null;
+    }
     this.draw(state);
   }
 
@@ -263,14 +286,19 @@ export class Hud {
     this.drawDistrict(ctx, state);
     this.drawMinimap(ctx, state);
     this.drawObjective(ctx, state);
+    this.drawChallenge(ctx, state);
+    this.drawSubtitle(ctx, state);
     this.drawRadio(ctx, state);
     this.drawSpeed(ctx, state);
     this.drawWeapon(ctx, state);
     this.drawPrompt(ctx, state);
     this.drawCrosshair(ctx, state);
     if (this.toast) this.drawToast(ctx, this.toast);
+    if (this.reward) this.drawReward(ctx, this.reward, state);
     this.drawDamage(ctx, state);
+    if (state.fail) this.drawFailure(ctx, state.fail);
     if (state.down) this.drawDown(ctx, state.down);
+    if (this.ending) this.drawEnding(ctx, this.ending);
   }
 
   drawVitals(ctx, player) {
@@ -537,6 +565,27 @@ export class Hud {
       }
     }
 
+    if (state.missionEnemies?.length) {
+      const limit = size / 2 - 10;
+      for (const enemy of state.missionEnemies) {
+        let dx = (enemy.x - state.player.position.x) * destScale;
+        let dy = (enemy.z - state.player.position.z) * destScale;
+        const distance = Math.hypot(dx, dy);
+        if (distance > limit) {
+          dx = (dx / distance) * limit;
+          dy = (dy / distance) * limit;
+        }
+        ctx.save();
+        ctx.translate(centerX + dx, centerY + dy);
+        ctx.rotate(Math.PI / 4);
+        ctx.fillStyle = '#ff8a6a';
+        ctx.shadowColor = CORAL;
+        ctx.shadowBlur = 6;
+        ctx.fillRect(-3, -3, 6, 6);
+        ctx.restore();
+      }
+    }
+
     ctx.save();
     ctx.translate(centerX, centerY);
     ctx.rotate(Math.PI - state.player.facing);
@@ -586,18 +635,264 @@ export class Hud {
   drawObjective(ctx, state) {
     const objective = state.objective;
     if (!objective) return;
-    const width = 382;
-    const height = 68;
+    const width = 424;
+    const height = 72;
     const x = (this.width - width) / 2;
-    const y = this.height - height - 28;
-    drawPanel(ctx, x, y, width, height, { cut: 13, accent: CORAL });
-    const distance = Math.round(Math.hypot(
-      objective.marker.x - state.player.position.x,
-      objective.marker.z - state.player.position.z,
-    ));
-    label(ctx, `OBJECTIVE · ${distance} M`, x + 17, y + 20, { size: 8, color: 'rgba(255,143,122,0.9)', spacing: '2.5px', weight: 700 });
-    label(ctx, objective.title.toUpperCase(), x + 17, y + 42, { size: 17, color: CREAM, spacing: '1.5px', font: DISPLAY, weight: 800 });
-    label(ctx, objective.sub, x + 17, y + 57, { size: 9, color: CREAM_DIM, spacing: '0.5px', weight: 500, font: UI });
+    const y = this.height - height - 26;
+    const failed = objective.failed === true;
+    drawPanel(ctx, x, y, width, height, {
+      cut: 13,
+      accent: failed ? CORAL : 'rgba(255,111,97,0.9)',
+      stroke: failed ? 'rgba(255,111,97,0.4)' : LINE,
+    });
+    const distance = objective.marker
+      ? Math.round(Math.hypot(objective.marker.x - state.player.position.x, objective.marker.z - state.player.position.z))
+      : null;
+    let rightText = distance === null ? '' : `${distance} M`;
+    let rightColor = 'rgba(247,232,210,0.55)';
+    if (Number.isFinite(objective.timer)) {
+      rightText = timerString(objective.timer);
+      rightColor = objective.timer < 20 ? CORAL : GOLD;
+    } else if (objective.progress) {
+      const p = objective.progress;
+      rightText = `${p.label} ${p.value}/${p.max}`;
+      rightColor = GOLD;
+    }
+    label(ctx, (objective.tag || 'OBJECTIVE').toUpperCase(), x + 17, y + 20, {
+      size: 8,
+      color: failed ? CORAL : 'rgba(255,143,122,0.9)',
+      spacing: '2.2px',
+      weight: 700,
+    });
+    label(ctx, rightText, x + width - 17, y + 20, {
+      size: 8,
+      color: rightColor,
+      spacing: '1.7px',
+      align: 'right',
+      weight: 700,
+    });
+    label(ctx, objective.title.toUpperCase(), x + 17, y + 43, {
+      size: 18,
+      color: CREAM,
+      spacing: '1.2px',
+      font: DISPLAY,
+      weight: 800,
+    });
+    label(ctx, objective.sub, x + 17, y + 59, {
+      size: 9,
+      color: CREAM_DIM,
+      spacing: '0.35px',
+      weight: 500,
+      font: UI,
+    });
+    if (objective.progress) {
+      const p = objective.progress;
+      const barX = x + 17;
+      const barWidth = width - 34;
+      const barY = y + height - 5;
+      ctx.fillStyle = 'rgba(247,232,210,0.1)';
+      ctx.fillRect(barX, barY, barWidth, 2);
+      ctx.fillStyle = failed ? CORAL : GOLD;
+      ctx.fillRect(barX, barY, barWidth * Math.max(0, Math.min(1, p.value / Math.max(1, p.max))), 2);
+    } else if (Number.isFinite(objective.timer) && objective.timer > 0) {
+      const barX = x + 17;
+      const barWidth = width - 34;
+      const barY = y + height - 5;
+      const total = objective.progress?.maxTimer ?? 108;
+      ctx.fillStyle = 'rgba(247,232,210,0.1)';
+      ctx.fillRect(barX, barY, barWidth, 2);
+      ctx.fillStyle = objective.timer < 20 ? CORAL : TEAL;
+      ctx.fillRect(barX, barY, barWidth * Math.max(0, Math.min(1, objective.timer / total)), 2);
+    }
+  }
+
+  drawChallenge(ctx, state) {
+    const challenge = state.challenge;
+    if (!challenge) return;
+    const width = 268;
+    const height = 62;
+    const x = 28;
+    const y = this.height - 196 - 28 - 45 - 10 - height;
+    const accent = challenge.tone === 'coral' ? CORAL : GOLD;
+    drawPanel(ctx, x, y, width, height, {
+      cut: 10,
+      fill: 'rgba(9,6,16,0.82)',
+      stroke: 'rgba(247,232,210,0.2)',
+      accent,
+    });
+    label(ctx, 'STREET JOB', x + 15, y + 16, { size: 7, color: accent, spacing: '2.4px', weight: 800 });
+    label(ctx, challenge.title.toUpperCase(), x + 15, y + 35, { size: 15, color: CREAM, spacing: '1.2px', font: DISPLAY, weight: 800 });
+    if (Number.isFinite(challenge.timer)) {
+      ctx.save();
+      ctx.textAlign = 'right';
+      ctx.font = `800 21px ${MONO}`;
+      ctx.fillStyle = challenge.timer < 12 ? CORAL : GOLD;
+      ctx.fillText(timerString(challenge.timer), x + width - 15, y + 32);
+      ctx.restore();
+    }
+    label(ctx, challenge.sub, x + 15, y + 52, {
+      size: 7,
+      color: 'rgba(247,232,210,0.55)',
+      spacing: '1.1px',
+      weight: 600,
+    });
+    if (challenge.detail) {
+      label(ctx, challenge.detail, x + width - 15, y + 52, {
+        size: 8,
+        color: GOLD,
+        spacing: '1.2px',
+        align: 'right',
+        weight: 700,
+      });
+    }
+    if (Number.isFinite(challenge.timer) && Number.isFinite(challenge.maxTimer)) {
+      const fill = Math.max(0, Math.min(1, challenge.timer / challenge.maxTimer));
+      ctx.fillStyle = 'rgba(247,232,210,0.1)';
+      ctx.fillRect(x + 15, y + height - 5, width - 30, 2);
+      ctx.fillStyle = accent;
+      ctx.fillRect(x + 15, y + height - 5, (width - 30) * fill, 2);
+    }
+  }
+
+  drawSubtitle(ctx, state) {
+    const subtitle = state.subtitle;
+    if (!subtitle) return;
+    const color = speakerColor(subtitle.speaker);
+    ctx.save();
+    ctx.font = `500 16px ${UI}`;
+    const measured = Math.min(736, Math.max(410, ctx.measureText(subtitle.text).width + 52));
+    ctx.restore();
+    const width = measured;
+    const height = 64;
+    const x = (this.width - width) / 2;
+    const y = this.height - 72 - 26 - 12 - height;
+    drawPanel(ctx, x, y, width, height, {
+      cut: 12,
+      fill: 'rgba(8,5,15,0.88)',
+      stroke: 'rgba(247,232,210,0.22)',
+      accent: color,
+    });
+    label(ctx, (subtitle.speaker || 'RAE').toUpperCase(), x + 19, y + 21, {
+      size: 8,
+      color,
+      spacing: '3px',
+      weight: 800,
+    });
+    ctx.save();
+    ctx.font = `500 16px ${UI}`;
+    ctx.fillStyle = CREAM;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '0.2px';
+    ctx.fillText(subtitle.text, x + 19, y + 44, width - 38);
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(247,232,210,0.16)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 19, y + 51);
+    ctx.lineTo(x + width - 19, y + 51);
+    ctx.stroke();
+  }
+
+  drawReward(ctx, reward, state) {
+    const alpha = Math.min(1, reward.life * 1.4);
+    const cx = this.width / 2;
+    const y = 164;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.textAlign = 'center';
+    ctx.font = `900 32px ${DISPLAY}`;
+    ctx.fillStyle = GOLD;
+    ctx.shadowColor = 'rgba(255,201,92,0.6)';
+    ctx.shadowBlur = 20;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
+    ctx.fillText(`+ ${cashString(reward.amount)}`, cx, y);
+    ctx.shadowBlur = 0;
+    ctx.font = `700 8px ${UI}`;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '3.2px';
+    ctx.fillStyle = 'rgba(63,224,207,0.85)';
+    ctx.fillText((reward.label || 'REWARD').toUpperCase(), cx, y + 17);
+    const rule = ctx.createLinearGradient(cx - 130, 0, cx + 130, 0);
+    rule.addColorStop(0, 'rgba(255,201,92,0)');
+    rule.addColorStop(0.5, 'rgba(255,201,92,0.55)');
+    rule.addColorStop(1, 'rgba(255,201,92,0)');
+    ctx.fillStyle = rule;
+    ctx.fillRect(cx - 130, y + 26, 260, 1);
+    ctx.restore();
+  }
+
+  drawFailure(ctx, fail) {
+    const width = 560;
+    const height = 104;
+    const x = (this.width - width) / 2;
+    const y = 188;
+    const pulse = 0.5 + Math.sin(this.time * 4.4) * 0.5;
+    drawPanel(ctx, x, y, width, height, {
+      cut: 12,
+      fill: 'rgba(22,6,10,0.9)',
+      stroke: `rgba(255,111,97,${0.35 + pulse * 0.35})`,
+      accent: CORAL,
+    });
+    ctx.save();
+    ctx.globalAlpha = 0.16 + pulse * 0.1;
+    ctx.fillStyle = CORAL;
+    for (let i = -height; i < width; i += 34) {
+      ctx.save();
+      ctx.translate(x + i, y);
+      ctx.rotate(-0.4);
+      ctx.fillRect(0, -height, 2, height * 3);
+      ctx.restore();
+    }
+    ctx.restore();
+    label(ctx, 'MISSION FAILED', x + 22, y + 24, { size: 9, color: CORAL, spacing: '4px', weight: 800 });
+    label(ctx, fail.title.toUpperCase(), x + 22, y + 51, { size: 23, color: CREAM, spacing: '1px', font: DISPLAY, weight: 900 });
+    label(ctx, fail.reason, x + 22, y + 70, { size: 10, color: CREAM_DIM, spacing: '0.2px', weight: 500 });
+    label(ctx, 'ENTER · RETRY      OR WALK INTO THE MARKER', x + width - 22, y + 90, {
+      size: 8,
+      color: GOLD,
+      spacing: '1.8px',
+      align: 'right',
+      weight: 800,
+    });
+  }
+
+  drawEnding(ctx, ending) {
+    const alpha = Math.min(1, ending.life * 0.7);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    const gradient = ctx.createRadialGradient(
+      this.width / 2, this.height * 0.46, 40,
+      this.width / 2, this.height * 0.46, this.width * 0.72,
+    );
+    gradient.addColorStop(0, 'rgba(36,24,16,0.78)');
+    gradient.addColorStop(0.65, 'rgba(14,9,16,0.9)');
+    gradient.addColorStop(1, 'rgba(5,4,12,0.97)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, this.width, this.height);
+    const rule = ctx.createLinearGradient(this.width / 2 - 280, 0, this.width / 2 + 280, 0);
+    rule.addColorStop(0, 'rgba(255,201,92,0)');
+    rule.addColorStop(0.5, 'rgba(255,201,92,0.7)');
+    rule.addColorStop(1, 'rgba(255,201,92,0)');
+    ctx.fillStyle = rule;
+    ctx.fillRect(this.width / 2 - 280, this.height / 2 - 62, 560, 1);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `900 ${Math.min(72, this.width * 0.062)}px ${DISPLAY}`;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '5px';
+    ctx.fillStyle = CREAM;
+    ctx.shadowColor = 'rgba(255,201,92,0.55)';
+    ctx.shadowBlur = 28;
+    ctx.fillText('THE HARBOR IS YOURS', this.width / 2, this.height / 2 - 18);
+    ctx.shadowBlur = 0;
+    ctx.font = `600 11px ${UI}`;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '4px';
+    ctx.fillStyle = GOLD;
+    ctx.fillText('THE SOLANO STORY · COMPLETE', this.width / 2, this.height / 2 + 42);
+    ctx.font = `500 11px ${UI}`;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '1.5px';
+    ctx.fillStyle = 'rgba(247,232,210,0.55)';
+    ctx.fillText('Free roam is open. The streets still pay.', this.width / 2, this.height / 2 + 66);
+    ctx.restore();
   }
 
   drawRadio(ctx, state) {

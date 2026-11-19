@@ -131,13 +131,33 @@
     padding-bottom: 0.04em;
   }
   .lede {
-    margin: 22px 0 26px;
+    margin: 22px 0 14px;
     font-family: "Segoe UI", "Bahnschrift", sans-serif;
     font-size: 15px;
     line-height: 1.55;
     letter-spacing: 0.02em;
     color: rgba(247, 232, 210, 0.72);
     max-width: 390px;
+  }
+  .chapter-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 20px;
+    padding-top: 12px;
+    max-width: 460px;
+    border-top: 1px solid rgba(247, 232, 210, 0.12);
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(247, 232, 210, 0.45);
+  }
+  .chapter-line span { color: var(--coral); font-weight: 700; }
+  .chapter-line strong {
+    margin-left: auto;
+    color: var(--teal);
+    font-weight: 600;
+    letter-spacing: 0.16em;
   }
   .menu { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
   .menu-btn {
@@ -269,6 +289,8 @@
   }
   .pause-stats strong { display: block; margin-top: 5px; font-size: 15px; letter-spacing: 0.08em; color: var(--cream); }
   .pause-stats .cash strong { color: var(--gold); }
+  .pause-stats .mission { min-width: 100%; }
+  .pause-stats .mission strong { margin-top: 4px; font-size: 11px; letter-spacing: 0.1em; color: var(--teal); }
   .fineprint {
     margin: 18px 0 0;
     font-size: 9px;
@@ -279,6 +301,8 @@
   }
   .panel-controls {
     width: min(800px, calc(100vw - 48px));
+    max-height: calc(100vh - 44px);
+    overflow-y: auto;
     padding: 32px 38px 28px;
   }
   .controls-grid {
@@ -370,6 +394,33 @@
     .panel { padding: 28px 26px 24px; }
     .panel-controls { width: calc(100vw - 30px); }
   }
+  @media (max-height: 800px) {
+    .panel-controls { padding: 22px 32px 20px; }
+    .panel-controls h2 { font-size: clamp(40px, 5.4vw, 54px); }
+    .controls-grid { gap: 5px 28px; margin-top: 10px; }
+    .control-row { min-height: 29px; }
+    .control-row span:first-child { font-size: 9px; }
+    .control-note { margin-top: 11px; padding: 10px 13px; font-size: 10px; line-height: 1.45; }
+    .panel-actions { margin-top: 12px; }
+  }
+  @media (max-height: 700px) {
+    .title-wrap { margin-bottom: 24px; }
+    .title-wrap h1 { font-size: clamp(56px, 9.4vh, 104px); }
+    .title-wrap .kicker { margin-bottom: 9px; }
+    .lede { margin: 12px 0 8px; font-size: 13px; line-height: 1.45; }
+    .chapter-line { margin-bottom: 13px; padding-top: 8px; }
+    .menu { gap: 5px; }
+    .menu-btn { min-height: 40px; font-size: 12px; }
+    .menu-btn.ghost { min-height: 35px; }
+    .title-hint { margin-top: 12px; font-size: 9px; }
+    .panel-controls { padding: 22px 32px 20px; }
+    .panel-controls h2 { font-size: clamp(40px, 5.4vw, 54px); }
+    .controls-grid { gap: 5px 28px; margin-top: 10px; }
+    .control-row { min-height: 29px; }
+    .control-row span:first-child { font-size: 9px; }
+    .control-note { margin-top: 11px; padding: 10px 13px; font-size: 10px; line-height: 1.45; }
+    .panel-actions { margin-top: 12px; }
+  }
 </style>
 </head>
 <body>
@@ -389,6 +440,7 @@
       <p class="kicker">A Solano story</p>
       <h1>Neon<br><em>Harbor</em></h1>
       <p class="lede">Rae Solano came home to settle a debt.<br>The harbor has other plans.</p>
+      <p class="chapter-line"><span>Chapter one</span> The homecoming <strong>5 missions · 1 city</strong></p>
       <nav class="menu" aria-label="Main menu">
         <button class="menu-btn primary" id="btn-new" type="button">
           <span>New Game</span><span class="btn-arrow">→</span>
@@ -403,11 +455,11 @@
           <span>Quality</span><span class="btn-note" id="quality-note">High</span>
         </button>
       </nav>
-      <p class="title-hint">Golden hour · 18:42 · Harbor PD on patrol · F / E to drive · LMB to draw</p>
+      <p class="title-hint">Golden hour · 18:42 · Walk into a story marker · F / E to drive · LMB to draw</p>
     </div>
     <div class="title-side">
-      <div class="loc-chips"><span>Vega Strip</span><span>Casa Luna</span><span>Pier 9</span></div>
-      <span><strong>Build 0.3</strong> · Heat on the harbor</span>
+      <div class="loc-chips"><span>Vega Strip</span><span>Luna Plaza</span><span>Pier 9</span></div>
+      <span><strong>Build 0.4</strong> · The Solano story</span>
     </div>
   </section>
 
@@ -419,13 +471,15 @@
         <div class="cash"><span>Cash</span><strong id="pause-cash">$ 1,250</strong></div>
         <div><span>District</span><strong id="pause-district">Vega Strip</strong></div>
         <div><span>Clock</span><strong id="pause-clock">18:42</strong></div>
+        <div class="mission"><span>Mission</span><strong id="pause-mission">1/5 · The Riptide Job</strong></div>
       </div>
       <nav class="menu" aria-label="Pause menu">
         <button class="menu-btn primary" id="btn-resume" type="button"><span>Resume</span><span class="btn-arrow">→</span></button>
         <button class="menu-btn ghost" id="btn-pause-controls" type="button"><span>Controls</span></button>
+        <button class="menu-btn ghost" id="btn-pause-quality" type="button"><span>Quality</span><span class="btn-note" id="pause-quality-note">High</span></button>
         <button class="menu-btn ghost" id="btn-save-title" type="button"><span>Save &amp; Return to Title</span></button>
       </nav>
-      <p class="fineprint">Progress saves when you pause. Esc toggles this menu.</p>
+      <p class="fineprint">Progress saves when you pause, use the safehouse or finish a job. Missions retry from their marker.</p>
     </div>
   </section>
 
@@ -445,11 +499,14 @@
         <div class="control-row"><span>Radio / change station</span><span class="keys"><kbd>T</kbd><kbd>[</kbd><kbd>]</kbd></span></div>
         <div class="control-row"><span>Mute / volume</span><span class="keys"><kbd>M</kbd><kbd>-</kbd><kbd>=</kbd></span></div>
         <div class="control-row"><span>Look / camera distance</span><span class="keys"><kbd>Mouse</kbd><kbd>Wheel</kbd></span></div>
+        <div class="control-row"><span>Start a mission / retry</span><span class="keys"><kbd>Marker</kbd><kbd>Enter</kbd></span></div>
+        <div class="control-row"><span>Safehouse save</span><span class="keys"><kbd>Walk in</kbd></span></div>
+        <div class="control-row"><span>Street jobs</span><span class="keys"><kbd>Cash</kbd><kbd>Cars</kbd><kbd>Heat</kbd></span></div>
         <div class="control-row"><span>Pause / back</span><span class="keys"><kbd>Esc</kbd><kbd>P</kbd></span></div>
         <div class="control-row"><span>Capture mouse</span><span class="keys"><kbd>Click</kbd></span></div>
         <div class="control-row"><span>Confirm menu</span><span class="keys"><kbd>Enter</kbd></span></div>
       </div>
-      <p class="control-note">Click the world to capture the mouse. Guns are hitscan: the crosshair decides, the muzzle flash and tracer show the line, and parked cars, walls and cruisers all stop a round. Armor eats part of every hit; R reloads from reserve, 1 and 2 swap the Solano 9 and the Kestrel SMG. Draw a weapon near a cruiser and the heat comes fast — break line of sight, stay quiet and the stars cool one at a time. The minimap alternates red and blue on every cruiser and officer in the search.</p>
+      <p class="control-note">Walk into a coral story marker to start the next job; if a mission fails, press Enter or walk back into the marker to retry. The safehouse on the Strip patches you up and writes the save. Between jobs, collect cash stashes, take a glowing car to the Motor Row chop shop, or step into the red Heat Run ring and survive three stars for forty-two seconds. Click the world to capture the mouse. Guns are hitscan: the crosshair decides, the muzzle flash and tracer show the line, and parked cars, walls and cruisers all stop a round. Armor eats part of every hit; R reloads from reserve, 1 and 2 swap the Solano 9 and the Kestrel SMG. Draw a weapon near a cruiser and the heat comes fast — break line of sight, stay quiet and the stars cool one at a time.</p>
       <div class="panel-actions">
         <button class="menu-btn primary" id="btn-controls-back" type="button"><span>Back</span><span class="btn-arrow">→</span></button>
       </div>

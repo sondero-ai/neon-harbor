@@ -34,6 +34,7 @@ export const SaveStore = {
         armor: clamp(finite(parsed.armor, PLAYER.armor), 0, 100),
         wanted: clamp(Math.round(finite(parsed.wanted, 0)), 0, 5),
         mission: clamp(Math.round(finite(parsed.mission, 0)), 0, 99),
+        storyDone: parsed.storyDone === true,
         playSeconds: Math.max(0, finite(parsed.playSeconds, 0)),
         weaponKey: parsed.weaponKey === 'smg' ? 'smg' : 'pistol',
         weapons: parsed.weapons && typeof parsed.weapons === 'object' ? parsed.weapons : null,
@@ -70,6 +71,7 @@ export const SaveStore = {
           armor: progress.armor,
           wanted: progress.wanted ?? 0,
           mission: progress.mission ?? 0,
+          storyDone: progress.storyDone === true,
           playSeconds: progress.playSeconds ?? 0,
           weaponKey: progress.weaponKey ?? 'pistol',
           weapons: progress.weapons ?? null,
@@ -101,6 +103,7 @@ export const SaveStore = {
     return {
       cash: save.cash,
       mission: save.mission,
+      storyDone: save.storyDone,
       savedAt: save.savedAt,
       playSeconds: save.playSeconds,
     };

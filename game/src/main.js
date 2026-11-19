@@ -29,6 +29,8 @@ import { Effects } from './effects.js';
 import { AudioSystem } from './audio.js';
 import { Police } from './police.js';
 import { Pickups } from './pickups.js';
+import { Missions, MISSION_COUNT, missionName } from './missions.js';
+import { Activities } from './activities.js';
 
 const STEP = 1 / 60;
 const MAX_STEPS = 5;
@@ -49,13 +51,6 @@ function formatCash(value) {
   return `$ ${Math.max(0, Math.round(value)).toLocaleString('en-US')}`;
 }
 
-function formatDuration(seconds) {
-  const total = Math.max(0, Math.floor(seconds));
-  const minutes = Math.floor(total / 60);
-  const remainder = String(total % 60).padStart(2, '0');
-  return `${minutes}:${remainder}`;
-}
-
 function setHidden(element, hidden) {
   if (element) element.hidden = hidden;
 }
@@ -74,6 +69,8 @@ class Game {
       pauseCash: byId('pause-cash'),
       pauseDistrict: byId('pause-district'),
       pauseClock: byId('pause-clock'),
+      pauseMission: byId('pause-mission'),
+      pauseQualityNote: byId('pause-quality-note'),
       lookButton: byId('btn-continue'),
     };
 
@@ -136,6 +133,34 @@ class Game {
     this.input = new Input(this.canvas);
     this.input.allowLock = false;
     this.hud = new Hud(this.ui.hud, this.world);
+    this.missions = new Missions(this.scene, this.world, this.vehicles, this.police, this.player, this.effects, this.audio, {
+      camera: this.camera,
+      onToast: (toast) => {
+        if (!this.hud.suppressToasts) this.hud.toast = toast;
+      },
+      onReward: (amount, label) => {
+        this.hud.reward = { amount, label, life: 3.4 };
+      },
+      onComplete: () => this.saveProgress(),
+      onStoryComplete: () => {
+        this.hud.ending = { life: 8.5 };
+      },
+      onFail: () => {
+        this.hud.reward = null;
+      },
+    });
+    this.player.missions = this.missions;
+    this.activities = new Activities(this.scene, this.world, this.vehicles, this.player, this.police, this.effects, this.audio, {
+      onToast: (toast) => {
+        if (!this.hud.suppressToasts) this.hud.toast = toast;
+      },
+      onReward: (amount, label) => {
+        this.hud.reward = { amount, label, life: 3.2 };
+      },
+      onSave: () => this.saveProgress(),
+      missionActive: () => Boolean(this.missions.active),
+    });
+    this.objective = this.missions.objective;
     this.audio.setRadio(this.radioEnabled, this.radioIndex);
 
     this.bindScreens();
@@ -180,6 +205,7 @@ class Game {
     click('btn-quality', () => this.toggleQuality());
     click('btn-resume', () => this.resume());
     click('btn-pause-controls', () => this.showControls('paused'));
+    click('btn-pause-quality', () => this.toggleQuality());
     click('btn-save-title', () => this.saveAndReturn());
     click('btn-controls-back', () => this.backFromControls());
   }
@@ -194,7 +220,7 @@ class Game {
     });
     document.addEventListener('pointerlockchange', () => this.updateLookHint());
     window.addEventListener('beforeunload', () => {
-      if (this.mode === 'playing' && !this.shot) SaveStore.write(this.player.saveState);
+      if (this.mode === 'playing' && !this.shot) this.saveProgress();
     });
   }
 
@@ -209,7 +235,18 @@ class Game {
   }
 
   refreshQualityLabel() {
-    if (this.ui.qualityNote) this.ui.qualityNote.textContent = this.quality === 'high' ? 'High' : 'Low';
+    const text = this.quality === 'high' ? 'High' : 'Low';
+    if (this.ui.qualityNote) this.ui.qualityNote.textContent = text;
+    if (this.ui.pauseQualityNote) this.ui.pauseQualityNote.textContent = text;
+  }
+
+  saveProgress() {
+    const state = this.player.saveState;
+    state.mission = this.missions.index;
+    state.storyDone = this.missions.storyDone;
+    SaveStore.write(state);
+    this.updateContinueButton();
+    return state;
   }
 
   resize() {
@@ -236,7 +273,7 @@ class Game {
     button.disabled = !save;
     if (this.ui.continueNote) {
       this.ui.continueNote.textContent = save
-        ? `${formatCash(save.cash)} · ${formatDuration(save.playSeconds)}`
+        ? `${formatCash(save.cash)} · ${save.storyDone ? 'Story complete' : `M${Math.min(save.mission + 1, MISSION_COUNT)} · ${missionName(save.mission)}`}`
         : 'No save yet';
     }
   }
@@ -245,11 +282,16 @@ class Game {
     if (this.ui.pauseCash) this.ui.pauseCash.textContent = formatCash(this.player.cash);
     if (this.ui.pauseDistrict) this.ui.pauseDistrict.textContent = districtAt(this.player.position.x, this.player.position.z);
     if (this.ui.pauseClock) this.ui.pauseClock.textContent = this.clockString();
+    if (this.ui.pauseMission) {
+      this.ui.pauseMission.textContent = this.missions.storyDone
+        ? 'Story complete'
+        : `${this.missions.index + 1}/${MISSION_COUNT} · ${missionName(this.missions.index)}`;
+    }
   }
 
   updateLookHint() {
     if (!this.ui.lookHint) return;
-    this.ui.lookHint.hidden = !(this.mode === 'playing' && !this.input.locked && !this.shotLocked && !this.down);
+    this.ui.lookHint.hidden = !(this.mode === 'playing' && !this.input.locked && !this.shotLocked && !this.down && !this.hud?.ending);
   }
 
   enterTitle() {
@@ -294,7 +336,11 @@ class Game {
 
   startNewGame() {
     this.hud.suppressToasts = false;
-    this.objective = START_OBJECTIVE;
+    this.hud.reward = null;
+    this.hud.ending = null;
+    this.missions.reset({ index: 0, storyDone: false });
+    this.activities.reset();
+    this.objective = this.missions.objective;
     this.down = null;
     this.player.driving = null;
     this.player.group.visible = true;
@@ -322,14 +368,15 @@ class Game {
     this.resetCityLife();
     this.player.updateCamera(this.camera, 0, true);
     this.enterPlaying({ toast: true });
-    SaveStore.write(this.player.saveState);
-    this.updateContinueButton();
+    this.saveProgress();
   }
 
   startContinue() {
     const save = SaveStore.load();
     if (!save) return;
     this.hud.suppressToasts = false;
+    this.hud.reward = null;
+    this.hud.ending = null;
     this.down = null;
     this.player.inputBlocked = false;
     this.player.dead = false;
@@ -337,7 +384,9 @@ class Game {
     this.police.resetAfterDown();
     this.pickups.reset();
     this.player.loadFromSave(save);
-    this.objective = START_OBJECTIVE;
+    this.missions.reset({ index: save.mission, storyDone: save.storyDone });
+    this.activities.reset();
+    this.objective = this.missions.objective;
     this.clockMinutes = HOURS * 60 + MINUTES + save.playSeconds * GAME_MINUTES_PER_SECOND;
     this.resetCityLife();
     if (save.wanted > 0) this.police.setWanted(save.wanted, { silent: true });
@@ -345,13 +394,13 @@ class Game {
     this.enterPlaying({ toast: true });
   }
 
-  resetCityLife() {
+  resetCityLife({ spawnBeach = true } = {}) {
     this.police.clearUnits();
     this.police.clearOfficers();
     this.vehicles.clear();
-    this.traffic.reset();
+    this.traffic.reset({ spawnBeach });
     this.spawnOpeningCars();
-    this.traffic.seedAmbient(this.player);
+    this.traffic.seedAmbient(this.player, { spawnBeach });
   }
 
   spawnOpeningCars() {
@@ -387,6 +436,7 @@ class Game {
     this.radioEnabled = !this.radioEnabled;
     this.audio.unlock();
     this.audio.setRadio(this.radioEnabled, this.radioIndex);
+    this.audio.radioSwitch();
     if (!this.hud.suppressToasts) {
       const station = this.radioState();
       this.hud.toast = this.radioEnabled
@@ -400,6 +450,7 @@ class Game {
     this.radioEnabled = true;
     this.audio.unlock();
     this.audio.setRadio(true, this.radioIndex);
+    this.audio.radioSwitch();
     const station = this.radioState();
     if (!this.hud.suppressToasts) {
       this.hud.toast = { title: station.station, sub: station.track.toUpperCase(), life: 2.6 };
@@ -447,6 +498,8 @@ class Game {
 
   beginDown(type) {
     if (this.down) return;
+    this.missions.handleDown(type);
+    this.activities.handleDown(type);
     const duration = type === 'busted' ? 3.1 : 3.3;
     this.down = { type, timer: duration, duration };
     this.player.inputBlocked = true;
@@ -489,7 +542,7 @@ class Game {
     this.player.cameraDistance = CAMERA.distance;
     this.player.inputBlocked = false;
     this.player.updateCamera(this.camera, 0, true);
-    this.objective = START_OBJECTIVE;
+    this.objective = this.missions.objective;
     this.hud.suppressToasts = false;
     this.hud.toast = {
       title: type === 'busted' ? 'Out on Bail' : 'Back on the Street',
@@ -497,8 +550,7 @@ class Game {
       life: 3.4,
     };
     this.world.focusAt(this.player.position.x, this.player.position.z);
-    SaveStore.write(this.player.saveState);
-    this.updateContinueButton();
+    this.saveProgress();
   }
 
   pause() {
@@ -510,7 +562,7 @@ class Game {
     this.input.releaseLock();
     this.input.consumeMouse();
     this.updatePauseStats();
-    SaveStore.write(this.player.saveState);
+    this.saveProgress();
     setHidden(this.ui.pause, false);
     this.updateLookHint();
   }
@@ -550,7 +602,7 @@ class Game {
   }
 
   saveAndReturn() {
-    SaveStore.write(this.player.saveState);
+    this.saveProgress();
     this.enterTitle();
   }
 
@@ -608,6 +660,10 @@ class Game {
       police: this.police.hudState,
       weapons: this.player.combatState,
       down: this.down,
+      subtitle: this.missions.subtitle,
+      challenge: this.activities.challenge,
+      fail: this.missions.failure,
+      missionEnemies: this.missions.enemies.filter((enemy) => !enemy.dead && !enemy.removed).map((enemy) => ({ x: enemy.x, z: enemy.z })),
       effects: {
         hurt: this.effects.hurtLevel,
         lowHealth: player.health < 32,
@@ -654,8 +710,15 @@ class Game {
       this.down = null;
       this.police.resetAfterDown();
       this.pickups.reset();
+      this.missions.prepareShot();
+      this.activities.suspended = true;
+      this.hud.reward = null;
+      this.hud.ending = null;
       this.enterPlaying({ lock: false, toast: shot.toast === true });
       this.objective = shot.objective ?? START_OBJECTIVE;
+      if (this.objective.marker) {
+        this.world.setObjectiveMarker(this.objective.marker.x, this.objective.marker.z);
+      }
       this.player.health = PLAYER.health;
       this.player.armor = PLAYER.armor;
       this.player.cash = PLAYER.cash;
@@ -687,10 +750,11 @@ class Game {
         this.player.teleport(pose.x, pose.z, pose.facing, pose.cameraYaw);
         this.player.cameraPitch = pose.cameraPitch;
         this.player.cameraDistance = pose.distance;
-        this.resetCityLife();
+        this.resetCityLife({ spawnBeach: shot.stage !== 'heist' });
         this.player.updateCamera(this.camera, 0, true);
         for (let i = 0; i < steps; i += 1) this.tick(STEP);
       }
+      if (shot.stage) this.applyStageShot(shot);
     }
 
     this.shotLocked = true;
@@ -698,6 +762,39 @@ class Game {
     if (this.hud.visible) this.hud.update(0, this.lastHudState);
     this.updateLookHint();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  applyStageShot(shot) {
+    this.missions.stageShot(shot.stage);
+    this.objective = this.missions.objective;
+    this.world.setObjectiveMarker(this.objective.marker.x, this.objective.marker.z);
+    if (this.world.objectiveMarker) this.world.objectiveMarker.group.visible = false;
+    if (Number.isFinite(shot.health)) this.player.health = shot.health;
+    if (Number.isFinite(shot.armor)) this.player.armor = shot.armor;
+    this.player.aiming = false;
+    this.player.humanoid.aiming = true;
+    this.player.gun.visible = true;
+    this.player.facing = shot.player?.facing ?? this.player.cameraYaw - Math.PI;
+    this.player.humanoid.setFacing(this.player.facing);
+    for (let i = 0; i < 20; i += 1) this.player.humanoid.update(1 / 60, 0, false);
+    this.player.humanoid.aiming = false;
+    if (shot.camera) {
+      const [x, y, z] = shot.camera.position;
+      this.camera.position.set(x, y, z);
+      this.camera.fov = CAMERA.fov;
+      this.camera.updateProjectionMatrix();
+      this.camera.lookAt(shot.camera.target[0], shot.camera.target[1], shot.camera.target[2]);
+    } else {
+      this.player.updateCamera(this.camera, 0, true);
+    }
+    this.effects.update(0.45, this.camera);
+    this.missions.stageShotDrama(shot.stage);
+    this.player.aiming = true;
+    this.player.damageFlash = 0.34;
+    this.hud.lastHealth = this.player.health;
+    this.hud.lastArmor = this.player.armor;
+    this.hud.healthFlash = 0;
+    this.hud.armorFlash = 0;
   }
 
   stageChaseDrama() {
@@ -805,6 +902,9 @@ class Game {
         this.player.syncFromVehicle();
         this.player.updateView(this.camera, dt);
         this.player.updateCombat(dt, input, this.camera);
+        this.missions.update(dt, input);
+        this.activities.update(dt);
+        if (!this.shot) this.objective = this.missions.objective;
         this.pickups.update(dt, this.player);
         this.effects.update(dt, this.camera);
         const car = this.player.driving;
@@ -935,6 +1035,95 @@ try {
     },
     get draws() {
       return game.renderer.info.render.calls;
+    },
+    get story() {
+      const objective = game.missions.objective;
+      return {
+        index: game.missions.index,
+        storyDone: game.missions.storyDone,
+        active: game.missions.active
+          ? {
+              index: game.missions.active.index,
+              phase: game.missions.active.phase,
+              kills: game.missions.active.kills,
+              needed: game.missions.active.needed,
+              timer: Math.round(game.missions.active.timer * 10) / 10,
+            }
+          : null,
+        failure: game.missions.failure,
+        subtitle: game.missions.subtitle,
+        objective,
+        enemies: game.missions.enemies.filter((enemy) => !enemy.dead && !enemy.removed).length,
+        cash: game.player.cash,
+      };
+    },
+    get activities() {
+      return {
+        heat: game.activities.heat,
+        theft: game.activities.theft
+          ? { phase: game.activities.theft.phase, timer: game.activities.theft.timer, spot: game.activities.theft.spot.name }
+          : null,
+        challenge: game.activities.challenge,
+      };
+    },
+    get missionSystem() {
+      return game.missions;
+    },
+    get activitySystem() {
+      return game.activities;
+    },
+    get scene() {
+      return game.scene;
+    },
+    get camera() {
+      return game.camera;
+    },
+    clearMissionEnemies() {
+      for (const enemy of [...game.missions.enemies]) {
+        if (!enemy.dead && !enemy.removed) {
+          game.missions.killEnemy(enemy, { x: enemy.x, y: enemy.y + 1.2, z: enemy.z });
+        }
+      }
+    },
+    startMission(index) {
+      game.missions.begin(Number(index) || 0);
+      game.objective = game.missions.objective;
+    },
+    retryMission() {
+      game.missions.retry();
+      game.objective = game.missions.objective;
+    },
+    failMission(reason = 'debug failure') {
+      game.missions.fail(reason);
+      game.objective = game.missions.objective;
+    },
+    newGame() {
+      game.startNewGame();
+    },
+    continueGame() {
+      game.startContinue();
+    },
+    pauseGame() {
+      game.pause();
+    },
+    resumeGame() {
+      game.resume();
+    },
+    saveGame() {
+      return game.saveProgress();
+    },
+    returnToTitle() {
+      game.saveAndReturn();
+    },
+    setHealth(health, armor = game.player.armor) {
+      game.player.health = Math.max(1, Number(health) || 1);
+      game.player.armor = Math.max(0, Number(armor) || 0);
+    },
+    advance(seconds = 1) {
+      const steps = Math.min(1800, Math.max(1, Math.round((Number(seconds) || 0) * 60)));
+      for (let i = 0; i < steps; i += 1) game.tick(1 / 60);
+      game.renderer.render(game.scene, game.camera);
+      return { steps, simTime: game.simTime, mode: game.mode };
     },
     setWanted(stars) {
       game.police.setWanted(stars, { silent: true });

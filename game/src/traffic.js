@@ -219,7 +219,7 @@ export class Traffic {
     if (spawnBeach) this.spawnBeachCrowd();
   }
 
-  seedAmbient(player) {
+  seedAmbient(player, { spawnBeach = true } = {}) {
     this.carTarget = CAR_TARGET;
     this.sidewalkTarget = SIDEWALK_TARGET;
     const px = player.position.x;
@@ -257,7 +257,7 @@ export class Traffic {
       const spot = spots[i];
       this.spawnSidewalkPed(spot[0], spot[1], spot[2]);
     }
-    this.spawnBeachCrowd();
+    if (spawnBeach) this.spawnBeachCrowd();
   }
 
   stageDrive(hero) {

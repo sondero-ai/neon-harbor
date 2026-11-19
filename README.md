@@ -11,14 +11,14 @@ sand beach, a long pier, a working lighthouse, palms, streetlights and a lot
 of hand-painted neon.
 
 You play as courier **Rae Solano**, newly back in the harbor. This build is the
-city and the street life under pressure: a fully procedural world, a
-third-person camera that stays out of walls, a walk/run/jump cycle, seven
-drivable vehicle classes, a grid-aware traffic and pedestrian simulation, a
-five-star police response with cruiser pursuit, foot officers and roadblocks,
-two hitscan weapons with ammo, reloads and pickups, pooled muzzle flashes,
-sparks, smoke, explosions and skid marks, three original synthesised radio
-stations, a readable canvas HUD and a local save. Missions and the wider story
-arrive in later chapters.
+whole first chapter: a fully procedural world, a third-person camera that stays
+out of walls, seven drivable vehicle classes, a grid-aware traffic and
+pedestrian simulation, a five-star police response with cruiser pursuit, foot
+officers and roadblocks, two hitscan weapons, five story missions with dialogue,
+objectives and mission enemies, free-roam cash stashes, hot-car deliveries, a
+three-star heat run, a safehouse save, three original synthesised radio
+stations, a readable canvas HUD with subtitles, mission toasts and rewards, and
+a local save that carries the story index, weapons, cash and heat.
 
 ## Play
 
@@ -47,23 +47,73 @@ same mouse drag looks around.
   out.
 - **T** switches the radio on or off, **`[`** and **`]`** change stations, and
   **M** mutes. **`-`** and **`=`** trim the master volume.
+- Walk into a coral story marker to start the next mission. **Enter** retries
+  a failed mission, and the same marker does the same thing.
+- The **safehouse** on the Vega Strip heals, recharges armor, clears heat and
+  writes the save when you walk into its teal ring.
+- Between jobs: walk over a gold cash stash, take a glowing car to the Motor Row
+  chop shop for a delivery fee, or step into the red **Heat Run** ring and keep
+  three stars for forty-two seconds.
 - **Esc** or **P** pauses and saves. **Enter** confirms the focused menu action.
 - Drag-look still works after the pointer unlocks; click the view to recapture.
 - The title screen’s **Quality** switch moves between high (shadows on, full
   pixel ratio) and low (no shadows, lighter pixel ratio) without a reload.
 
 **New Game** starts on Vega Strip beside a parked Riptide, facing the water.
-**Continue** returns to the last pause or save, including weapons, ammo and any
-heat that was still on you. The HUD shows health and armor (with hit flashes),
-cash, the live wanted stars and pursuit status, the district and clock, a baked
-minimap with the player arrow, traffic blips, alternating red/blue police and
-officer blips and the objective marker, live car/walker counts, the current
-objective and distance, the radio line, the context prompt, the on-foot weapon
-panel with magazine and reserve, a dynamic crosshair and hit marker, and either
-the on-foot readout or the driving panel with vehicle name, speed, gear and
-engine load. Getting wasted or busted takes over the screen with a full-frame
-overlay, drops part of the cash on hand and returns Rae to the strip with the
-heat cleared.
+**Continue** returns to the last pause or save, including the story index,
+weapons, ammo and any heat that was still on you. The HUD shows health and armor
+(with hit flashes), cash, the live wanted stars and pursuit status, the district
+and clock, a baked minimap with the player arrow, traffic blips, alternating
+red/blue police and officer blips, mission enemies in coral and the objective
+marker, live car/walker counts, the current mission tag, objective and distance,
+mission progress or a countdown, the radio line, the context prompt, the on-foot
+weapon panel with magazine and reserve, a dynamic crosshair and hit marker, and
+either the on-foot readout or the driving panel with vehicle name, speed, gear
+and engine load. Dialogue appears as a speaker-coloured subtitle above the
+objective; rewards and mission results arrive as toasts and a gold cash banner.
+Street jobs get their own progress panel above the minimap. Getting wasted or
+busted takes over the screen with a full-frame overlay, drops part of the cash
+on hand and returns Rae to the strip with the heat cleared; a failed mission
+stays on screen with a retry prompt until you take it again.
+
+## The Solano story
+
+Five missions run in order; each has a start marker, a world objective, a
+dialogue script, a completion condition and a cash reward, and finishing one
+sets the marker for the next.
+
+1. **The Riptide Job** — Mira sends Rae to steal a Vela GT from the Sunset
+   Hotel and deliver it to the Motor Row bay.
+2. **Heat Check** — the car had a tracker. Lose the Harbor PD and reach the
+   safehouse clean.
+3. **Special Delivery** — carry the Solano ledger from Casa Luna to Tomas at
+   Luna Plaza before the timer runs out.
+4. **Family Cut** — Tomas' crew springs an ambush at the fountain. Fight out of
+   the plaza and learn where Aurelio is waiting.
+5. **Pier 9 Burning** — clear Aurelio's enforcers from the pier, set the place
+   on fire and escape before the deck goes up.
+
+Combat missions put real low-poly crew on the street with chest and head hit
+boxes, line-of-sight checks, advancing and firing AI, death poses and a boss
+health pool. The player's existing hitscan queries mission enemies as well as
+cruisers, officers and cars. Each combat mission supplies an SMG and armor so a
+new player is never sent in with an empty pistol.
+
+Failure is a state, not a reload. A downed or busted player, a missed delivery
+window or a wrecked mission car sets the failure panel, returns the objective
+marker to the mission start and offers **Enter** or a walk back into the marker;
+retrying resets the mission, heals Rae, clears the heat and rebuilds the setup.
+The active mission index is written in the save, so Continue re-offers the job
+from its start marker.
+
+Free roam is always live around the story: six gold cash stashes respawn, a
+marked Vela GT / Riptide / Dune Hauler appears in rotation for the chop-shop
+delivery loop, and the Heat Run marker starts a timed three-star holdout.
+The safehouse at `(-71.5, 36.6)` is the save point, and every completed mission,
+cash pickup, delivery, heat run and safehouse visit writes progress through
+`save.js`. Settings (quality, volume, mute) live in their own key; the save
+carries cash, health, armor, wanted stars, mission index, story-complete flag,
+weapons, ammo, camera yaw and position.
 
 ## The city
 
@@ -158,21 +208,30 @@ are involved. Volume and mute persist with the quality setting.
   and officer combat, roadblocks, busted/wasted handshake and police staging.
 - `game/src/pickups.js` — weapon, health and armor pickups with glow and
   respawn timers.
+- `game/src/missions.js` — the five-mission director: start markers, dialogue
+  queue, mission enemies and bosses, objectives, timers, rewards, failure and
+  retry, pier fire, and the deterministic mission/heist staging.
+- `game/src/activities.js` — cash stashes, the rotating hot-car delivery, the
+  three-star Heat Run, the safehouse save/heal/clear-heat point and their
+  street panels.
 - `game/src/player.js`, `humanoid.js` — third-person movement, driving, chase
   camera, vehicle collision, pistol/SMG hitscan, aiming, damage and Rae’s
   low-poly walk/run/aim cycle.
 - `game/src/effects.js` — sparks, smoke, flashes, tracers, explosions, skid
   marks, vehicle light beams, screen shake and hurt accumulation.
 - `game/src/audio.js` — the WebAudio engine, sirens, guns, impacts, horn, UI
-  blips and the three live radio sequencers.
-- `game/src/hud.js` — the Canvas 2D HUD, minimap, police blips, wanted status,
-  weapon panel, crosshair, damage vignette and down overlays.
+  blips, story stingers, radio tuning clicks and the three live radio
+  sequencers.
+- `game/src/hud.js` — the Canvas 2D HUD, minimap, police and mission-enemy
+  blips, wanted status, subtitles, mission objective/progress/timer, street-job
+  panel, reward banner, weapon panel, crosshair, failure panel, damage vignette,
+  down overlays and the story-complete screen.
 - `game/src/input.js` — keyboard, mouse, wheel, pointer lock and mouse edges.
-- `game/src/save.js` — guarded localStorage save, weapons, quality, volume and
-  mute settings.
+- `game/src/save.js` — guarded localStorage save, story/mission index, weapons,
+  quality, volume and mute settings.
 - `game/src/random.js`, `config.js` — the seeded RNG and all shared constants.
-- `game/src/shots.js` — the fixed `start`, `street`, `drive`, `chase` and
-  `pier` screenshot poses.
+- `game/src/shots.js` — the fixed `start`, `street`, `drive`, `chase`, `mission`,
+  `heist` and `pier` screenshot poses.
 - `game/vendor/` — three.js r180 as its minified module and core builds, reached
   through the one-line `three.module.js` shim.
 
@@ -190,8 +249,12 @@ network is involved. `?shot=drive` is a driving composition on the strip with
 staged traffic, crosswalk pedestrians and a parked cruiser. `?shot=chase` is
 the police version: four wanted stars, three cruisers and two officers closing
 on the Riptide, a lit roadblock ahead, a frozen tracer, the minimap full of
-red/blue blips and the `Break the Blockade` objective. Both are used to check
-the camera and HUD at 1280×720 during development.
+red/blue blips and the `Break the Blockade` objective. `?shot=mission` stages
+Tomas' ambush around the Luna Plaza fountain with a live subtitle, the mission
+progress panel, an aimed Rae and frozen muzzle flashes; `?shot=heist` is the
+Pier 9 firefight, with Aurelio's crew, burning barrels, smoke, tracers, the
+lighthouse beam and the escape objective. All of them are used to check the
+camera and HUD at 1280×720 during development.
 
 ## Build the entry
 

@@ -500,6 +500,93 @@ export class AudioSystem {
     });
   }
 
+  // -------------------------------------------------------------- story / UI
+
+  missionStart() {
+    if (!this.ctx) return;
+    const time = this.ctx.currentTime;
+    [196, 247, 294, 392].forEach((frequency, index) => {
+      this.note({
+        type: index === 3 ? 'triangle' : 'sawtooth',
+        frequency,
+        time: time + index * 0.085,
+        duration: 0.22,
+        gain: 0.045,
+        filter: 1500,
+      });
+    });
+    this.noiseHit({ time, duration: 0.35, gain: 0.035, lowpass: 700 });
+  }
+
+  missionComplete() {
+    if (!this.ctx) return;
+    const time = this.ctx.currentTime;
+    [523, 659, 784, 1047].forEach((frequency, index) => {
+      this.note({
+        type: 'triangle',
+        frequency,
+        time: time + index * 0.11,
+        duration: 0.32,
+        gain: 0.065,
+        filter: 3400,
+      });
+    });
+    this.note({ type: 'sine', frequency: 131, time, duration: 0.4, gain: 0.05, filter: 500 });
+  }
+
+  missionFail() {
+    if (!this.ctx) return;
+    const time = this.ctx.currentTime;
+    [330, 277, 220, 165].forEach((frequency, index) => {
+      this.note({
+        type: 'sawtooth',
+        frequency,
+        time: time + index * 0.17,
+        duration: 0.26,
+        gain: 0.05,
+        filter: 900,
+      });
+    });
+    this.noiseHit({ time: time + 0.2, duration: 0.5, gain: 0.07, lowpass: 400 });
+  }
+
+  reward() {
+    if (!this.ctx) return;
+    const time = this.ctx.currentTime;
+    [880, 1175, 1568].forEach((frequency, index) => {
+      this.note({
+        type: 'triangle',
+        frequency,
+        time: time + index * 0.05,
+        duration: 0.16,
+        gain: 0.045,
+        filter: 4200,
+      });
+    });
+  }
+
+  radioSwitch() {
+    if (!this.ctx) return;
+    const time = this.ctx.currentTime;
+    this.noiseHit({ time, duration: 0.16, gain: 0.035, highpass: 900, lowpass: 3800 });
+    this.note({ type: 'square', frequency: 640, time: time + 0.1, duration: 0.04, gain: 0.025, filter: 2200 });
+  }
+
+  sirenBurst() {
+    if (!this.ctx) return;
+    const time = this.ctx.currentTime;
+    for (let i = 0; i < 2; i += 1) {
+      this.note({
+        type: 'sawtooth',
+        frequency: i === 0 ? 620 : 780,
+        time: time + i * 0.18,
+        duration: 0.13,
+        gain: 0.035,
+        filter: 1800,
+      });
+    }
+  }
+
   dispose() {
     this.stopRadio();
     window.removeEventListener('pointerdown', this._unlock);
