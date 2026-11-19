@@ -1,8 +1,8 @@
 // Deterministic screenshot staging. A shot is not a separate little demo: it
-// places the real player, camera and HUD in a fixed composition, runs a fixed
-// number of simulation steps and stops. `?shot=start|street|pier` turns the
-// page into one of these frozen frames; the seed is recorded but the harbor
-// already builds from the one seed in config.js.
+// places the real player, camera, traffic and HUD in a fixed composition, runs
+// a fixed number of simulation steps and stops. `?shot=start|street|drive|pier`
+// turns the page into one of these frozen frames; the seed is recorded but the
+// harbor already builds from the one seed in config.js.
 
 import { START_OBJECTIVE } from './config.js';
 
@@ -25,12 +25,29 @@ export const SHOTS = {
     time: 2.4,
     prewarm: 90,
     player: {
-      x: -62,
-      z: 27.5,
+      x: -63,
+      z: 27.3,
       facing: -Math.PI / 2,
       cameraYaw: Math.PI / 2,
       cameraPitch: 0.13,
       distance: 5.5,
+    },
+    objective: START_OBJECTIVE,
+    toast: false,
+  },
+  drive: {
+    name: 'drive',
+    mode: 'playing',
+    time: 2.2,
+    prewarm: 0,
+    drive: {
+      type: 'muscle',
+      color: 0x8c2f2f,
+      x: -60,
+      z: 30.2,
+      yaw: Math.PI / 2,
+      speed: 19,
+      cameraPitch: 0.12,
     },
     objective: START_OBJECTIVE,
     toast: false,

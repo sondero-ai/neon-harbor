@@ -1,6 +1,8 @@
-// Third-person on-foot control: camera-relative movement, sprint, jump, curb
-// stepping, building collision, and a damped follow camera that slides in
-// front of walls instead of clipping through them.
+// Third-person control for Rae. On foot: camera-relative movement, sprint,
+// jump, curb stepping, building and vehicle collision, and a damped follow
+// camera that slides in front of walls. Behind the wheel: throttle/steer/
+// brake/handbrake controls for the car, a look-ahead chase camera with a
+// free-look orbit, and the enter/exit handshake with vehicles.js.
 
 import * as THREE from '../vendor/three.module.js';
 import { CAMERA, PLAYER } from './config.js';
@@ -20,8 +22,9 @@ function dampAngle(current, target, lambda, dt) {
 }
 
 export class Player {
-  constructor(scene, world) {
+  constructor(scene, world, vehicles = null) {
     this.world = world;
+    this.vehicles = vehicles;
     this.group = new THREE.Group();
     this.humanoid = new Humanoid();
     this.group.add(this.humanoid.group);
@@ -44,11 +47,20 @@ export class Player {
     this.mission = 0;
     this.playSeconds = 0;
     this.walkPhase = 0;
+    this.driving = null;
+    this.nearVehicle = null;
+    this.exitCooldown = 0;
+    this.driveOrbitYaw = 0;
+    this.drivePitch = 0.13;
+    this.driveLookHold = 0;
 
     this.resetToSpawn();
   }
 
   resetToSpawn() {
+    this.driving = null;
+    this.nearVehicle = null;
+    this.group.visible = true;
     this.position.set(PLAYER.spawn.x, this.world.groundHeightAt(PLAYER.spawn.x, PLAYER.spawn.z), PLAYER.spawn.z);
     this.velocity.set(0, 0, 0);
     this.cameraYaw = PLAYER.spawnCameraYaw;
@@ -62,6 +74,9 @@ export class Player {
   }
 
   loadFromSave(save) {
+    this.driving = null;
+    this.nearVehicle = null;
+    this.group.visible = true;
     this.position.set(save.position.x, save.position.y, save.position.z);
     const ground = this.world.groundHeightAt(this.position.x, this.position.z);
     if (this.position.y < ground) this.position.y = ground;
@@ -104,7 +119,14 @@ export class Player {
 
   update(dt, input) {
     this.playSeconds += dt;
+    if (this.exitCooldown > 0) this.exitCooldown -= dt;
     const mouse = input.consumeMouse();
+
+    if (this.driving) {
+      this.updateDriving(dt, input, mouse);
+      return;
+    }
+
     if (mouse.x !== 0) this.cameraYaw -= mouse.x * CAMERA.sensitivity;
     if (mouse.y !== 0) this.cameraPitch = clamp(this.cameraPitch + mouse.y * CAMERA.sensitivity, CAMERA.minPitch, CAMERA.maxPitch);
     if (mouse.wheel !== 0) {
@@ -164,8 +186,133 @@ export class Player {
     }
 
     if (this.position.y < -6) this.resetToSpawn();
+    this.nearVehicle = this.vehicles ? this.vehicles.nearestEnterable(this.position, 2.2) : null;
     this.applyTransform();
     this.humanoid.update(dt, horizontal, !this.grounded);
+  }
+
+  updateDriving(dt, input, mouse) {
+    const car = this.driving;
+    if (!car || car.removed) {
+      this.driving = null;
+      this.group.visible = true;
+      return;
+    }
+
+    if (mouse.x !== 0) {
+      this.driveOrbitYaw = clamp(this.driveOrbitYaw - mouse.x * CAMERA.sensitivity * 1.05, -2.7, 2.7);
+      this.driveLookHold = 2.1;
+    }
+    if (mouse.y !== 0) {
+      this.drivePitch = clamp(this.drivePitch + mouse.y * CAMERA.sensitivity, -0.12, 0.62);
+      this.driveLookHold = 2.1;
+    }
+    if (this.driveLookHold > 0) this.driveLookHold -= dt;
+    else this.driveOrbitYaw = damp(this.driveOrbitYaw, 0, 1.8, dt);
+
+    const { forward, strafe } = input.moveAxis();
+    car.controls.throttle = forward;
+    car.controls.steer = -strafe;
+    car.controls.brake = 0;
+    car.controls.handbrake = input.isDown('Space');
+    car.controls.engine = true;
+
+    this.position.copy(car.position);
+    this.facing = car.yaw;
+    this.speed = Math.abs(car.speed);
+    this.applyTransform();
+  }
+
+  syncFromVehicle() {
+    if (!this.driving) return;
+    this.position.copy(this.driving.position);
+    this.facing = this.driving.yaw;
+    this.speed = Math.abs(this.driving.speed);
+    this.applyTransform();
+  }
+
+  handleVehicleInput(input) {
+    if (input.wasPressed('KeyF', 'KeyE')) {
+      if (this.driving) {
+        this.exitVehicle();
+      } else if (this.vehicles && this.exitCooldown <= 0) {
+        const car = this.vehicles.nearestEnterable(this.position, 2.25);
+        if (car) this.enterVehicle(car);
+      }
+    }
+  }
+
+  enterVehicle(car) {
+    if (!car || this.driving) return;
+    this.driving = car;
+    car.driver = 'player';
+    car.ai = null;
+    car.setDriver('player');
+    car.velocity.multiplyScalar(0.35);
+    car.controls.throttle = 0;
+    car.controls.brake = 0;
+    car.controls.steer = 0;
+    car.controls.handbrake = false;
+    this.velocity.set(0, 0, 0);
+    this.group.visible = false;
+    this.nearVehicle = null;
+    this.driveOrbitYaw = 0;
+    this.drivePitch = 0.13;
+    this.driveLookHold = 0;
+    this.position.copy(car.position);
+    this.facing = car.yaw;
+    this.speed = Math.abs(car.speed);
+    this._cameraInitialized = false;
+  }
+
+  exitVehicle() {
+    const car = this.driving;
+    if (!car) return;
+    const cos = Math.cos(car.yaw);
+    const sin = Math.sin(car.yaw);
+    const candidates = [
+      [car.halfWidth + 0.85, 0],
+      [-(car.halfWidth + 0.85), 0],
+      [0, -(car.halfLength + 1.0)],
+      [0, car.halfLength + 1.0],
+    ];
+    let placed = false;
+    let spotX = car.position.x + cos * (car.halfWidth + 0.85);
+    let spotZ = car.position.z - sin * (car.halfWidth + 0.85);
+    for (const [side, forward] of candidates) {
+      const x = car.position.x + cos * side + sin * forward;
+      const z = car.position.z - sin * side + cos * forward;
+      if (this.world.collides(x, z, PLAYER.radius)) continue;
+      if (this.vehicles && this.vehicles.blocksPoint(x, z, PLAYER.radius, car)) continue;
+      spotX = x;
+      spotZ = z;
+      placed = true;
+      break;
+    }
+    if (!placed) {
+      spotX = car.position.x + cos * (car.halfWidth + 1.4);
+      spotZ = car.position.z - sin * (car.halfWidth + 1.4);
+    }
+
+    this.driving = null;
+    car.driver = null;
+    car.ai = null;
+    car.setDriver(null);
+    car.controls.brake = 1;
+    car.controls.handbrake = true;
+    this.group.visible = true;
+    this.position.set(spotX, this.world.groundHeightAt(spotX, spotZ), spotZ);
+    this.velocity.set(0, 0, 0);
+    this.facing = Math.atan2(spotX - car.position.x, spotZ - car.position.z);
+    this.cameraYaw = this.facing + Math.PI;
+    this.cameraPitch = CAMERA.pitch;
+    this.cameraDistance = CAMERA.distance;
+    this.speed = 0;
+    this.nearVehicle = null;
+    this.exitCooldown = 0.65;
+    this._cameraInitialized = false;
+    this.applyTransform();
+    this.snapCamera();
   }
 
   moveHorizontal(dt) {
@@ -173,7 +320,8 @@ export class Player {
     const stepX = this.velocity.x * dt;
     if (stepX !== 0) {
       const nextX = this.position.x + stepX;
-      if (!this.world.collides(nextX, this.position.z, radius)) {
+      const blockedByCar = this.vehicles && this.vehicles.blocksPoint(nextX, this.position.z, radius, this.driving);
+      if (!this.world.collides(nextX, this.position.z, radius) && !blockedByCar) {
         const nextGround = this.world.groundHeightAt(nextX, this.position.z);
         if (nextGround - this.position.y <= 0.62) this.position.x = nextX;
         else this.velocity.x = 0;
@@ -184,7 +332,8 @@ export class Player {
     const stepZ = this.velocity.z * dt;
     if (stepZ !== 0) {
       const nextZ = this.position.z + stepZ;
-      if (!this.world.collides(this.position.x, nextZ, radius)) {
+      const blockedByCar = this.vehicles && this.vehicles.blocksPoint(this.position.x, nextZ, radius, this.driving);
+      if (!this.world.collides(this.position.x, nextZ, radius) && !blockedByCar) {
         const nextGround = this.world.groundHeightAt(this.position.x, nextZ);
         if (nextGround - this.position.y <= 0.62) this.position.z = nextZ;
         else this.velocity.z = 0;
@@ -212,7 +361,16 @@ export class Player {
     this._cameraInitialized = true;
   }
 
+  updateView(camera, dt, immediate = false) {
+    if (this.driving) this.updateDriveView(camera, dt, immediate);
+    else this.updateFootView(camera, dt, immediate);
+  }
+
   updateCamera(camera, dt, immediate = false) {
+    this.updateView(camera, dt, immediate);
+  }
+
+  updateFootView(camera, dt, immediate = false) {
     this.computeCameraDesired(this.cameraPosition);
     this.world.clipCamera(this.cameraTarget, this.cameraPosition, 0.3, this.cameraPosition);
     if (!this._smoothCamera) this._smoothCamera = this.cameraPosition.clone();
@@ -226,6 +384,51 @@ export class Player {
     }
     camera.position.copy(this._smoothCamera);
     camera.lookAt(this.cameraTarget);
+    if (Math.abs(camera.fov - CAMERA.fov) > 0.02) {
+      camera.fov = damp(camera.fov, CAMERA.fov, 6, dt);
+      camera.updateProjectionMatrix();
+    }
+  }
+
+  updateDriveView(camera, dt, immediate = false) {
+    const car = this.driving;
+    if (!car) {
+      this.updateFootView(camera, dt, immediate);
+      return;
+    }
+    const speed = Math.abs(car.speed);
+    const orbit = this.driveOrbitYaw;
+    const yaw = car.yaw + Math.PI + orbit;
+    const cosPitch = Math.cos(this.drivePitch);
+    const distance = 7.5 + Math.min(2.7, speed * 0.07);
+    const lookAhead = 4.8 + speed * 0.16;
+    this.cameraTarget.set(
+      car.position.x + Math.sin(car.yaw) * lookAhead,
+      car.position.y + 1.5,
+      car.position.z + Math.cos(car.yaw) * lookAhead,
+    );
+    this.cameraPosition.set(
+      car.position.x + Math.sin(yaw) * cosPitch * distance,
+      car.position.y + 2.15 + Math.sin(this.drivePitch) * distance,
+      car.position.z + Math.cos(yaw) * cosPitch * distance,
+    );
+    this.world.clipCamera(this.cameraTarget, this.cameraPosition, 0.45, this.cameraPosition);
+    if (!this._smoothCamera) this._smoothCamera = this.cameraPosition.clone();
+    if (immediate || !this._cameraInitialized) {
+      this._smoothCamera.copy(this.cameraPosition);
+      this._cameraInitialized = true;
+    } else {
+      const alpha = 1 - Math.exp(-7.4 * dt);
+      this._smoothCamera.lerp(this.cameraPosition, alpha);
+      this.world.clipCamera(this.cameraTarget, this._smoothCamera, 0.45, this._smoothCamera);
+    }
+    camera.position.copy(this._smoothCamera);
+    camera.lookAt(this.cameraTarget);
+    const targetFov = CAMERA.fov + clamp(speed * 0.28, 0, 11);
+    if (Math.abs(camera.fov - targetFov) > 0.02) {
+      camera.fov = damp(camera.fov, targetFov, 4.5, dt);
+      camera.updateProjectionMatrix();
+    }
   }
 
   faceCamera() {

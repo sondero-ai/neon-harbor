@@ -1,8 +1,9 @@
 // Boot, the fixed-step loop, and the small state machine that owns the title,
-// play, pause and controls screens. World, player, HUD and save are separate
-// modules; this file is the wiring between them and the moment-to-moment
-// decisions: when the pointer is captured, when a pause writes the save, and
-// how a deterministic screenshot becomes a frozen frame.
+// play, pause and controls screens. World, player, vehicles, traffic, HUD and
+// save are separate modules; this file is the wiring between them and the
+// moment-to-moment decisions: when the pointer is captured, when F/E hands the
+// player to a car, when a pause writes the save, and how a deterministic
+// screenshot becomes a frozen frame.
 
 import * as THREE from '../vendor/three.module.js';
 import {
@@ -18,6 +19,8 @@ import {
 } from './config.js';
 import { World } from './world.js';
 import { Player } from './player.js';
+import { Vehicles } from './vehicles.js';
+import { Traffic } from './traffic.js';
 import { Input } from './input.js';
 import { Hud } from './hud.js';
 import { SaveStore } from './save.js';
@@ -83,6 +86,7 @@ class Game {
     this.objective = START_OBJECTIVE;
     this.titleView = DEFAULT_TITLE_VIEW;
     this.lastHudState = null;
+    this.radioEnabled = true;
 
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
@@ -102,7 +106,9 @@ class Game {
     this.camera = new THREE.PerspectiveCamera(CAMERA.fov, 16 / 9, CAMERA.near, CAMERA.far);
     this.world = new World(this.scene, { quality: this.quality });
     this.world.setObjectiveMarker(START_OBJECTIVE.marker.x, START_OBJECTIVE.marker.z);
-    this.player = new Player(this.scene, this.world);
+    this.vehicles = new Vehicles(this.scene, this.world);
+    this.player = new Player(this.scene, this.world, this.vehicles);
+    this.traffic = new Traffic(this.scene, this.world, this.vehicles, this.player);
     this.input = new Input(this.canvas);
     this.input.allowLock = false;
     this.hud = new Hud(this.ui.hud, this.world);
@@ -255,6 +261,8 @@ class Game {
   startNewGame() {
     this.hud.suppressToasts = false;
     this.objective = START_OBJECTIVE;
+    this.player.driving = null;
+    this.player.group.visible = true;
     this.player.health = PLAYER.health;
     this.player.armor = PLAYER.armor;
     this.player.cash = PLAYER.cash;
@@ -265,6 +273,7 @@ class Game {
     this.player.teleport(PLAYER.spawn.x, PLAYER.spawn.z, PLAYER.spawnFacing, PLAYER.spawnCameraYaw);
     this.player.cameraPitch = CAMERA.pitch;
     this.player.cameraDistance = CAMERA.distance;
+    this.resetCityLife();
     this.player.updateCamera(this.camera, 0, true);
     this.enterPlaying({ toast: true });
     SaveStore.write(this.player.saveState);
@@ -278,7 +287,66 @@ class Game {
     this.player.loadFromSave(save);
     this.objective = START_OBJECTIVE;
     this.clockMinutes = HOURS * 60 + MINUTES + save.playSeconds * GAME_MINUTES_PER_SECOND;
+    this.resetCityLife();
+    this.player.updateCamera(this.camera, 0, true);
     this.enterPlaying({ toast: true });
+  }
+
+  resetCityLife() {
+    this.vehicles.clear();
+    this.traffic.reset();
+    this.spawnOpeningCars();
+    this.traffic.seedAmbient(this.player);
+  }
+
+  spawnOpeningCars() {
+    const muscle = this.vehicles.spawn('muscle', {
+      x: -67.5,
+      z: 21.2,
+      yaw: -Math.PI / 2,
+      color: 0x8c2f2f,
+    });
+    muscle.setDriver(null);
+    const sedan = this.vehicles.spawn('sedan', {
+      x: -47,
+      z: 32.7,
+      yaw: Math.PI / 2,
+      color: 0xd9c9ad,
+    });
+    sedan.setDriver(null);
+    const cruiser = this.vehicles.spawn('police', {
+      x: 142,
+      z: 32.7,
+      yaw: Math.PI / 2,
+      color: 0x1d2029,
+    });
+    cruiser.setDriver(null);
+  }
+
+  toggleRadio() {
+    this.radioEnabled = !this.radioEnabled;
+    if (!this.hud.suppressToasts) {
+      this.hud.toast = this.radioEnabled
+        ? { title: RADIO.station, sub: RADIO.track.toUpperCase(), life: 2.6 }
+        : { title: 'Radio Off', sub: 'PRESS R TO TUNE IN', life: 2.0 };
+    }
+  }
+
+  announceVehicle(enteredCar, exitedCar) {
+    if (this.hud.suppressToasts) return;
+    if (enteredCar) {
+      this.hud.toast = {
+        title: enteredCar.name,
+        sub: `${enteredCar.className} · ENGINE ON · F / E TO EXIT`,
+        life: 3.0,
+      };
+    } else if (exitedCar) {
+      this.hud.toast = {
+        title: 'Back on Foot',
+        sub: `${exitedCar.name} · PARKED`,
+        life: 2.2,
+      };
+    }
   }
 
   pause() {
@@ -347,12 +415,41 @@ class Game {
   }
 
   hudState() {
+    const player = this.player;
+    const driving = player.driving;
+    const blips = [];
+    for (const vehicle of this.vehicles.list) {
+      const dx = vehicle.position.x - player.position.x;
+      const dz = vehicle.position.z - player.position.z;
+      if (dx * dx + dz * dz > 9600) continue;
+      blips.push({
+        x: vehicle.position.x,
+        z: vehicle.position.z,
+        yaw: vehicle.yaw,
+        kind: vehicle.type,
+        parked: !vehicle.driver,
+        player: vehicle === driving,
+      });
+    }
+    let vehiclePrompt = null;
+    if (driving) {
+      vehiclePrompt = { action: 'exit', name: driving.name };
+    } else if (player.nearVehicle) {
+      vehiclePrompt = {
+        action: 'enter',
+        name: player.nearVehicle.name,
+        distance: player.nearVehicle.distanceToBox(player.position.x, player.position.z) + 0.4,
+      };
+    }
     return {
-      player: this.player,
+      player,
       objective: this.objective,
-      radio: RADIO,
+      radio: { ...RADIO, enabled: this.radioEnabled },
       clock: this.clockString(),
-      district: districtAt(this.player.position.x, this.player.position.z),
+      district: districtAt(player.position.x, player.position.z),
+      vehicles: blips,
+      density: this.traffic.density,
+      vehiclePrompt,
     };
   }
 
@@ -398,12 +495,19 @@ class Game {
       this.player.wanted = 0;
       this.player.mission = 0;
       this.player.playSeconds = 0;
-      const pose = shot.player;
-      this.player.teleport(pose.x, pose.z, pose.facing, pose.cameraYaw);
-      this.player.cameraPitch = pose.cameraPitch;
-      this.player.cameraDistance = pose.distance;
-      this.player.updateCamera(this.camera, 0, true);
-      for (let i = 0; i < steps; i += 1) this.tick(STEP);
+      if (shot.drive) {
+        this.vehicles.clear();
+        this.traffic.reset({ spawnBeach: false });
+        this.stageDriveShot(shot.drive);
+      } else {
+        const pose = shot.player;
+        this.player.teleport(pose.x, pose.z, pose.facing, pose.cameraYaw);
+        this.player.cameraPitch = pose.cameraPitch;
+        this.player.cameraDistance = pose.distance;
+        this.resetCityLife();
+        this.player.updateCamera(this.camera, 0, true);
+        for (let i = 0; i < steps; i += 1) this.tick(STEP);
+      }
     }
 
     this.shotLocked = true;
@@ -413,6 +517,29 @@ class Game {
     this.renderer.render(this.scene, this.camera);
   }
 
+  stageDriveShot(drive) {
+    const car = this.vehicles.spawn(drive.type ?? 'muscle', {
+      x: drive.x,
+      z: drive.z,
+      yaw: drive.yaw,
+      color: drive.color,
+    });
+    this.player.enterVehicle(car);
+    const speed = drive.speed ?? 18;
+    car.velocity.set(Math.sin(drive.yaw) * speed, 0, Math.cos(drive.yaw) * speed);
+    car.controls.throttle = 0;
+    car.controls.brake = 0;
+    car.controls.steer = 0;
+    car.controls.handbrake = false;
+    this.player.drivePitch = drive.cameraPitch ?? 0.13;
+    this.player.driveOrbitYaw = drive.cameraOrbit ?? 0;
+    this.player.driveLookHold = 0;
+    this.player.syncFromVehicle();
+    this.traffic.stageDrive(car);
+    this.world.focusAt(car.position.x, car.position.z);
+    this.player.updateView(this.camera, 0, true);
+  }
+
   // ---------------------------------------------------------------- loop
 
   tick(dt) {
@@ -420,7 +547,17 @@ class Game {
     this.simTime += dt;
 
     if (this.mode === 'playing') {
+      const wasDriving = this.player.driving;
+      this.player.handleVehicleInput(input);
+      if (wasDriving !== this.player.driving) {
+        this.announceVehicle(this.player.driving, wasDriving);
+      }
+      if (input.wasPressed('KeyR')) this.toggleRadio();
       this.player.update(dt, input);
+      this.traffic.update(dt, this.simTime);
+      this.vehicles.update(dt, this.simTime);
+      this.player.syncFromVehicle();
+      this.player.updateView(this.camera, dt);
       this.clockMinutes += dt * GAME_MINUTES_PER_SECOND;
       this.world.focusAt(this.player.position.x, this.player.position.z);
       if (input.wasPressed('Escape', 'KeyP')) this.pause();
@@ -498,7 +635,14 @@ try {
         z: game.player.position.z,
         facing: game.player.facing,
         speed: game.player.speed,
+        driving: game.player.driving ? game.player.driving.name : null,
+        speedKmh: game.player.driving ? game.player.driving.speedKmh : game.player.speedKmh,
+        nearVehicle: game.player.nearVehicle ? game.player.nearVehicle.name : null,
       };
+    },
+    get traffic() {
+      const density = game.traffic.density;
+      return { cars: density.cars, walkers: density.walkers, totalVehicles: game.vehicles.count };
     },
     get draws() {
       return game.renderer.info.render.calls;

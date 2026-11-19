@@ -44,7 +44,9 @@ export const PLAYER = {
   friction: 14,
   jumpSpeed: 7.4,
   gravity: 23,
-  spawn: { x: -62, z: 27.5 },
+  // On the yellow line at the quiet west end of Vega Strip: traffic passes on
+  // both sides and the parked Riptide is a short walk to the north curb.
+  spawn: { x: -63, z: 27.3 },
   spawnFacing: -Math.PI / 2, // west, toward the water
   spawnCameraYaw: Math.PI / 2,
   health: 100,

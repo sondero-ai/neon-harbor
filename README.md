@@ -10,12 +10,13 @@ hour: a six-by-six grid of low-rise storefronts and downtown towers, a wide
 sand beach, a long pier, a working lighthouse, palms, streetlights and a lot
 of hand-painted neon.
 
-You play as courier **Rae Solano**, newly back in the harbor. This opening
-build is the city and the on-foot foundation: a fully procedural world, a
-third-person camera that stays out of walls, a walk/run/jump cycle, a readable
-canvas HUD, a title screen over the live skyline, pause and controls screens,
-quality switching and a local save. Vehicles, traffic, police, the wider story
-and the full mission set arrive in later chapters.
+You play as courier **Rae Solano**, newly back in the harbor. This build is the
+city and the street life: a fully procedural world, a third-person camera that
+stays out of walls, a walk/run/jump cycle, seven drivable vehicle classes, a
+grid-aware traffic and pedestrian simulation, a readable canvas HUD, a title
+screen over the live skyline, pause and controls screens, quality switching and
+a local save. Police pursuits, combat, audio and the wider story arrive in later
+chapters.
 
 ## Play
 
@@ -32,17 +33,26 @@ Click the view to capture the mouse. If the browser refuses pointer lock, the
 same mouse drag looks around.
 
 - **WASD** or the arrow keys walk; **Shift** sprints; **Space** jumps.
-- **Mouse** looks around; the **wheel** pulls the camera in or out.
+- **F** or **E** enters the nearest slow car, and leaves the car you are in.
+- On the road, **W/S** is throttle and brake/reverse, **A/D** steers, and
+  **Space** is the handbrake. Hold it through a corner to drift; the rear tires
+  leave skid marks.
+- **Mouse** looks around on foot and while driving; the driving camera swings
+  back behind the car after a moment. The **wheel** pulls the foot camera in or
+  out.
+- **R** switches the radio feed on or off.
 - **Esc** or **P** pauses and saves. **Enter** confirms the focused menu action.
 - Drag-look still works after the pointer unlocks; click the view to recapture.
 - The title screen’s **Quality** switch moves between high (shadows on, full
   pixel ratio) and low (no shadows, lighter pixel ratio) without a reload.
 
-**New Game** starts at the west end of Vega Strip, facing the water. **Continue**
-returns to the last pause or save. The HUD shows health, armor, cash, wanted
-stars, the district and clock, a baked minimap with the player arrow and the
-objective marker, the current objective and distance, the radio line and the
-on-foot speed readout.
+**New Game** starts on Vega Strip beside a parked Riptide, facing the water.
+**Continue** returns to the last pause or save. The HUD shows health, armor,
+cash, wanted stars, the district and clock, a baked minimap with the player
+arrow, vehicle blips and the objective marker, live car/walker counts, the
+current objective and distance, the radio line, the context prompt, and either
+the on-foot readout or the driving panel with vehicle name, speed, gear and
+engine load.
 
 ## The city
 
@@ -55,22 +65,50 @@ Casa Luna on the beach, Motor Row, the Luna Plaza fountain, the radio mast, the
 Vega Strip arch, Pier 9 and its lighthouse. The sun sits low in the west, warm
 fog blends the distance, and the water carries a moving shimmer.
 
+## Traffic and driving
+
+`vehicles.js` builds seven original classes from merged low-poly parts: the
+**Fathom 400** sedan, **Harbor Cab**, **Vela GT** sports car, **Riptide 442**
+muscle car, **Mule 9** van, **Dune Hauler** pickup and **Harbor PD Cruiser**.
+Each has its own proportions, paint palette, wheels, headlights, taillights,
+glass and handling; the cruiser adds a white-door livery, a door decal and a
+red/blue light bar. Bodies, trim, glass and lamps are separate shared
+geometries, so a car stays around nine draw calls. Handling is arcade: throttle
+and reverse, speed-sensitive steering, lateral grip that lets the rear step out
+under the handbrake, ground-following pitch and roll on curbs and the pier ramp,
+building collision, and a pooled skid-mark ribbon. Engine state is exposed per
+vehicle for the audio chapter.
+
+`traffic.js` keeps cars in the grid lanes and runs a two-phase signal at every
+intersection. Cars brake for the stop line, keep a following gap to anything in
+their lane, wait for pedestrians in the crosswalk, and recycle in and out of
+view around the player. Pedestrians loop the block sidewalks, stop at corners,
+cross at the painted crosswalks, and gather on the pier and the beach. The whole
+crowd is drawn through seven instanced meshes, so the street stays close to 60
+fps with a few dozen people on screen. The minimap mirrors the traffic with
+vehicle blips, and the HUD reports the live car and walker counts.
+
 ## Source map
 
 - `game/index.html` — the page, title, pause and controls markup, and the
   inline boot-error reporter.
 - `game/src/main.js` — boot, fixed-step loop, screen state machine, quality,
-  save wiring and deterministic shot staging.
+  save wiring, vehicle entry/exit, radio state and deterministic shot staging.
 - `game/src/world.js` — city generation, ground/collision/camera queries, beach,
   pier, lighthouse, ocean, sky, lights, signs and animation.
 - `game/src/geo.js` — reusable mesh, facade, sign and billboard factories.
-- `game/src/player.js`, `humanoid.js` — third-person movement, camera, collision
-  and Rae’s low-poly walk/run cycle.
-- `game/src/hud.js` — the Canvas 2D HUD and its baked minimap.
+- `game/src/vehicles.js` — seven vehicle classes, meshes, arcade physics,
+  enter/exit support, lights and pooled skid marks.
+- `game/src/traffic.js` — lane traffic, signals, following, pedestrians,
+  crosswalk crossings, beach/pier crowd and deterministic staging.
+- `game/src/player.js`, `humanoid.js` — third-person movement, driving, chase
+  camera, vehicle collision and Rae’s low-poly walk/run cycle.
+- `game/src/hud.js` — the Canvas 2D HUD, minimap, vehicle blips and prompts.
 - `game/src/input.js` — keyboard, mouse, wheel and pointer lock.
 - `game/src/save.js` — guarded localStorage save and quality settings.
 - `game/src/random.js`, `config.js` — the seeded RNG and all shared constants.
-- `game/src/shots.js` — the fixed `start`, `street` and `pier` screenshot poses.
+- `game/src/shots.js` — the fixed `start`, `street`, `drive` and `pier`
+  screenshot poses.
 - `game/vendor/` — three.js r180 as its minified module and core builds, reached
   through the one-line `three.module.js` shim.
 
@@ -84,7 +122,9 @@ fog blends the distance, and the water carries a moving shimmer.
 
 Every shot runs the real world, player and HUD through a fixed number of
 simulation steps and then freezes; no pointer lock, clock or network is
-involved. To reproduce one, run the local server and open the query above.
+involved. `?shot=drive` is a fourth, driving composition on the strip, with
+staged traffic, crosswalk pedestrians and a parked cruiser; it is used to check
+the driving camera and HUD during development.
 
 ## Build the entry
 

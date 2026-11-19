@@ -250,7 +250,8 @@ export class Hud {
     this.drawMinimap(ctx, state);
     this.drawObjective(ctx, state);
     this.drawRadio(ctx, state);
-    this.drawSpeed(ctx, state.player);
+    this.drawSpeed(ctx, state);
+    this.drawPrompt(ctx, state);
     if (this.toast) this.drawToast(ctx, this.toast);
   }
 
@@ -261,7 +262,7 @@ export class Hud {
     const height = 70;
     drawPanel(ctx, x, y, width, height, { cut: 13, accent: CORAL });
     label(ctx, 'RAE SOLANO', x + 16, y + 21, { size: 11, color: CREAM, spacing: '3px', weight: 700 });
-    label(ctx, 'ON FOOT', x + width - 16, y + 21, { size: 8, color: 'rgba(63,224,207,0.72)', spacing: '1.5px', align: 'right' });
+    label(ctx, player.driving ? 'DRIVING' : 'ON FOOT', x + width - 16, y + 21, { size: 8, color: 'rgba(63,224,207,0.72)', spacing: '1.5px', align: 'right' });
 
     const barX = x + 16;
     const barWidth = width - 72;
@@ -406,6 +407,20 @@ export class Hud {
       ctx.restore();
     }
 
+    const vehicles = state.vehicles ?? [];
+    for (const vehicle of vehicles) {
+      const dx = (vehicle.x - state.player.position.x) * destScale;
+      const dy = (vehicle.z - state.player.position.z) * destScale;
+      if (Math.hypot(dx, dy) > size / 2 - 10) continue;
+      ctx.save();
+      ctx.translate(centerX + dx, centerY + dy);
+      ctx.rotate(Math.PI - vehicle.yaw);
+      ctx.globalAlpha = vehicle.player ? 0.95 : vehicle.parked ? 0.42 : 0.82;
+      ctx.fillStyle = vehicle.player ? CREAM : vehicle.kind === 'police' ? '#7d9cff' : GOLD;
+      ctx.fillRect(-2.4, -5, 4.8, 10);
+      ctx.restore();
+    }
+
     ctx.save();
     ctx.translate(centerX, centerY);
     ctx.rotate(Math.PI - state.player.facing);
@@ -439,6 +454,15 @@ export class Hud {
     label(ctx, '50 M', x + 44, y + size - 11, { size: 7, color: 'rgba(247,232,210,0.4)', spacing: '1px' });
 
     ctx.restore();
+    const density = state.density ?? { cars: 0, walkers: 0 };
+    drawPanel(ctx, x - 5, y - 45, size + 10, 27, {
+      cut: 8,
+      fill: 'rgba(9,6,16,0.62)',
+      stroke: 'rgba(247,232,210,0.13)',
+    });
+    label(ctx, 'STREETS', x + 9, y - 27, { size: 7, color: 'rgba(247,232,210,0.48)', spacing: '1.6px', weight: 700 });
+    label(ctx, `CARS ${String(density.cars).padStart(2, '0')}`, x + 78, y - 27, { size: 7, color: GOLD, spacing: '1.2px' });
+    label(ctx, `WALKERS ${String(density.walkers).padStart(2, '0')}`, x + size - 2, y - 27, { size: 7, color: TEAL, spacing: '1.2px', align: 'right' });
     label(ctx, 'NEON HARBOR', x + 2, y + size + 17, { size: 8, color: 'rgba(247,232,210,0.38)', spacing: '2.5px' });
     label(ctx, (state.district || '').toUpperCase(), x + size - 2, y + size + 17, { size: 8, color: 'rgba(63,224,207,0.62)', spacing: '1.5px', align: 'right' });
   }
@@ -463,18 +487,78 @@ export class Hud {
   drawRadio(ctx, state) {
     const right = this.width - 28;
     const y = this.height - 155;
+    const enabled = state.radio?.enabled !== false;
     const bars = 4;
     for (let i = 0; i < bars; i += 1) {
-      const level = 0.35 + 0.65 * (0.5 + Math.sin(this.time * (2.4 + i * 0.8) + i) * 0.5);
+      const level = enabled ? 0.35 + 0.65 * (0.5 + Math.sin(this.time * (2.4 + i * 0.8) + i) * 0.5) : 0.1;
       const barHeight = 4 + level * 10;
-      ctx.fillStyle = `rgba(63,224,207,${0.4 + level * 0.5})`;
+      ctx.fillStyle = `rgba(63,224,207,${enabled ? 0.4 + level * 0.5 : 0.18})`;
       ctx.fillRect(right - 86 + i * 5, y - 18 - barHeight, 2.5, barHeight);
     }
-    label(ctx, (state.radio?.station || 'NIGHT TIDE 88.3').toUpperCase(), right, y - 10, { size: 10, color: TEAL, spacing: '1.8px', align: 'right', weight: 700 });
-    label(ctx, state.radio?.track || 'Harbor Lights — Sable Youth', right, y + 5, { size: 8, color: 'rgba(247,232,210,0.46)', spacing: '0.8px', align: 'right', weight: 500 });
+    label(
+      ctx,
+      (enabled ? (state.radio?.station || 'NIGHT TIDE 88.3') : 'RADIO OFF').toUpperCase(),
+      right,
+      y - 10,
+      { size: 10, color: enabled ? TEAL : 'rgba(247,232,210,0.4)', spacing: '1.8px', align: 'right', weight: 700 },
+    );
+    label(
+      ctx,
+      enabled ? (state.radio?.track || 'Harbor Lights — Sable Youth') : 'PRESS R TO TUNE IN',
+      right,
+      y + 5,
+      { size: 8, color: 'rgba(247,232,210,0.46)', spacing: '0.8px', align: 'right', weight: 500 },
+    );
   }
 
-  drawSpeed(ctx, player) {
+  drawSpeed(ctx, state) {
+    const player = state.player;
+    const car = player.driving;
+    if (car) {
+      const width = 252;
+      const height = 108;
+      const x = this.width - width - 28;
+      const y = this.height - height - 28;
+      drawPanel(ctx, x, y, width, height, { cut: 12, accent: TEAL });
+      label(ctx, car.name.toUpperCase(), x + 15, y + 21, { size: 10, color: CREAM, spacing: '1.3px', weight: 700 });
+      label(ctx, car.className || 'VEHICLE', x + width - 15, y + 21, { size: 7, color: 'rgba(63,224,207,0.7)', spacing: '1.4px', align: 'right' });
+
+      ctx.save();
+      ctx.textAlign = 'right';
+      ctx.font = `900 43px ${DISPLAY}`;
+      ctx.fillStyle = CREAM;
+      ctx.fillText(String(Math.round(car.speedKmh)), x + width - 15, y + 65);
+      ctx.restore();
+      label(ctx, 'KM/H', x + width - 15, y + 78, { size: 8, color: 'rgba(247,232,210,0.42)', spacing: '1.5px', align: 'right' });
+
+      chamferPath(ctx, x + 15, y + 34, 36, 36, 7);
+      ctx.fillStyle = 'rgba(247,232,210,0.08)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(63,224,207,0.48)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.save();
+      ctx.font = `900 21px ${DISPLAY}`;
+      ctx.fillStyle = GOLD;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(car.gear, x + 33, y + 53);
+      ctx.restore();
+      label(ctx, 'GEAR', x + 33, y + 82, { size: 6, color: 'rgba(247,232,210,0.38)', spacing: '1.2px', align: 'center' });
+
+      const barX = x + 66;
+      const barY = y + 79;
+      const barWidth = width - 151;
+      label(ctx, 'ENGINE', barX, y + 73, { size: 6, color: 'rgba(247,232,210,0.38)', spacing: '1.2px' });
+      ctx.fillStyle = 'rgba(247,232,210,0.1)';
+      ctx.fillRect(barX, barY, barWidth, 3);
+      const rpm = Math.min(1, car.engineRpm / 6400);
+      ctx.fillStyle = rpm > 0.82 ? CORAL : TEAL;
+      ctx.fillRect(barX, barY, barWidth * rpm, 3);
+      label(ctx, 'RADIO LIVE', x + 33, y + 98, { size: 6, color: 'rgba(247,232,210,0.3)', spacing: '1.1px', align: 'center' });
+      return;
+    }
+
     const width = 188;
     const height = 88;
     const x = this.width - width - 28;
@@ -496,7 +580,40 @@ export class Hud {
     const level = Math.min(1, Math.abs(player.speedKmh) / 32);
     ctx.fillStyle = TEAL;
     ctx.fillRect(barX, barY, barWidth * level, 3);
-    label(ctx, 'FOOT MOBILITY', barX, barY + 16, { size: 7, color: 'rgba(247,232,210,0.32)', spacing: '1.4px' });
+    label(ctx, player.nearVehicle ? 'VEHICLE IN REACH' : 'FOOT MOBILITY', barX, barY + 16, {
+      size: 7,
+      color: player.nearVehicle ? 'rgba(255,201,92,0.8)' : 'rgba(247,232,210,0.32)',
+      spacing: '1.4px',
+    });
+  }
+
+  drawPrompt(ctx, state) {
+    const prompt = state.vehiclePrompt;
+    if (!prompt) return;
+    const action = prompt.action === 'exit' ? 'EXIT VEHICLE' : `ENTER ${prompt.name.toUpperCase()}`;
+    const width = Math.max(224, Math.min(370, 108 + action.length * 6.4));
+    const height = 34;
+    const x = (this.width - width) / 2;
+    const y = this.height - 144;
+    drawPanel(ctx, x, y, width, height, {
+      cut: 9,
+      fill: 'rgba(9,6,16,0.76)',
+      stroke: 'rgba(247,232,210,0.2)',
+      accent: prompt.action === 'exit' ? TEAL : GOLD,
+    });
+    chamferPath(ctx, x + 10, y + 8, 47, 18, 5);
+    ctx.fillStyle = 'rgba(247,232,210,0.92)';
+    ctx.fill();
+    label(ctx, 'F / E', x + 33, y + 21, { size: 8, color: '#140f1c', spacing: '0.5px', align: 'center', weight: 800 });
+    label(ctx, action, x + 68, y + 22, { size: 8, color: CREAM, spacing: '1.5px', weight: 700 });
+    if (prompt.action === 'enter') {
+      label(ctx, prompt.distance ? `${Math.round(prompt.distance)} M` : 'NEARBY', x + width - 12, y + 22, {
+        size: 7,
+        color: 'rgba(247,232,210,0.42)',
+        spacing: '1.2px',
+        align: 'right',
+      });
+    }
   }
 
   drawToast(ctx, toast) {
