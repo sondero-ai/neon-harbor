@@ -363,22 +363,34 @@ export class Hud {
   }
 
   drawMoneyAndStars(ctx, player, police = null) {
-    const right = this.width - 28;
-    label(ctx, 'CASH', right, 40, { size: 9, color: 'rgba(247,232,210,0.46)', spacing: '3px', align: 'right' });
+    // The sky is brightest exactly where the cash and stars sit. A slim plate
+    // the mirror of the vitals card keeps both legible without hiding the city.
+    const wanted = police?.wanted ?? player.wanted ?? 0;
+    const panelWidth = 238;
+    const panelHeight = wanted > 0 ? 150 : 138;
+    const panelX = this.width - panelWidth - 28;
+    const panelY = 18;
+    drawPanel(ctx, panelX, panelY, panelWidth, panelHeight, {
+      cut: 14,
+      fill: 'rgba(9,6,16,0.72)',
+      stroke: 'rgba(247,232,210,0.19)',
+      accent: 'rgba(255,201,92,0.85)',
+    });
+    const right = panelX + panelWidth - 16;
+    label(ctx, 'CASH', right, 40, { size: 9, color: 'rgba(247,232,210,0.52)', spacing: '3px', align: 'right' });
     ctx.save();
     ctx.font = `900 35px ${DISPLAY}`;
     ctx.textAlign = 'right';
     ctx.fillStyle = GOLD;
-    ctx.shadowColor = 'rgba(255, 201, 92, 0.35)';
+    ctx.shadowColor = 'rgba(255, 201, 92, 0.45)';
     ctx.shadowBlur = 14;
     ctx.fillText(cashString(player.cash), right, 76);
     ctx.restore();
 
-    const wanted = police?.wanted ?? player.wanted ?? 0;
     const flash = police?.wantedFlash ?? 0;
-    label(ctx, 'WANTED', right, 101, { size: 8, color: 'rgba(247,232,210,0.4)', spacing: '2.5px', align: 'right' });
-    const starRadius = 9;
-    const gap = 23;
+    label(ctx, 'WANTED', right, 101, { size: 8, color: 'rgba(247,232,210,0.5)', spacing: '2.5px', align: 'right' });
+    const starRadius = 9.5;
+    const gap = 23.5;
     for (let i = 0; i < 5; i += 1) {
       const cx = right - (4 - i) * gap - starRadius;
       const cy = 122;
@@ -394,8 +406,8 @@ export class Hud {
         ctx.shadowBlur = 8 + flash * 14;
         ctx.fill();
       } else {
-        ctx.strokeStyle = 'rgba(247,232,210,0.22)';
-        ctx.lineWidth = 1.1;
+        ctx.strokeStyle = 'rgba(247,232,210,0.32)';
+        ctx.lineWidth = 1.2;
         ctx.stroke();
       }
       ctx.restore();
@@ -426,6 +438,14 @@ export class Hud {
         ctx.fillStyle = CORAL;
         ctx.fillRect(right - 80, 154, 80 * Math.min(1, bust), 4);
       }
+    } else {
+      label(ctx, 'NO ACTIVE BOLO', right, 145, {
+        size: 7.5,
+        color: 'rgba(63,224,207,0.5)',
+        spacing: '1.6px',
+        align: 'right',
+        weight: 700,
+      });
     }
   }
 
@@ -896,8 +916,14 @@ export class Hud {
   }
 
   drawRadio(ctx, state) {
-    const right = this.width - 28;
+    const right = this.width - 44;
     const y = this.height - 155;
+    drawPanel(ctx, this.width - 28 - 228, y - 32, 228, 46, {
+      cut: 8,
+      fill: 'rgba(9,6,16,0.65)',
+      stroke: 'rgba(247,232,210,0.13)',
+      accent: 'rgba(63,224,207,0.55)',
+    });
     const enabled = state.radio?.enabled !== false;
     const bars = 4;
     for (let i = 0; i < bars; i += 1) {

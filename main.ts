@@ -84,11 +84,19 @@ if (wantCheck) {
   if (shotSizes.some((bytes) => bytes > caps.screenshots.max_bytes)) problems.push('screenshot over 256 KiB');
   if (dossierBytes > dossierCap) problems.push(`dossier ${dossierBytes} bytes`);
 
-  // A quick read-back catches a truncated or obviously malformed dossier.
+  // A quick read-back catches a truncated or obviously malformed dossier, and
+  // proves the embedded source text stayed inside the bounty's 160 KiB cap.
+  let dossierTextBytes = 0;
   try {
-    const parsed = JSON.parse(readFileSync(dossierPath, 'utf8')) as { schema?: string; images?: unknown[] };
+    const parsed = JSON.parse(readFileSync(dossierPath, 'utf8')) as {
+      schema?: string;
+      images?: unknown[];
+      text?: unknown;
+    };
     if (parsed.schema !== 'makefun/dossier/v1') problems.push('dossier schema');
     if (!Array.isArray(parsed.images) || parsed.images.length !== shotFiles.length) problems.push('dossier images');
+    if (typeof parsed.text === 'string') dossierTextBytes = Buffer.byteLength(parsed.text, 'utf8');
+    if (typeof parsed.text !== 'string' || dossierTextBytes > caps.text_max_bytes) problems.push('dossier text');
   } catch (error) {
     problems.push(`dossier JSON (${(error as Error).message})`);
   }
@@ -97,13 +105,13 @@ if (wantCheck) {
     console.log(
       `check PASS: game ${game.count}/${caps.game_max_files} entries, ${mib(game.totalBytes)}/${mib(caps.game_max_bytes)}; ` +
         `screenshots ${shotFiles.length}/${caps.screenshots.max}, largest ${kib(largestShot)}/${kib(caps.screenshots.max_bytes)}; ` +
-        `dossier ${mib(dossierBytes)}/${mib(dossierCap)}`,
+        `dossier ${mib(dossierBytes)}/${mib(dossierCap)}, text ${kib(dossierTextBytes)}/${kib(caps.text_max_bytes)}`,
     );
   } else {
     console.log(
       `check FAIL (${problems.join(', ') || 'game tree'}): game ${game?.count ?? '?'} entries; ` +
         `screenshots ${shotFiles.length}/${caps.screenshots.max}, largest ${kib(largestShot)}/${kib(caps.screenshots.max_bytes)}; ` +
-        `dossier ${mib(dossierBytes)}/${mib(dossierCap)}`,
+        `dossier ${mib(dossierBytes)}/${mib(dossierCap)}, text ${kib(dossierTextBytes)}/${kib(caps.text_max_bytes)}`,
     );
     process.exitCode = 1;
   }

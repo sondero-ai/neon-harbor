@@ -64,8 +64,8 @@ export const SHOTS = {
       z: 30.2,
       yaw: Math.PI / 2,
       speed: 22,
-      cameraPitch: 0.16,
-      cameraOrbit: -0.24,
+      cameraPitch: 0.12,
+      cameraOrbit: 0.05,
     },
     chase: {
       wanted: 4,

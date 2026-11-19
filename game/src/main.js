@@ -696,6 +696,12 @@ class Game {
 
   applyShot(shot) {
     this.shot = shot;
+    // A capture should look the same on a machine that last played on low.
+    if (this.quality !== 'high') {
+      this.quality = 'high';
+      this.applyQualityVisuals(true);
+      this.refreshQualityLabel();
+    }
     this.simTime = shot.time ?? 0;
     this.clockMinutes = HOURS * 60 + MINUTES;
     this.hud.suppressToasts = true;
@@ -705,6 +711,11 @@ class Game {
     if (shot.mode === 'title') {
       this.titleView = shot.titleCamera ?? DEFAULT_TITLE_VIEW;
       this.enterTitle();
+      // A screenshot must not change with whatever save the machine happens to
+      // hold, so the title capture always shows the fresh-slot menu.
+      const continueButton = byId('btn-continue');
+      if (continueButton) continueButton.disabled = true;
+      if (this.ui.continueNote) this.ui.continueNote.textContent = 'No save yet';
       for (let i = 0; i < steps; i += 1) this.tick(STEP);
     } else {
       this.down = null;

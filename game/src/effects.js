@@ -105,7 +105,7 @@ export class Effects {
     this.beamMaterial = new THREE.MeshBasicMaterial({
       color: 0xffd79b,
       transparent: true,
-      opacity: this.lowQuality ? 0.08 : 0.13,
+      opacity: this.lowQuality ? 0.09 : 0.16,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
@@ -367,10 +367,10 @@ export class Effects {
       beam.renderOrder = 2;
       group.add(beam);
       beams.push(beam);
-      const lamp = makeGlowSprite(0xffe6b5, 1.55, 0.7);
+      const lamp = makeGlowSprite(0xffe6b5, 1.7, 0.84);
       lamp.position.set(side * width * 0.36, 0.68, length / 2 + 0.06);
       group.add(lamp);
-      const tail = makeGlowSprite(0xff3928, 0.9, 0.52);
+      const tail = makeGlowSprite(0xff3928, 1.05, 0.66);
       tail.position.set(side * width * 0.38, 0.84, -length / 2 - 0.06);
       group.add(tail);
     }

@@ -63,20 +63,31 @@ export function makeCloudTexture() {
 }
 
 // One tile is four bays wide by four floors tall. Buildings scale UVs to keep
-// the windows close to 3 m per bay whatever the tower's proportions.
+// the windows close to 3 m per bay whatever the tower's proportions. The wall
+// carries its own floor bands, piers and sill shadows; lit rooms vary in warmth,
+// curtains and blinds so a street wall does not read as a checkerboard.
 const FACADE_PALETTES = [
-  { wall: '#c6a47f', frame: '#8f7052', trims: '#e0c29b', dark: '#252739', lit: ['#ffd28d', '#ffb45f', '#ffe9b9'], pattern: 'punched' },
-  { wall: '#326168', frame: '#1f3f46', trims: '#487e82', dark: '#122c35', lit: ['#61eedb', '#ffd084', '#b6fff6'], pattern: 'glass' },
-  { wall: '#ac6c6e', frame: '#77494f', trims: '#d18a86', dark: '#2b1e2f', lit: ['#ffd5a0', '#ff9e7b', '#ffe9ca'], pattern: 'ribbon' },
-  { wall: '#827b93', frame: '#5b536c', trims: '#9e95ae', dark: '#1f1d2e', lit: ['#ffbf79', '#7be4d8', '#ff8e9e'], pattern: 'punched' },
-  { wall: '#c4b098', frame: '#8c7861', trims: '#dfcbb0', dark: '#262233', lit: ['#ffdca6', '#ffbd70', '#a0e9dd'], pattern: 'ribbon' },
-  { wall: '#3f4358', frame: '#292c3e', trims: '#5b6280', dark: '#151824', lit: ['#ffc982', '#6be7d6', '#ff8399'], pattern: 'glass' },
-  { wall: '#94624f', frame: '#674133', trims: '#b98066', dark: '#211a26', lit: ['#ffd08a', '#ffa962', '#ffe8c2'], pattern: 'punched' },
-  { wall: '#566b62', frame: '#374a43', trims: '#768f83', dark: '#1a2929', lit: ['#ffd38f', '#8beadc', '#ffd7a8'], pattern: 'ribbon' },
+  { wall: '#c9a57c', frame: '#87654b', trims: '#e7c79c', dark: '#2a2f40', lit: ['#f2c17a', '#e8a45c', '#f7d49a', '#efb471'], pattern: 'punched' },
+  { wall: '#2f6068', frame: '#1d3c43', trims: '#4d858b', dark: '#173640', lit: ['#45d8c6', '#f0bf6e', '#8fe8dc', '#5cd8c6'], pattern: 'glass' },
+  { wall: '#a96770', frame: '#6f3f49', trims: '#d58e88', dark: '#332337', lit: ['#f4c38a', '#e89070', '#f6d3a8', '#eaa47d'], pattern: 'ribbon' },
+  { wall: '#7b7896', frame: '#504d68', trims: '#9b97b7', dark: '#25243a', lit: ['#f0b26b', '#58cdc2', '#e88190', '#f3cf94'], pattern: 'punched' },
+  { wall: '#c2aa8e', frame: '#897257', trims: '#e4ccac', dark: '#292640', lit: ['#f3c98e', '#eaaa60', '#78d3c6', '#f5d3a8'], pattern: 'ribbon' },
+  { wall: '#3b4259', frame: '#25293c', trims: '#5c6684', dark: '#191d2c', lit: ['#efb873', '#49d5c2', '#e87a8b', '#f0c785'], pattern: 'glass' },
+  { wall: '#98604f', frame: '#653b31', trims: '#bf7f64', dark: '#281d2b', lit: ['#f1bf7c', '#e99a58', '#f4d0a2', '#eda968'], pattern: 'punched' },
+  { wall: '#4f6f67', frame: '#304a44', trims: '#79a093', dark: '#1c2e30', lit: ['#efc37f', '#6fd6c4', '#f0c593', '#78dccb'], pattern: 'ribbon' },
 ];
 
+function shiftHex(hex, amount) {
+  const value = parseInt(hex.slice(1), 16);
+  const r = Math.max(0, Math.min(255, ((value >> 16) & 255) + amount));
+  const g = Math.max(0, Math.min(255, ((value >> 8) & 255) + amount));
+  const b = Math.max(0, Math.min(255, (value & 255) + amount));
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
 function drawFacade(palette, seed) {
-  const size = 128;
+  const size = 256;
+  const bay = size / 4;
   const mapCanvas = document.createElement('canvas');
   const glowCanvas = document.createElement('canvas');
   mapCanvas.width = mapCanvas.height = size;
@@ -85,20 +96,32 @@ function drawFacade(palette, seed) {
   const glow = glowCanvas.getContext('2d');
   const rng = makeRng(seed);
 
-  map.fillStyle = palette.wall;
+  const wall = map.createLinearGradient(0, 0, 0, size);
+  wall.addColorStop(0, shiftHex(palette.wall, 12));
+  wall.addColorStop(0.58, palette.wall);
+  wall.addColorStop(1, shiftHex(palette.wall, -22));
+  map.fillStyle = wall;
   map.fillRect(0, 0, size, size);
-  // A little vertical grain and floor shadow so flat walls are not dead flat.
-  for (let x = 0; x < size; x += 32) {
-    map.fillStyle = 'rgba(255,255,255,0.035)';
-    map.fillRect(x, 0, 2, size);
-    map.fillStyle = 'rgba(0,0,0,0.06)';
-    map.fillRect(x + 30, 0, 2, size);
+
+  // Piers, floor bands and a little masonry grain give the repeats a pulse.
+  for (let col = 0; col <= 4; col += 1) {
+    const x = col * bay;
+    map.fillStyle = 'rgba(255,244,226,0.045)';
+    map.fillRect(x + 1, 0, 1.5, size);
+    map.fillStyle = 'rgba(0,0,0,0.12)';
+    map.fillRect(x - 1, 0, 2, size);
   }
-  for (let y = 0; y < size; y += 32) {
-    map.fillStyle = 'rgba(0,0,0,0.11)';
-    map.fillRect(0, y + 29, size, 3);
-    map.fillStyle = 'rgba(255,255,255,0.035)';
-    map.fillRect(0, y, size, 1);
+  for (let row = 0; row < 4; row += 1) {
+    const y = row * bay;
+    map.fillStyle = 'rgba(0,0,0,0.16)';
+    map.fillRect(0, y + bay - 4, size, 4);
+    map.fillStyle = 'rgba(255,242,220,0.055)';
+    map.fillRect(0, y + bay - 5, size, 1);
+  }
+  for (let i = 0; i < 520; i += 1) {
+    const shade = rng.range(60, 190);
+    map.fillStyle = `rgba(${shade},${shade - 8},${shade + 2},${rng.range(0.015, 0.05)})`;
+    map.fillRect(rng.range(0, size), rng.range(0, size), rng.range(0.6, 2.4), rng.range(0.6, 2));
   }
 
   glow.fillStyle = '#000';
@@ -106,64 +129,105 @@ function drawFacade(palette, seed) {
 
   for (let row = 0; row < 4; row += 1) {
     for (let col = 0; col < 4; col += 1) {
-      const lit = rng.chance(palette.pattern === 'glass' ? 0.58 : 0.46);
+      const lit = rng.chance(palette.pattern === 'glass' ? 0.36 : 0.42);
       const litColor = palette.lit[rng.int(0, palette.lit.length - 1)];
       let x;
       let y;
       let w;
       let h;
       if (palette.pattern === 'glass') {
-        x = col * 32 + 2;
-        y = row * 32 + 3;
-        w = 28;
-        h = 26;
+        x = col * bay + 6;
+        y = row * bay + 7;
+        w = bay - 12;
+        h = bay - 18;
       } else if (palette.pattern === 'ribbon') {
-        x = col * 32 + 1;
-        y = row * 32 + 9;
-        w = 30;
-        h = 15;
+        x = col * bay + 2;
+        y = row * bay + 21;
+        w = bay - 4;
+        h = bay - 34;
       } else {
-        x = col * 32 + 7;
-        y = row * 32 + 8;
-        w = 18;
-        h = 17;
+        x = col * bay + 16;
+        y = row * bay + 17;
+        w = bay - 32;
+        h = bay - 36;
       }
 
-      map.fillStyle = lit ? litColor : palette.dark;
-      map.fillRect(x, y, w, h);
-      map.fillStyle = 'rgba(8,9,18,0.36)';
-      map.fillRect(x, y + h * 0.68, w, h * 0.32);
-      map.strokeStyle = palette.frame;
-      map.lineWidth = palette.pattern === 'glass' ? 1 : 2;
-      map.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-      if (palette.pattern === 'punched') {
-        map.fillStyle = 'rgba(255,255,255,0.12)';
-        map.fillRect(x + 1, y + h + 1, w - 2, 2);
+      if (lit) {
+        const room = map.createLinearGradient(x, y, x, y + h);
+        room.addColorStop(0, shiftHex(litColor, 8));
+        room.addColorStop(0.6, litColor);
+        room.addColorStop(1, shiftHex(litColor, -62));
+        map.fillStyle = room;
+        map.fillRect(x, y, w, h);
+        map.fillStyle = 'rgba(18,11,20,0.2)';
+        map.fillRect(x, y + h * 0.72, w, h * 0.28);
+        if (rng.chance(0.34)) {
+          map.fillStyle = 'rgba(26,16,25,0.42)';
+          const slats = rng.int(2, 4);
+          for (let s = 0; s < slats; s += 1) {
+            map.fillRect(x + 2, y + h * 0.16 + s * (h * 0.16), w - 4, 2);
+          }
+        }
+        if (rng.chance(0.24)) {
+          map.fillStyle = 'rgba(31,19,29,0.36)';
+          map.fillRect(x + w * rng.range(0.18, 0.5), y + h * 0.42, w * 0.18, h * 0.44);
+        }
+      } else {
+        map.fillStyle = palette.dark;
+        map.fillRect(x, y, w, h);
+        const reflection = map.createLinearGradient(x, y, x + w, y + h);
+        reflection.addColorStop(0, 'rgba(174,214,232,0.19)');
+        reflection.addColorStop(0.45, 'rgba(120,158,182,0.05)');
+        reflection.addColorStop(1, 'rgba(0,0,0,0.2)');
+        map.fillStyle = reflection;
+        map.fillRect(x, y, w, h);
+        if (rng.chance(0.3)) {
+          map.fillStyle = 'rgba(255,188,116,0.075)';
+          map.fillRect(x + w * 0.16, y + h * 0.4, w * 0.3, h * 0.5);
+        }
       }
-      if (!lit) {
-        map.fillStyle = 'rgba(120,154,178,0.1)';
-        map.fillRect(x + 2, y + 2, w * 0.38, h - 4);
+
+      map.strokeStyle = palette.frame;
+      map.lineWidth = palette.pattern === 'glass' ? 1.5 : 2.5;
+      map.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      if (palette.pattern === 'glass') {
+        map.fillStyle = palette.frame;
+        map.fillRect(x + w / 2 - 0.75, y, 1.5, h);
+        map.fillRect(x, y + h * 0.48, w, 1.5);
+        map.fillStyle = shiftHex(palette.frame, 14);
+        map.fillRect(0, row * bay + bay - 8, size, 5);
+        map.fillStyle = 'rgba(255,238,214,0.08)';
+        map.fillRect(0, row * bay + bay - 9, size, 1);
+      } else if (palette.pattern === 'ribbon') {
+        map.fillStyle = palette.frame;
+        map.fillRect(x + w / 2 - 0.75, y, 1.5, h);
+        map.fillRect(0, row * bay + bay - 9, size, 2);
+      } else {
+        map.fillStyle = 'rgba(0,0,0,0.24)';
+        map.fillRect(x - 4, y + h + 1, w + 8, 4);
+        map.fillStyle = 'rgba(255,236,211,0.13)';
+        map.fillRect(x - 4, y + h + 1, w + 8, 1.5);
+        map.fillStyle = palette.frame;
+        map.fillRect(x - 3, y + h - 2, 3, 3);
+        map.fillRect(x + w, y + h - 2, 3, 3);
       }
 
       if (lit) {
         glow.save();
         glow.shadowColor = litColor;
-        glow.shadowBlur = palette.pattern === 'glass' ? 10 : 7;
+        glow.shadowBlur = palette.pattern === 'glass' ? 13 : 9;
         glow.fillStyle = litColor;
-        glow.globalAlpha = 0.86;
+        glow.globalAlpha = rng.range(0.45, 0.8);
         glow.fillRect(x, y, w, h);
-        glow.globalAlpha = 0.36;
+        glow.globalAlpha = 0.3;
         glow.fillStyle = '#fff4dc';
         glow.fillRect(x + w * 0.18, y + h * 0.16, w * 0.46, h * 0.24);
         glow.restore();
-      }
-
-      if (palette.pattern !== 'punched') {
-        map.fillStyle = palette.frame;
-        map.fillRect(x + w / 2 - 0.75, y, 1.5, h);
-        if (palette.pattern === 'ribbon') {
-          map.fillRect(0, row * 32 + 24, size, 2);
-        }
+      } else if (rng.chance(0.12)) {
+        glow.globalAlpha = 0.12;
+        glow.fillStyle = litColor;
+        glow.fillRect(x, y, w, h);
+        glow.globalAlpha = 1;
       }
     }
   }
@@ -192,7 +256,7 @@ export function makeFacadeStyles() {
       map: mapTexture,
       emissiveMap: glowTextureMap,
       emissive: 0xffffff,
-      emissiveIntensity: palette.pattern === 'glass' ? 1.0 : 0.82,
+      emissiveIntensity: palette.pattern === 'glass' ? 0.7 : 0.58,
       roughness: palette.pattern === 'glass' ? 0.48 : 0.82,
       metalness: palette.pattern === 'glass' ? 0.22 : 0.04,
     });
@@ -407,12 +471,16 @@ export function mergeGeometries(parts) {
     const position = geometry.attributes.position;
     const normal = geometry.attributes.normal;
     const uv = geometry.attributes.uv;
-    if (useColor) color.set(part.color ?? 0xffffff);
+    const vertexColor = geometry.attributes.color;
+    if (useColor && !vertexColor) color.set(part.color ?? 0xffffff);
     for (let i = 0; i < position.count; i += 1) {
       positions.push(position.getX(i), position.getY(i), position.getZ(i));
       normals.push(normal.getX(i), normal.getY(i), normal.getZ(i));
       uvs.push(uv ? uv.getX(i) : 0, uv ? uv.getY(i) : 0);
-      if (useColor) colors.push(color.r, color.g, color.b);
+      if (useColor) {
+        if (vertexColor) colors.push(vertexColor.getX(i), vertexColor.getY(i), vertexColor.getZ(i));
+        else colors.push(color.r, color.g, color.b);
+      }
     }
     geometry.dispose();
   }

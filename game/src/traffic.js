@@ -233,6 +233,7 @@ export class Traffic {
       this.spawnLaneCar('van', 'x', -1, 27, -104, 8.2, { color: 0x92523f });
       this.spawnLaneCar('taxi', 'x', 1, 27, -136, 8.6);
       this.spawnLaneCar('muscle', 'x', -1, 27, -82, 9.1, { color: 0x274c57 });
+      this.spawnLaneCar('taxi', 'x', -1, 27, -70, 8.8);
       const crosser = this.spawnPed({
         x: -71.8,
         z: 31.6,

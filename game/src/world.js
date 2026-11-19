@@ -310,13 +310,13 @@ export class World {
 
   buildLights() {
     const preset = QUALITY_PRESETS[this.quality] ?? QUALITY_PRESETS.high;
-    this.hemi = new THREE.HemisphereLight(0xffd0a6, 0x4b354b, 1.85);
+    this.hemi = new THREE.HemisphereLight(0xffd0a6, 0x58405a, 1.98);
     this.scene.add(this.hemi);
 
-    this.ambient = new THREE.AmbientLight(0xa589a2, 0.5);
+    this.ambient = new THREE.AmbientLight(0xa589a2, 0.55);
     this.scene.add(this.ambient);
 
-    this.sun = new THREE.DirectionalLight(0xffb476, 3.0);
+    this.sun = new THREE.DirectionalLight(0xffb476, 3.05);
     this.sun.castShadow = preset.shadows;
     this.sun.shadow.mapSize.set(preset.shadowMap, preset.shadowMap);
     this.sun.shadow.camera.left = -76;
@@ -330,7 +330,7 @@ export class World {
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
 
-    this.fill = new THREE.DirectionalLight(0x99a2dd, 1.0);
+    this.fill = new THREE.DirectionalLight(0x99a2dd, 1.1);
     this.fill.position.set(130, 70, -110);
     this.scene.add(this.fill);
 
@@ -356,11 +356,11 @@ export class World {
 
   buildGround() {
     const asphalt = canvasTexture(128, 128, (ctx, width, height) => {
-      ctx.fillStyle = '#28242f';
+      ctx.fillStyle = '#35303d';
       ctx.fillRect(0, 0, width, height);
       const rng = makeRng(0xa55f);
-      for (let i = 0; i < 900; i += 1) {
-        const shade = rng.range(16, 70);
+      for (let i = 0; i < 1100; i += 1) {
+        const shade = rng.range(24, 92);
         ctx.fillStyle = `rgba(${shade + 8},${shade + 2},${shade + 12},${rng.range(0.08, 0.35)})`;
         ctx.fillRect(rng.range(0, width), rng.range(0, height), rng.range(0.5, 2), rng.range(0.5, 2));
       }
@@ -717,11 +717,18 @@ export class World {
   }
 
   styleFor(cx, cz, rng) {
+    // The four blocks that frame Luna Plaza stay warm and masonry-heavy, so
+    // the fountain reads against brick and ribbon glass rather than a wall of
+    // lit teal squares.
+    if (cx === 0 || cz === 0) {
+      if (Math.abs(cx) + Math.abs(cz) === 54) return rng.pick([0, 2, 4, 6, 3]);
+    }
     const east = clamp((cx + 142) / 338, 0, 1);
     const core = 1 - clamp((Math.abs(cx - 70) + Math.abs(cz - 55)) / 300, 0, 1);
     const downtown = east * 0.68 + core * 0.32;
-    const glassy = downtown > 0.36 && rng.chance(0.62);
-    return glassy ? rng.pick([1, 3, 5, 2]) : rng.pick([0, 2, 4, 6, 7]);
+    const glassy = downtown > 0.34 ? rng.chance(0.55) : rng.chance(0.2);
+    if (glassy) return rng.pick([1, 5, 3, 2]);
+    return rng.pick([0, 2, 4, 6, 7, 3, 1]);
   }
 
   buildBlock(cx, cz) {
@@ -944,9 +951,10 @@ export class World {
     const towerDepth = 21;
     const towerHeight = 34;
     const y0 = WORLD.sidewalkHeight;
-    const style = this.facadeStyles[1];
+    const baseStyle = this.facadeStyles[2];
+    const towerStyle = this.facadeStyles[4];
 
-    const base = makeBuildingMesh(width, baseHeight, depth, style);
+    const base = makeBuildingMesh(width, baseHeight, depth, baseStyle);
     base.position.set(cx, y0 + baseHeight / 2, cz);
     base.castShadow = true;
     base.receiveShadow = true;
@@ -956,7 +964,7 @@ export class World {
       matrix: matrixFor(cx, y0 + baseHeight + 0.22, cz),
       color: 0x2b2430,
     });
-    const tower = makeBuildingMesh(towerWidth, towerHeight, towerDepth, style);
+    const tower = makeBuildingMesh(towerWidth, towerHeight, towerDepth, towerStyle);
     tower.position.set(cx, y0 + baseHeight + towerHeight / 2, cz);
     tower.castShadow = true;
     tower.receiveShadow = true;
@@ -1709,6 +1717,64 @@ export class World {
       this.root.add(glow);
     });
     this.streetlightCount = entries.length;
+    this.buildStreetPools(entries);
+  }
+
+  // Warm pools under the lamps and a few coloured spills under the strip's
+  // blade signs. One instanced additive quad, so the road gets light without
+  // adding per-frame draw calls.
+  buildStreetPools(entries) {
+    const quad = new THREE.PlaneGeometry(1, 1);
+    quad.rotateX(-Math.PI / 2);
+    const poolMaterial = new THREE.MeshBasicMaterial({
+      map: makeGlowTexture(),
+      transparent: true,
+      opacity: 0.14,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const pools = [];
+    for (let i = 0; i < entries.length; i += 2) {
+      const entry = entries[i];
+      pools.push({
+        x: entry.x + Math.cos(entry.ry) * 1.56,
+        z: entry.z - Math.sin(entry.ry) * 1.56,
+        y: entry.y + 0.03,
+        sx: 4.6,
+        sz: 4.6,
+        color: 0xffb668,
+      });
+    }
+    const signColors = [0xff6f61, 0x3fe0cf, 0xffc95c];
+    for (let i = 0; i < 12; i += 1) {
+      pools.push({
+        x: -126 + i * 18,
+        z: i % 2 === 0 ? 18.4 : 35.6,
+        y: WORLD.sidewalkHeight + 0.025,
+        sx: 8.6,
+        sz: 4.4,
+        color: signColors[i % signColors.length],
+      });
+    }
+    const mesh = new THREE.InstancedMesh(quad, poolMaterial, pools.length);
+    const matrix = new THREE.Matrix4();
+    const position = new THREE.Vector3();
+    const quaternion = new THREE.Quaternion();
+    const scale = new THREE.Vector3();
+    const color = new THREE.Color();
+    pools.forEach((pool, index) => {
+      position.set(pool.x, pool.y, pool.z);
+      scale.set(pool.sx, 1, pool.sz);
+      matrix.compose(position, quaternion, scale);
+      mesh.setMatrixAt(index, matrix);
+      mesh.setColorAt(index, color.setHex(pool.color));
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 1;
+    this.root.add(mesh);
   }
 
   // ---------------------------------------------------------------- signage
@@ -2112,7 +2178,7 @@ export class World {
           map: this.storefrontTexture,
           emissiveMap: this.storefrontTexture,
           emissive: 0xffffff,
-          emissiveIntensity: 0.55,
+          emissiveIntensity: 0.65,
           roughness: 0.66,
           metalness: 0.03,
           side: THREE.FrontSide,
@@ -2273,15 +2339,15 @@ export class World {
   update(dt, elapsed, camera) {
     if (camera) this.skyRoot.position.copy(camera.position);
     if (this.waterTexture) {
-      this.waterTexture.offset.x = (elapsed * 0.006) % 1;
-      this.waterTexture.offset.y = (elapsed * 0.0035) % 1;
+      this.waterTexture.offset.x = (elapsed * 0.011) % 1;
+      this.waterTexture.offset.y = (elapsed * 0.0055) % 1;
     }
     if (this.foamTexture) this.foamTexture.offset.y = (elapsed * 0.02) % 1;
     if (this.foam) this.foam.material.opacity = 0.26 + Math.sin(elapsed * 0.9) * 0.06;
     if (this.fountainWater) this.fountainWater.material.emissiveIntensity = 0.32 + Math.sin(elapsed * 2.1) * 0.13;
     if (this.plazaRing) this.plazaRing.rotation.z = elapsed * 0.18;
     if (this.beam) this.beam.rotation.y = elapsed * 0.62;
-    if (this.sparkles) this.sparkles.material.opacity = 0.38 + Math.sin(elapsed * 1.4) * 0.13;
+    if (this.sparkles) this.sparkles.material.opacity = 0.44 + Math.sin(elapsed * 1.4) * 0.14;
 
     for (const sign of this.neonSigns) {
       if (sign.flicker <= 0) continue;
