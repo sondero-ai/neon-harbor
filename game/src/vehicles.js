@@ -340,6 +340,7 @@ export const VEHICLE_TYPES = {
   sedan: {
     name: 'Fathom 400',
     className: 'SEDAN',
+    tune: 'HARBOR STOCK',
     maxSpeed: 33,
     acceleration: 8.8,
     brake: 17,
@@ -351,6 +352,7 @@ export const VEHICLE_TYPES = {
   taxi: {
     name: 'Harbor Cab',
     className: 'TAXI',
+    tune: 'FLEET TUNE',
     maxSpeed: 32,
     acceleration: 8.2,
     brake: 16,
@@ -362,6 +364,7 @@ export const VEHICLE_TYPES = {
   sports: {
     name: 'Vela GT',
     className: 'SPORTS',
+    tune: 'STRIP TUNE',
     maxSpeed: 45,
     acceleration: 14.2,
     brake: 20,
@@ -373,6 +376,7 @@ export const VEHICLE_TYPES = {
   muscle: {
     name: 'Riptide 442',
     className: 'MUSCLE',
+    tune: 'DRAG TUNE',
     maxSpeed: 41,
     acceleration: 12.8,
     brake: 15,
@@ -384,6 +388,7 @@ export const VEHICLE_TYPES = {
   van: {
     name: 'Mule 9',
     className: 'VAN',
+    tune: 'HAUL TUNE',
     maxSpeed: 28,
     acceleration: 6.4,
     brake: 14,
@@ -395,6 +400,7 @@ export const VEHICLE_TYPES = {
   pickup: {
     name: 'Dune Hauler',
     className: 'PICKUP',
+    tune: 'DOCK TUNE',
     maxSpeed: 31,
     acceleration: 8.2,
     brake: 15,
@@ -406,6 +412,7 @@ export const VEHICLE_TYPES = {
   police: {
     name: 'Harbor PD Cruiser',
     className: 'POLICE',
+    tune: 'PURSUIT TUNE',
     maxSpeed: 39,
     acceleration: 12,
     brake: 20,
@@ -448,7 +455,11 @@ export class Vehicle {
     this.shape = shape;
     this.name = spec.name;
     this.className = spec.className;
+    this.tune = spec.tune ?? 'HARBOR STOCK';
     this.color = color ?? spec.colors[0];
+    // Bodywork condition is presentation state only: it records hard impacts
+    // for the HUD's condition bar and never feeds back into the physics.
+    this.condition = 1;
     this.driver = null;
     this.controls = { throttle: 0, brake: 1, steer: 0, handbrake: true };
     this.velocity = new THREE.Vector3();
@@ -754,6 +765,9 @@ export class Vehicle {
       this.velocity.x *= movedX ? 0.45 : -0.08;
       this.velocity.z *= movedZ ? 0.45 : -0.08;
       this.impact = Math.min(1, this.impact + Math.abs(forwardSpeed) * 0.035);
+      if (Math.abs(forwardSpeed) > 7) {
+        this.condition = Math.max(0, this.condition - Math.abs(forwardSpeed) * 0.0016);
+      }
       break;
     }
 
@@ -960,6 +974,12 @@ export class Vehicles {
         b.velocity.multiplyScalar(bMoving ? 0.68 : 1);
         a.impact = Math.min(1, a.impact + 0.22);
         b.impact = Math.min(1, b.impact + 0.22);
+        const closing = Math.abs(a.speed - b.speed);
+        if (closing > 4) {
+          const wear = closing * 0.0012;
+          a.condition = Math.max(0, a.condition - wear);
+          b.condition = Math.max(0, b.condition - wear);
+        }
       }
     }
   }

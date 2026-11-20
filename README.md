@@ -7,9 +7,9 @@
 Neon Harbor is an original third-person open-world crime game for the desktop
 browser. It runs from plain static files with no build step, no package
 install and no network request after the page loads. The setting is a
-golden-hour coastal city: six by six blocks of low-rise storefronts and
+neon-night coastal city: six by six blocks of low-rise storefronts and
 downtown towers, a wide beach, a long pier, a working lighthouse, palms,
-streetlights and hand-built neon.
+streetlights and hand-built neon under a deep indigo sky.
 
 You play courier **Rae Solano**, back in the harbor to settle a family debt.
 The build is the whole first chapter: a seeded city, a third-person camera
@@ -109,13 +109,14 @@ antennas, emissive storefronts and neon boards. Landmarks include the Sunset
 Hotel tower, Casa Luna on the beach, Motor Row, the Luna Plaza fountain, the
 radio mast, the Vega Strip arch, Pier 9 and its lighthouse.
 
-The sun sits low in the west. Warm fog blends the distance, emissive windows
-and signs carry the neon, and instanced pools under the streetlights and blade
-signs spill colour onto the pavement. The water plane scrolls its surface
-texture, the foam breathes, a points cloud supplies the sun glitter, the
-lighthouse beam turns, and cloud sprites drift over the skyline. A typical 1280×720 frame in
-this build uses roughly 250–400 draw calls and runs comfortably above 60 fps
-on a desktop GPU.
+It is 23:41 on the fourth night. A moon and a field of stars sit over the
+harbor, a magenta band of city light pollution hangs on the horizon, and cool
+moonlight plus the warm emissive windows and neon carry the scene. Instanced
+pools under the streetlights and blade signs spill colour onto the pavement.
+The water plane scrolls its surface texture, the foam breathes, a points cloud
+supplies the night glitter, the lighthouse beam turns, and cloud sprites drift
+over the skyline. A typical 1280×720 frame in this build uses roughly 250–450
+draw calls and runs comfortably above 60 fps on a desktop GPU.
 
 ## Traffic and driving
 
@@ -156,6 +157,14 @@ down. Stopped on foot, close to an officer, with no weapon raised and no recent
 shot, the bust timer runs. The flow hands control back to `main.js`, which
 paints the wasted/busted overlay, takes a cut of the cash and respawns Rae.
 
+The same director owns **Air 1**, an HPD helicopter that patrols above the
+streets with a spinning main rotor, a tail rotor, navigation lights and a
+visible searchlight cone. It sweeps the pavement on a quiet night and locks the
+beam onto Rae's car once a pursuit starts; its horizontal range feeds the
+top-centre `AIR 1 · SPOTLIGHT` banner and the response roster. Each cruiser,
+officer and the air unit gets a callsign and a live role — RAMMING, PURSUIT,
+CLOSING IN, ROADBLOCK or SPOTLIGHT — plus its distance in metres.
+
 Combat lives on `player.js`: the pistol and SMG are hitscan with spread,
 recoil, muzzle flash, tracer, impact sparks, a hit marker, magazine and reserve
 ammo and a reload timer. Bullets stop on the nearest collider, vehicle or
@@ -172,53 +181,65 @@ halos, and camera shake. The hurt level it accumulates feeds the HUD vignette.
 Nothing in the effect layer allocates a mesh at the moment of a shot or an
 explosion.
 
-`hud.js` is a Canvas 2D layer over the WebGL view: health and armor bars with
-hit flashes, a cash card, the live wanted stars and pursuit/search status, the
-district and clock, a baked minimap with the player arrow, traffic blips,
-alternating red/blue police and officer blips, mission enemies in coral and the
-objective marker, live car/walker counts, the mission tag, objective and
-distance, progress or a countdown, the radio line, the context prompt, the
-on-foot weapon panel with magazine and reserve, a dynamic crosshair and hit
-marker, and either the on-foot readout or the driving panel with vehicle name,
-speed, gear and engine load. Dialogue appears as a speaker-coloured subtitle
-above the objective; rewards and mission results arrive as toasts and a gold
-cash banner. Street jobs get their own progress panel above the minimap.
-Getting wasted or busted takes over the screen with a full-frame overlay, drops
-part of the cash on hand and returns Rae to the strip with the heat cleared; a
-failed mission stays on screen with a retry prompt until you take it again.
+`hud.js` is a Canvas 2D layer over the WebGL view. The left rail carries a
+chapter card (`CH.2 · STRIP HEAT`, the mission title, a one-line objective, a
+four-segment `STAGE 2/4` bar and a `NEXT:` line), Rae's health and armour bars
+with hit flashes, the baked minimap with the district, named street, traffic
+and walker counts, the player arrow, alternating red/blue police and officer
+blips, mission enemies in coral and the objective marker, plus the crew panel
+(Mira Sol, Odin and Kiki with live role/status lines) and an NPC dialogue box
+with a drawn portrait, speaker name, role and line. The right rail carries the
+cash card, five wanted stars, `PURSUIT · 6 UNITS` or the search status, the
+`DAY 4 · 23:41` clock, the `STRIP RUNNER · 62/250 RESPECT` meter, the HPD
+response roster with named callsigns, roles and distances, the five-slot weapon
+strip (Solano 9, Kestrel SMG, street knife, and locked rifle and RPG slots), and
+the vehicle card with model, class, tune, a large speed readout, condition and
+damage percentages, gear, engine load and the Night Tide 88.3 radio line. A
+top-centre `AIR 1 · SPOTLIGHT` banner tracks the helicopter's range; the bottom
+centre keeps the live objective, progress or countdown, the context prompt, a
+dynamic crosshair and hit marker. Street jobs get their own progress panel
+under the location line; rewards and mission results arrive as toasts and a
+gold cash banner. Getting wasted or busted takes over the screen with a
+full-frame overlay, drops part of the cash on hand and returns Rae to the strip
+with the heat cleared; a failed mission stays on screen with a retry prompt
+until you take it again.
 
 `audio.js` builds the whole soundscape with WebAudio oscillators and noise: an
 engine hum tracking rpm, load and speed, a two-tone siren whose level follows
 the nearest cruiser or officer, pistol and SMG reports, impacts, explosions,
 the horn, reload clicks, pickup chimes, hurt and wasted/busted stings, and menu
 blips. Three original station loops — synthwave, chiptune and surf — are
-sequenced live from the same oscillator kit: Night Tide 88.3, KNRV 104.7 and
-The Breakwater 97.1. The context is created on the first real pointer or
+sequenced live from the same oscillator kit: Night Tide 88.3 (Sable Youth —
+“Harbor Lights”), KNRV 104.7 and The Breakwater 97.1. The context is created on the first real pointer or
 keyboard gesture; no audio files and no network requests are involved. Volume
 and mute persist with the quality setting.
 
 ## Screenshots
 
 `screenshots/` holds exactly four real Chrome renders at **1280×720 JPEG**,
-each under 256 KiB. The first by name is the cover.
+each under 256 KiB. The first by name is the cover. They are captured by
+`tools/capture.mjs` from the live page with headless Chrome; nothing is
+composited and no filters are applied.
 
-- `1-cover.jpg` — `?shot=chase`: four wanted stars, three cruisers and two
-  officers closing on the Riptide, the `Break the Blockade` objective, the
-  minimap full of blips and 78 km/h on the speed panel.
-- `2-street.jpg` — `?shot=street`: Rae on foot on Vega Strip with lane traffic,
-  a taxi, crossing pedestrians, the safehouse ring, `Find Pier 9` and the
-  minimap.
-- `3-mission.jpg` — `?shot=mission`: Tomas' ambush around the Luna Plaza
-  fountain, aimed fire and tracers, the `Survive the Ambush` objective and the
-  mission dialogue line.
-- `4-title.jpg` — `?shot=start`: the title and menu over the live golden-hour
-  skyline, Sunset Hotel, the pier and the water.
+- `1-cover.jpg` — `?shot=chase`: the night chase on Vega Strip with the red
+  Riptide, two HPD cruisers with lit bars, lane traffic, crosswalk pedestrians,
+  the MART neon, Air 1 and its searchlight overhead, and the full HUD at once:
+  CH.2 mission card, six-unit response roster, Sgt. Vale dispatch dialogue,
+  crew panel, five-slot weapon strip and the Riptide vehicle card at 78 km/h.
+- `2-street.jpg` — `?shot=blockade`: an HPD roadblock on Vega Strip at four
+  stars, the six-unit roster with RAMMING, SPOTLIGHT, CLOSING IN and ROADBLOCK
+  entries, Sgt. Vale on the radio, and the player caught in Air 1's beam.
+- `3-mission.jpg` — `?shot=heist`: the Pier 9 docks at night, the lighthouse,
+  burning barrels, Aurelio's enforcers and tracers, the CH.5 · LAST EXIT /
+  PIER 9 BURNING card, the `CLEAR PIER 9` objective and the Pier 9 minimap.
+- `4-title.jpg` — `?shot=start`: the title and menu over the live night
+  skyline, Sunset Hotel, the pier and the full extent of the city.
 
 Every shot builds the real world, player, police or mission director, weapons,
 effects and HUD, runs a fixed number of simulation steps and then freezes. Shot
 mode forces high quality, suppresses toasts and the fresh-slot title card, and
 does not depend on pointer lock or the wall clock. The other staged poses
-(`drive`, `heist`, `pier`) remain available for development checks.
+(`street`, `drive`, `mission`, `pier`) remain available for development checks.
 
 ## Build the entry
 
@@ -228,9 +249,16 @@ does not depend on pointer lock or the wall clock. The other staged poses
 the Node standard library and runs directly as TypeScript on Node 22.18+.
 
 ```bash
+node tools/capture.mjs                 # four 1280×720 JPEGs in screenshots/
 MAKEFUN_OUTPUT_DIR=out node main.ts
 MAKEFUN_OUTPUT_DIR=out node main.ts --check
 ```
+
+`tools/capture.mjs` is a stdlib-only Chrome DevTools driver: it serves `game/`,
+launches headless Chrome with GPU WebGL, navigates each `?shot=` scene, waits
+for the frozen frame, captures a JPEG at 1280×720 and retries at a lower JPEG
+quality if the file would exceed 256 KiB. It checks the JPEG header dimensions
+and fails on any console or page exception.
 
 `--check` re-reads the copy against the bounty caps and prints one summary
 line:
@@ -253,7 +281,8 @@ libraries, no generated bundles and no binary assets in `game/`.
 - `game/src/main.js` — boot, fixed-step loop, screen state machine, quality,
   save wiring, vehicle entry/exit, radio state and deterministic shot staging.
 - `game/src/world.js` — city generation, ground/collision/camera queries, beach,
-  pier, lighthouse, ocean, sky, lights, signs, light pools and animation.
+  pier, lighthouse, ocean, the night sky and moon, lights, signs, light pools
+  and animation.
 - `game/src/geo.js` — reusable mesh, facade, sign and billboard factories, and
   the geometry merge.
 - `game/src/vehicles.js` — seven vehicle classes, meshes, arcade physics,
@@ -261,7 +290,8 @@ libraries, no generated bundles and no binary assets in `game/`.
 - `game/src/traffic.js` — lane traffic, signals, following, pedestrians,
   crosswalk crossings, beach/pier crowd and shot staging.
 - `game/src/police.js` — wanted level, pursuit driving, search/decay, cruiser
-  and officer combat, roadblocks, busted/wasted handshake, chase staging.
+  and officer combat, roadblocks, callsigns, the Air 1 helicopter and its
+  searchlight, the response roster, busted/wasted handshake and chase staging.
 - `game/src/missions.js` — the five-mission director: markers, dialogue queue,
   mission enemies and bosses, objectives, timers, rewards, failure and retry,
   pier fire, and mission/heist staging.
@@ -274,19 +304,22 @@ libraries, no generated bundles and no binary assets in `game/`.
   marks, vehicle lights, screen shake and hurt accumulation.
 - `game/src/audio.js` — the WebAudio engine, sirens, guns, impacts, horn, UI
   blips, stings and three live radio sequencers.
-- `game/src/hud.js` — the Canvas 2D HUD, minimap, blips, wanted status,
-  subtitles, objective/progress/timer, street-job panel, rewards, weapon panel,
-  crosshair, failure/down/ending screens.
+- `game/src/hud.js` — the Canvas 2D HUD: mission card, vitals, state card,
+  minimap and blips, crew panel, portrait dialogue, police response roster,
+  Air 1 banner, five-slot weapon strip, vehicle/radio card, objective and
+  street-job panels, crosshair, rewards and failure/down/ending screens.
 - `game/src/input.js` — keyboard, mouse, wheel, pointer lock and mouse edges.
 - `game/src/save.js` — guarded localStorage save, story/mission index, weapons,
   quality, volume and mute settings.
-- `game/src/random.js`, `config.js` — seeded RNG and shared constants.
-- `game/src/shots.js` — the fixed `start`, `street`, `drive`, `chase`,
-  `mission`, `heist` and `pier` screenshot poses.
+- `game/src/random.js`, `config.js` — seeded RNG, the night clock, district and
+  street names, tune labels and shared constants.
+- `game/src/shots.js` — the fixed `start`, `street`, `blockade`, `drive`,
+  `chase`, `mission`, `heist` and `pier` screenshot poses.
 - `game/vendor/` — three.js r180's minified module and core builds behind the
   one-line `three.module.js` shim.
 - `main.ts`, `serve.ts`, `vendor/makefun-game.ts` — entrypoint, development
   server and the bounty's dossier library.
+- `tools/capture.mjs` — the stdlib-only headless-Chrome screenshot driver.
 
 ## Bounty and license
 

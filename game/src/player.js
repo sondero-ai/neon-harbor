@@ -366,6 +366,59 @@ export class Player {
       damageFlash: this.damageFlash,
       crosshair: spec.spread * 620 + baseBloom + moveBloom,
       dead: this.dead,
+      // The five-slot strip in the HUD. The knife is always on Rae's belt;
+      // the SMG is only live once it has been picked up or issued by a job.
+      loadout: [
+        {
+          key: 'pistol',
+          name: WEAPONS.pistol.name,
+          short: WEAPONS.pistol.short,
+          icon: 'pistol',
+          owned: this.weapons.pistol.owned,
+          ammo: this.weapons.pistol.ammo,
+          reserve: this.weapons.pistol.reserve,
+        },
+        {
+          key: 'smg',
+          name: WEAPONS.smg.name,
+          short: WEAPONS.smg.short,
+          icon: 'smg',
+          owned: this.weapons.smg.owned,
+          locked: !this.weapons.smg.owned,
+          ammo: this.weapons.smg.ammo,
+          reserve: this.weapons.smg.reserve,
+        },
+        {
+          key: 'knife',
+          name: 'Street Knife',
+          short: 'CQC',
+          icon: 'knife',
+          owned: true,
+          melee: true,
+          ammo: null,
+          reserve: null,
+        },
+        {
+          key: 'rifle',
+          name: 'Harbor Rifle',
+          short: 'RIFLE',
+          icon: 'rifle',
+          owned: false,
+          locked: true,
+          ammo: null,
+          reserve: null,
+        },
+        {
+          key: 'rpg',
+          name: 'RPG',
+          short: 'RPG',
+          icon: 'rpg',
+          owned: false,
+          locked: true,
+          ammo: null,
+          reserve: null,
+        },
+      ],
     };
   }
 

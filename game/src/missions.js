@@ -41,6 +41,7 @@ const STORY = [
   {
     key: 'riptide',
     title: 'The Riptide Job',
+    operation: 'DOCK RUN',
     start: { x: -72, z: 26.2, facing: -Math.PI / 2 },
     reward: 1200,
     idleTitle: 'Meet Mira on the Strip',
@@ -60,6 +61,7 @@ const STORY = [
   {
     key: 'heat',
     title: 'Heat Check',
+    operation: 'STRIP HEAT',
     start: { x: 162, z: 18.2, facing: Math.PI },
     reward: 1800,
     idleTitle: 'Find Mira at the Motor Row bay',
@@ -79,6 +81,7 @@ const STORY = [
   {
     key: 'delivery',
     title: 'Special Delivery',
+    operation: 'THE LEDGER RUN',
     start: { x: SAFEHOUSE.x - 4.9, z: SAFEHOUSE.z, facing: Math.PI },
     reward: 1500,
     idleTitle: 'Meet Mira at the safehouse',
@@ -99,6 +102,7 @@ const STORY = [
   {
     key: 'betrayal',
     title: 'Family Cut',
+    operation: 'LUNA PLAZA',
     start: { x: 0, z: 17.6, facing: Math.PI },
     reward: 2400,
     idleTitle: 'Meet Tomas at Luna Plaza',
@@ -118,6 +122,7 @@ const STORY = [
   {
     key: 'pier',
     title: 'Pier 9 Burning',
+    operation: 'LAST EXIT',
     start: { x: -168, z: 70, facing: -Math.PI / 2 },
     reward: 6000,
     idleTitle: 'Take the fight to Pier 9',
@@ -513,6 +518,59 @@ export class Missions {
       };
     }
     this.world.setObjectiveMarker(this.objective.marker.x, this.objective.marker.z);
+  }
+
+  // Presentation metadata for the top-left mission card. This reads the live
+  // mission phase, objective and kill count; it never drives mission logic.
+  get hudCard() {
+    const active = this.active;
+    const def = active?.def ?? STORY[Math.min(this.index, STORY.length - 1)];
+    const chapter = Math.min((active?.index ?? this.index) + 1, STORY.length);
+    let stage = 1;
+    let next = 'Walk into the coral marker to start';
+    if (this.failure) {
+      next = 'Walk back into the marker or press Enter';
+    } else if (active) {
+      if (active.index === 0) {
+        stage = active.phase === 0 ? 1 : 2;
+        next = active.phase === 0 ? 'Reach the Vela at the Sunset Hotel' : 'Deliver it to Motor Row';
+      } else if (active.index === 1) {
+        stage = active.phase === 0 ? 2 : 3;
+        next = active.phase === 0 ? 'Break line of sight' : 'Reach the safehouse';
+      } else if (active.index === 2) {
+        stage = active.phase === 0 ? 1 : 2;
+        next = active.phase === 0 ? 'Casa Luna, behind the bar' : 'Tomas at Luna Plaza';
+      } else if (active.index === 3) {
+        const ratio = active.kills / Math.max(1, active.needed);
+        stage = Math.min(3, 1 + Math.floor(ratio * 3));
+        next = 'Put Tomas down';
+      } else if (active.index === 4) {
+        if (active.phase === 1) {
+          stage = 3;
+          next = 'Get off the pier';
+        } else {
+          const ratio = active.kills / Math.max(1, active.needed);
+          stage = Math.min(2, 1 + Math.floor(ratio * 2));
+          next = 'Push to Aurelio';
+        }
+      }
+    } else if (this.storyDone) {
+      stage = 4;
+      next = 'Free roam is open · cash, cars, heat';
+    }
+    return {
+      chapter: `CH.${chapter}`,
+      operation: (def.operation ?? 'THE SOLANO STORY').toUpperCase(),
+      title: (def.title ?? 'The Solano Story').toUpperCase(),
+      objective: (this.objective?.title ?? def.idleTitle).toUpperCase(),
+      objectiveSub: this.objective?.sub ?? def.idleSub,
+      stage,
+      stages: 4,
+      next: next.toUpperCase(),
+      story: `SOLANO STORY · ${String(chapter).padStart(2, '0')}/05`,
+      failed: Boolean(this.failure),
+      complete: this.storyDone,
+    };
   }
 
   setObjective({ title, sub, marker, progress = null, timer = null }) {

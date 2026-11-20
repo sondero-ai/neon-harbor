@@ -83,7 +83,7 @@ export const RADIO = {
   stations: [
     {
       station: 'Night Tide 88.3',
-      track: 'Harbor Lights — Sable Youth',
+      track: 'Sable Youth — Harbor Lights',
       style: 'synthwave',
       bpm: 96,
     },
@@ -165,8 +165,55 @@ export const PICKUPS = [
   { kind: 'pistol', x: 108, z: 36.4, label: 'Solano 9' },
 ];
 
-export const HOURS = 18;
-export const MINUTES = 42;
+// The story opens late on the fourth night: the Strip is still awake, the
+// radio is on, and the Harbor PD air unit is already overhead.
+export const DAY = 4;
+export const HOURS = 23;
+export const MINUTES = 41;
+
+const STREET_NAMES_X = {
+  189: 'EAST YARD',
+  135: 'SUNSET ROW',
+  81: 'MOTOR ROW',
+  27: 'HARBOR AVE',
+  [-27]: 'LOT 9',
+  [-81]: 'CASA WAY',
+  [-135]: 'WEST DOCKS',
+};
+
+const STREET_NAMES_Z = {
+  189: 'EAST YARD',
+  135: 'SUNSET ROW',
+  81: 'PIER 9 APPROACH',
+  27: 'VEGA BLVD',
+  [-27]: 'LOT 9',
+  [-81]: 'CASA LUNA DR',
+  [-135]: 'NORTH POINT DR',
+};
+
+function nearestRoad(value) {
+  let best = ROADS[0];
+  let bestDistance = Infinity;
+  for (const road of ROADS) {
+    const distance = Math.abs(value - road);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = road;
+    }
+  }
+  return best;
+}
+
+/** The named street under the player, used by the HUD and minimap. */
+export function streetAt(x, z) {
+  if (x < -144 && z > 20 && z < 130) return 'PIER 9 DECK';
+  if (x < -144) return 'CASA LUNA DR';
+  if (Math.abs(x) < 38 && Math.abs(z) < 38) return 'FOUNTAIN WALK';
+  const roadZ = nearestRoad(z);
+  const roadX = nearestRoad(x);
+  const useZ = Math.abs(z - roadZ) <= Math.abs(x - roadX);
+  return useZ ? STREET_NAMES_Z[roadZ] : STREET_NAMES_X[roadX];
+}
 
 export const PALETTE = {
   ink: '#0a0712',
@@ -177,11 +224,11 @@ export const PALETTE = {
   coralDeep: '#d63f4a',
   teal: '#3fe0cf',
   gold: '#ffc95c',
-  fog: 0xe3a087,
-  skyHorizon: 0xffb183,
-  skyMid: 0x9a5d8d,
-  skyTop: 0x241d4a,
-  sun: 0xffb06b,
+  fog: 0x241a33,
+  skyHorizon: 0xa8445f,
+  skyMid: 0x482052,
+  skyTop: 0x0a0a22,
+  sun: 0x9fb2ff,
   asphalt: 0x1d1a24,
   concrete: 0x6b5a60,
   sand: 0xd6ae78,

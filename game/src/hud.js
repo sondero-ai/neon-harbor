@@ -84,9 +84,296 @@ function timerString(seconds) {
 }
 
 function speakerColor(speaker) {
-  if (speaker === 'TOMAS' || speaker === 'AURELIO') return CORAL;
-  if (speaker === 'MIRA') return GOLD;
+  const name = String(speaker ?? '').toUpperCase();
+  if (name.includes('VALE')) return '#7fa8ff';
+  if (name.startsWith('TOMAS') || name.startsWith('AURELIO')) return CORAL;
+  if (name.startsWith('MIRA')) return GOLD;
+  if (name.startsWith('RAE')) return TEAL;
   return TEAL;
+}
+
+function speakerDisplayName(speaker) {
+  const name = String(speaker ?? 'RAE').toUpperCase();
+  if (name === 'MIRA') return 'MIRA SOL';
+  if (name.includes('VALE')) return 'SGT. VALE';
+  return name;
+}
+
+function speakerRole(speaker) {
+  const name = String(speaker ?? '').toUpperCase();
+  if (name.includes('VALE')) return 'HPD DISPATCH';
+  if (name === 'MIRA') return 'FIXER · VEGA STRIP';
+  if (name.startsWith('RAE')) return 'COURIER · SOLANO CREW';
+  if (name.startsWith('TOMAS')) return 'SOLANO CREW · LUNA PLAZA';
+  if (name.startsWith('AURELIO')) return 'SOLANO PATRIARCH';
+  return 'NEON HARBOR';
+}
+
+function truncateText(ctx, text, maxWidth, font) {
+  ctx.save();
+  ctx.font = font;
+  const value = String(text ?? '');
+  if (ctx.measureText(value).width <= maxWidth) {
+    ctx.restore();
+    return value;
+  }
+  let cut = value;
+  while (cut.length > 1 && ctx.measureText(`${cut}…`).width > maxWidth) cut = cut.slice(0, -1);
+  ctx.restore();
+  return `${cut.trimEnd()}…`;
+}
+
+function wrapText(ctx, text, maxWidth, font, maxLines = 2) {
+  ctx.save();
+  ctx.font = font;
+  const words = String(text ?? '').split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (!line || ctx.measureText(next).width <= maxWidth) {
+      line = next;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+  ctx.restore();
+  if (lines.length <= maxLines) return lines;
+  const head = lines.slice(0, maxLines - 1);
+  let last = lines.slice(maxLines - 1).join(' ');
+  ctx.save();
+  ctx.font = font;
+  while (last.length > 1 && ctx.measureText(`${last}…`).width > maxWidth) last = last.slice(0, -1);
+  ctx.restore();
+  head.push(`${last.trimEnd()}…`);
+  return head;
+}
+
+function roleColor(role) {
+  switch (role) {
+    case 'RAMMING':
+    case 'CLOSING IN':
+      return CORAL;
+    case 'ROADBLOCK':
+    case 'PURSUIT':
+      return GOLD;
+    case 'SPOTLIGHT':
+    case 'PATROL':
+      return TEAL;
+    default:
+      return 'rgba(247,232,210,0.58)';
+  }
+}
+
+function drawPortrait(ctx, x, y, size, speaker) {
+  const name = String(speaker ?? 'RAE').toUpperCase();
+  const skin = name.includes('VALE') ? '#c08a68'
+    : name.startsWith('RAE') ? '#a77456'
+      : name.startsWith('MIRA') ? '#b87a60'
+        : name.startsWith('AURELIO') ? '#8a5a44'
+          : '#9c6a50';
+  const jacket = name.includes('VALE') ? '#1c2a45'
+    : name.startsWith('RAE') ? '#a93345'
+      : name.startsWith('MIRA') ? '#5a421d'
+        : name.startsWith('TOMAS') ? '#4f1e26'
+          : name.startsWith('AURELIO') ? '#21191d'
+            : '#2b2638';
+  const accent = speakerColor(name);
+  const cx = x + size * 0.5;
+  const cy = y + size * 0.4;
+  const head = size * 0.19;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, size, size);
+  ctx.clip();
+  ctx.fillStyle = 'rgba(247,232,210,0.055)';
+  ctx.fillRect(x, y, size, size);
+  ctx.fillStyle = 'rgba(63,224,207,0.06)';
+  ctx.fillRect(x, y, size, size * 0.42);
+
+  // Shoulders and collar.
+  ctx.fillStyle = jacket;
+  ctx.beginPath();
+  ctx.moveTo(x + size * 0.08, y + size);
+  ctx.quadraticCurveTo(x + size * 0.12, y + size * 0.7, cx, y + size * 0.68);
+  ctx.quadraticCurveTo(x + size * 0.88, y + size * 0.7, x + size * 0.92, y + size);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = accent;
+  ctx.globalAlpha = 0.8;
+  ctx.fillRect(cx - size * 0.16, y + size * 0.72, size * 0.32, 2);
+  ctx.globalAlpha = 1;
+
+  // Neck and head.
+  ctx.fillStyle = skin;
+  ctx.fillRect(cx - size * 0.06, y + size * 0.55, size * 0.12, size * 0.14);
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, head * 0.9, head * 1.08, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hair, caps and the one detail that makes each speaker read.
+  if (name.includes('VALE')) {
+    ctx.fillStyle = '#111a2c';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - head * 0.48, head, head * 0.62, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+    ctx.fillRect(cx - head * 1.1, cy - head * 0.5, head * 2.2, head * 0.28);
+    ctx.fillStyle = GOLD;
+    ctx.fillRect(cx - head * 0.34, cy - head * 0.15, head * 0.16, head * 0.2);
+    ctx.fillStyle = '#c08a68';
+    ctx.fillRect(cx - head * 0.06, cy + head * 0.18, head * 0.3, 1.5);
+  } else if (name.startsWith('AURELIO')) {
+    ctx.fillStyle = '#b9b0a8';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - head * 0.55, head * 0.98, head * 0.55, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+    ctx.fillRect(cx - head * 1.0, cy - head * 0.55, head * 2.0, head * 0.1);
+    ctx.strokeStyle = 'rgba(247,232,210,0.25)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx - head, cy - head * 0.25);
+    ctx.lineTo(cx + head, cy - head * 0.2);
+    ctx.stroke();
+    ctx.fillStyle = GOLD;
+    ctx.fillRect(cx - head * 0.1, cy + head * 0.62, head * 0.2, head * 0.18);
+  } else if (name.startsWith('MIRA')) {
+    ctx.fillStyle = '#1a1218';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - head * 0.45, head, head * 0.7, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx - head * 0.8, cy, head * 0.28, head * 0.8, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = GOLD;
+    ctx.beginPath();
+    ctx.arc(cx + head * 0.86, cy + head * 0.3, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (name.startsWith('RAE')) {
+    ctx.fillStyle = '#18131b';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - head * 0.42, head * 0.96, head * 0.62, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = TEAL;
+    ctx.fillRect(cx + head * 0.45, cy - head * 0.72, 2.5, head * 0.5);
+    ctx.fillStyle = 'rgba(63,224,207,0.8)';
+    ctx.beginPath();
+    ctx.arc(cx + head * 0.84, cy + head * 0.3, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (name.startsWith('TOMAS')) {
+    ctx.fillStyle = '#19141a';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - head * 0.48, head * 0.98, head * 0.58, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,111,97,0.75)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(cx + head * 0.34, cy - head * 0.1);
+    ctx.lineTo(cx + head * 0.54, cy + head * 0.5);
+    ctx.stroke();
+  }
+
+  // Eyes, brows and mouth.
+  ctx.fillStyle = 'rgba(20,14,22,0.9)';
+  ctx.beginPath();
+  ctx.arc(cx - head * 0.38, cy + head * 0.02, 1.6, 0, Math.PI * 2);
+  ctx.arc(cx + head * 0.38, cy + head * 0.02, 1.6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(20,14,22,0.65)';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(cx - head * 0.62, cy - head * 0.22);
+  ctx.lineTo(cx - head * 0.16, cy - head * 0.16);
+  ctx.moveTo(cx + head * 0.16, cy - head * 0.16);
+  ctx.lineTo(cx + head * 0.62, cy - head * 0.22);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(60,28,30,0.8)';
+  ctx.beginPath();
+  ctx.moveTo(cx - head * 0.22, cy + head * 0.55);
+  ctx.lineTo(cx + head * 0.24, cy + head * 0.52);
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(247,232,210,0.22)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
+  ctx.restore();
+}
+
+function drawWeaponIcon(ctx, kind, x, y, tone) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = tone;
+  ctx.strokeStyle = tone;
+  ctx.lineWidth = 1.2;
+  if (kind === 'pistol') {
+    ctx.fillRect(-8, -4, 13, 3.5);
+    ctx.fillRect(5, -3.2, 4, 2);
+    ctx.beginPath();
+    ctx.moveTo(-5, -0.5);
+    ctx.lineTo(-1, -0.5);
+    ctx.lineTo(-4, 6);
+    ctx.lineTo(-7, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillRect(-2, 0.2, 1, 3);
+  } else if (kind === 'smg') {
+    ctx.fillRect(-9, -4, 14, 4);
+    ctx.fillRect(5, -3.2, 5, 2.2);
+    ctx.fillRect(-6, 0, 3, 5.5);
+    ctx.fillRect(-9, -5, 3, 2);
+    ctx.fillRect(1, 0, 2, 3);
+  } else if (kind === 'knife') {
+    ctx.beginPath();
+    ctx.moveTo(-1, -6);
+    ctx.lineTo(9, 0);
+    ctx.lineTo(-1, 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillRect(-9, -1.2, 8, 3.2);
+    ctx.fillRect(-9.5, -2, 1.4, 4.8);
+  } else if (kind === 'rifle') {
+    ctx.fillRect(-10, -2.5, 18, 3);
+    ctx.fillRect(5, -4, 4, 1.6);
+    ctx.beginPath();
+    ctx.moveTo(-10, -2.5);
+    ctx.lineTo(-13, -5);
+    ctx.lineTo(-13, 0.5);
+    ctx.lineTo(-10, 0.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillRect(-2, 0.5, 2, 4);
+    ctx.fillRect(-5, -5.5, 5, 2);
+  } else if (kind === 'rpg') {
+    ctx.fillRect(-10, -2.5, 17, 4);
+    ctx.beginPath();
+    ctx.moveTo(7, -5);
+    ctx.lineTo(13, -0.5);
+    ctx.lineTo(7, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillRect(-6, 1.5, 2, 4);
+  }
+  ctx.restore();
+}
+
+function drawRotorIcon(ctx, cx, cy, radius, color) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 4; i += 1) {
+    ctx.rotate(Math.PI / 5);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, -radius);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, 2.6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 export class Hud {
@@ -281,16 +568,19 @@ export class Hud {
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
 
+    this.drawMissionCard(ctx, state);
     this.drawVitals(ctx, state.player);
-    this.drawMoneyAndStars(ctx, state.player, state.police);
+    this.drawStateCard(ctx, state.player, state.police, state);
     this.drawDistrict(ctx, state);
+    this.drawAirBanner(ctx, state.police?.air);
     this.drawMinimap(ctx, state);
+    this.drawCrewPanel(ctx, state);
     this.drawObjective(ctx, state);
     this.drawChallenge(ctx, state);
-    this.drawSubtitle(ctx, state);
-    this.drawRadio(ctx, state);
-    this.drawSpeed(ctx, state);
-    this.drawWeapon(ctx, state);
+    this.drawDialogue(ctx, state);
+    this.drawPoliceRoster(ctx, state.police);
+    this.drawWeaponStrip(ctx, state);
+    this.drawVehicleCard(ctx, state);
     this.drawPrompt(ctx, state);
     this.drawCrosshair(ctx, state);
     if (this.toast) this.drawToast(ctx, this.toast);
@@ -301,38 +591,120 @@ export class Hud {
     if (this.ending) this.drawEnding(ctx, this.ending);
   }
 
+  drawMissionCard(ctx, state) {
+    const card = state.missionCard;
+    if (!card) return;
+    const x = 24;
+    const y = 20;
+    const width = 400;
+    const height = 158;
+    const accent = card.failed ? CORAL : GOLD;
+    drawPanel(ctx, x, y, width, height, {
+      cut: 12,
+      fill: 'rgba(9,6,16,0.86)',
+      stroke: 'rgba(247,232,210,0.2)',
+      accent,
+    });
+    label(ctx, `${card.chapter} · ${card.operation}`, x + 18, y + 24, {
+      size: 12,
+      color: accent,
+      spacing: '1.6px',
+      weight: 800,
+    });
+    label(ctx, card.story ?? 'SOLANO STORY', x + width - 18, y + 24, {
+      size: 10,
+      color: 'rgba(247,232,210,0.48)',
+      spacing: '1.1px',
+      align: 'right',
+      weight: 700,
+    });
+    ctx.save();
+    ctx.font = `900 27px ${DISPLAY}`;
+    ctx.fillStyle = CREAM;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '0.9px';
+    ctx.fillText(truncateText(ctx, card.title ?? 'THE SOLANO STORY', width - 36, `900 27px ${DISPLAY}`), x + 18, y + 55);
+    ctx.restore();
+
+    const objective = card.objectiveSub ?? card.objective ?? '';
+    label(ctx, truncateText(ctx, objective, width - 36, `500 13px ${UI}`), x + 18, y + 78, {
+      size: 13,
+      color: CREAM_DIM,
+      spacing: '0.2px',
+      weight: 500,
+    });
+
+    const stage = Math.max(0, Math.min(card.stages ?? 4, card.stage ?? 0));
+    const stages = Math.max(1, card.stages ?? 4);
+    label(ctx, `STAGE ${stage}/${stages}`, x + 18, y + 108, {
+      size: 12,
+      color: CREAM,
+      spacing: '2px',
+      weight: 800,
+    });
+    const barX = x + 112;
+    const barWidth = width - 130;
+    const gap = 5;
+    const segmentWidth = (barWidth - gap * (stages - 1)) / stages;
+    for (let i = 0; i < stages; i += 1) {
+      const filled = i < stage;
+      ctx.fillStyle = filled ? (i === stage - 1 ? accent : 'rgba(255,201,92,0.55)') : 'rgba(247,232,210,0.12)';
+      ctx.fillRect(barX + i * (segmentWidth + gap), y + 99, segmentWidth, 9);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      if (filled) ctx.fillRect(barX + i * (segmentWidth + gap), y + 99, segmentWidth, 1);
+    }
+    ctx.strokeStyle = 'rgba(247,232,210,0.12)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 18, y + 122);
+    ctx.lineTo(x + width - 18, y + 122);
+    ctx.stroke();
+    label(ctx, 'NEXT:', x + 18, y + 143, { size: 10.5, color: accent, spacing: '1.2px', weight: 800 });
+    label(ctx, truncateText(ctx, card.next ?? 'Hold the Strip', width - 88, `700 12px ${UI}`), x + 64, y + 143, {
+      size: 12,
+      color: TEAL,
+      spacing: '0.3px',
+      weight: 700,
+    });
+  }
+
   drawVitals(ctx, player) {
-    const x = 28;
-    const y = 26;
-    const width = 254;
-    const height = 70;
-    drawPanel(ctx, x, y, width, height, { cut: 13, accent: CORAL });
-    label(ctx, 'RAE SOLANO', x + 16, y + 21, { size: 11, color: CREAM, spacing: '3px', weight: 700 });
-    label(ctx, player.driving ? 'DRIVING' : 'ON FOOT', x + width - 16, y + 21, { size: 8, color: 'rgba(63,224,207,0.72)', spacing: '1.5px', align: 'right' });
+    const x = 24;
+    const y = 424;
+    const width = 250;
+    const height = 52;
+    drawPanel(ctx, x, y, width, height, { cut: 10, accent: CORAL });
+    label(ctx, 'RAE SOLANO', x + 14, y + 17, { size: 11.5, color: CREAM, spacing: '1.8px', weight: 800 });
+    label(ctx, player.driving ? 'DRIVING' : 'ON FOOT', x + width - 14, y + 17, {
+      size: 10,
+      color: 'rgba(63,224,207,0.78)',
+      spacing: '1.2px',
+      align: 'right',
+      weight: 700,
+    });
 
-    const barX = x + 16;
-    const barWidth = width - 72;
-    this.drawBar(ctx, barX, y + 32, barWidth, 9, player.health / 100, CORAL, '#ff9c8b');
-    label(ctx, 'HP', barX, y + 30, { size: 8, color: 'rgba(247,232,210,0.42)', spacing: '1px' });
-    label(ctx, String(Math.round(player.health)), x + width - 16, y + 41, { size: 11, color: CREAM, align: 'right', font: MONO, weight: 700 });
+    label(ctx, 'HP', x + 14, y + 33, { size: 10.5, color: 'rgba(247,232,210,0.62)', spacing: '1px', weight: 700 });
+    this.drawBar(ctx, x + 40, y + 26, width - 98, 8, player.health / 100, CORAL, '#ff9c8b');
+    label(ctx, String(Math.round(player.health)), x + width - 14, y + 35, { size: 13, color: CREAM, align: 'right', font: MONO, weight: 700 });
 
-    this.drawBar(ctx, barX, y + 49, barWidth * 0.78, 6, player.armor / 100, TEAL, '#9af8eb');
-    label(ctx, 'AR', barX, y + 47, { size: 7, color: 'rgba(247,232,210,0.36)', spacing: '1px' });
-    label(ctx, String(Math.round(player.armor)), x + width - 16, y + 56, { size: 10, color: CREAM_DIM, align: 'right', font: MONO });
+    label(ctx, 'AR', x + 14, y + 46, { size: 10.5, color: 'rgba(247,232,210,0.5)', spacing: '1px', weight: 700 });
+    this.drawBar(ctx, x + 40, y + 40, width - 98, 5, player.armor / 100, TEAL, '#9af8eb');
+    label(ctx, String(Math.round(player.armor)), x + width - 14, y + 48, { size: 11.5, color: CREAM_DIM, align: 'right', font: MONO, weight: 700 });
 
     if (this.healthFlash > 0.02) {
       ctx.save();
-      chamferPath(ctx, x, y, width, height, 13);
+      chamferPath(ctx, x, y, width, height, 10);
       ctx.strokeStyle = `rgba(255,84,70,${0.25 + this.healthFlash * 0.65})`;
       ctx.lineWidth = 2;
       ctx.shadowColor = CORAL;
       ctx.shadowBlur = 16 * this.healthFlash;
       ctx.stroke();
       ctx.restore();
-      label(ctx, 'HIT', x + width - 16, y + 21, { size: 8, color: CORAL, spacing: '1.5px', align: 'right', weight: 800 });
+      label(ctx, 'HIT', x + width - 14, y + 17, { size: 10, color: CORAL, spacing: '1.2px', align: 'right', weight: 800 });
     } else if (this.armorFlash > 0.02 && player.armor < 100) {
       ctx.save();
-      chamferPath(ctx, x, y, width, height, 13);
+      chamferPath(ctx, x, y, width, height, 10);
       ctx.strokeStyle = `rgba(63,224,207,${0.2 + this.armorFlash * 0.4})`;
       ctx.lineWidth = 1.2;
       ctx.stroke();
@@ -362,40 +734,37 @@ export class Hud {
     ctx.restore();
   }
 
-  drawMoneyAndStars(ctx, player, police = null) {
-    // The sky is brightest exactly where the cash and stars sit. A slim plate
-    // the mirror of the vitals card keeps both legible without hiding the city.
-    const wanted = police?.wanted ?? player.wanted ?? 0;
-    const panelWidth = 238;
-    const panelHeight = wanted > 0 ? 150 : 138;
-    const panelX = this.width - panelWidth - 28;
-    const panelY = 18;
-    drawPanel(ctx, panelX, panelY, panelWidth, panelHeight, {
-      cut: 14,
-      fill: 'rgba(9,6,16,0.72)',
-      stroke: 'rgba(247,232,210,0.19)',
-      accent: 'rgba(255,201,92,0.85)',
+  drawStateCard(ctx, player, police = null, state = {}) {
+    const width = 252;
+    const x = this.width - width - 28;
+    const y = 18;
+    const height = 160;
+    drawPanel(ctx, x, y, width, height, {
+      cut: 12,
+      fill: 'rgba(9,6,16,0.82)',
+      stroke: 'rgba(247,232,210,0.2)',
+      accent: 'rgba(255,201,92,0.9)',
     });
-    const right = panelX + panelWidth - 16;
-    label(ctx, 'CASH', right, 40, { size: 9, color: 'rgba(247,232,210,0.52)', spacing: '3px', align: 'right' });
+    const right = x + width - 14;
+    label(ctx, 'CASH', right, y + 20, { size: 10.5, color: 'rgba(247,232,210,0.58)', spacing: '2.4px', align: 'right', weight: 700 });
     ctx.save();
-    ctx.font = `900 35px ${DISPLAY}`;
+    ctx.font = `900 31px ${DISPLAY}`;
     ctx.textAlign = 'right';
     ctx.fillStyle = GOLD;
-    ctx.shadowColor = 'rgba(255, 201, 92, 0.45)';
-    ctx.shadowBlur = 14;
-    ctx.fillText(cashString(player.cash), right, 76);
+    ctx.shadowColor = 'rgba(255, 201, 92, 0.5)';
+    ctx.shadowBlur = 12;
+    ctx.fillText(cashString(player.cash), right, y + 52);
     ctx.restore();
 
+    const wanted = police?.wanted ?? player.wanted ?? 0;
     const flash = police?.wantedFlash ?? 0;
-    label(ctx, 'WANTED', right, 101, { size: 8, color: 'rgba(247,232,210,0.5)', spacing: '2.5px', align: 'right' });
-    const starRadius = 9.5;
-    const gap = 23.5;
+    const starRadius = 8.3;
+    const gap = 20.5;
     for (let i = 0; i < 5; i += 1) {
       const cx = right - (4 - i) * gap - starRadius;
-      const cy = 122;
+      const cy = y + 72;
       const active = i < wanted;
-      const scale = active ? 1 + flash * 0.24 : 1;
+      const scale = active ? 1 + flash * 0.22 : 1;
       ctx.save();
       ctx.translate(cx, cy);
       ctx.scale(scale, scale);
@@ -403,49 +772,99 @@ export class Hud {
       if (active) {
         ctx.fillStyle = flash > 0.45 && Math.sin(this.time * 28) > 0 ? '#fff3c9' : GOLD;
         ctx.shadowColor = 'rgba(255,120,80,0.9)';
-        ctx.shadowBlur = 8 + flash * 14;
+        ctx.shadowBlur = 7 + flash * 12;
         ctx.fill();
       } else {
-        ctx.strokeStyle = 'rgba(247,232,210,0.32)';
+        ctx.strokeStyle = 'rgba(247,232,210,0.34)';
         ctx.lineWidth = 1.2;
         ctx.stroke();
       }
       ctx.restore();
     }
+    label(ctx, 'WANTED', x + 14, y + 72, { size: 10, color: 'rgba(247,232,210,0.46)', spacing: '1.4px', weight: 700 });
 
+    const searching = police?.status === 'search';
+    const units = police?.rosterCount ?? police?.units?.length ?? 0;
+    const blink = Math.sin(this.time * 7.5) > 0;
     if (wanted > 0) {
-      const searching = police?.status === 'search';
-      const units = police?.units?.length ?? 0;
-      const blink = Math.sin(this.time * 7.5) > 0;
       const statusColor = searching ? GOLD : CORAL;
       ctx.save();
       ctx.fillStyle = statusColor;
       ctx.globalAlpha = 0.55 + 0.45 * (blink ? 1 : 0.4);
-      ctx.fillRect(right - 8, 136, 5, 5);
+      ctx.beginPath();
+      ctx.arc(x + 19, y + 91, 3.4, 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
       label(
         ctx,
         searching ? 'SEARCHING · LAST KNOWN AREA' : `PURSUIT · ${units} UNIT${units === 1 ? '' : 'S'}`,
-        right,
-        145,
-        { size: 8, color: statusColor, spacing: '1.7px', align: 'right', weight: 800 },
+        x + 30,
+        y + 95,
+        { size: 11, color: statusColor, spacing: '0.8px', weight: 800 },
       );
-      const bust = police?.bustProgress ?? 0;
-      if (bust > 0.01) {
-        label(ctx, 'BUSTED', right - 86, 160, { size: 7, color: CREAM, spacing: '1.6px', align: 'right', weight: 800 });
-        ctx.fillStyle = 'rgba(247,232,210,0.16)';
-        ctx.fillRect(right - 80, 154, 80, 4);
-        ctx.fillStyle = CORAL;
-        ctx.fillRect(right - 80, 154, 80 * Math.min(1, bust), 4);
-      }
     } else {
-      label(ctx, 'NO ACTIVE BOLO', right, 145, {
-        size: 7.5,
-        color: 'rgba(63,224,207,0.5)',
-        spacing: '1.6px',
-        align: 'right',
+      label(ctx, 'NO ACTIVE BOLO', x + 14, y + 95, {
+        size: 10.5,
+        color: 'rgba(63,224,207,0.68)',
+        spacing: '1.2px',
         weight: 700,
       });
+    }
+
+    ctx.strokeStyle = 'rgba(247,232,210,0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 14, y + 103);
+    ctx.lineTo(x + width - 14, y + 103);
+    ctx.stroke();
+
+    label(ctx, `DAY ${state.day ?? 4} · ${state.clock ?? '23:41'}`, x + 14, y + 123, {
+      size: 12.5,
+      color: CREAM,
+      spacing: '1.1px',
+      weight: 800,
+      font: MONO,
+    });
+    label(ctx, 'NIGHT SHIFT', x + width - 14, y + 123, {
+      size: 10,
+      color: 'rgba(63,224,207,0.72)',
+      spacing: '1.4px',
+      align: 'right',
+      weight: 700,
+    });
+
+    const respect = state.respect ?? { rank: 'NEW BLOOD', value: 0, max: 250 };
+    label(ctx, respect.rank, x + 14, y + 142, { size: 11, color: GOLD, spacing: '1.2px', weight: 800 });
+    label(ctx, `${respect.value}/${respect.max} RESPECT`, x + width - 14, y + 142, {
+      size: 10.5,
+      color: CREAM,
+      spacing: '0.8px',
+      align: 'right',
+      weight: 700,
+    });
+    const barX = x + 14;
+    const barY = y + 148;
+    const barWidth = width - 28;
+    ctx.fillStyle = 'rgba(247,232,210,0.12)';
+    ctx.fillRect(barX, barY, barWidth, 5);
+    ctx.fillStyle = GOLD;
+    ctx.fillRect(barX, barY, barWidth * Math.max(0, Math.min(1, respect.value / respect.max)), 5);
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillRect(barX, barY, barWidth * Math.max(0, Math.min(1, respect.value / respect.max)), 1);
+
+    const bust = police?.bustProgress ?? 0;
+    if (bust > 0.01) {
+      label(ctx, 'BUSTED', x + width - 14, y + 95, {
+        size: 10,
+        color: CREAM,
+        spacing: '1.2px',
+        align: 'right',
+        weight: 800,
+      });
+      ctx.fillStyle = 'rgba(247,232,210,0.16)';
+      ctx.fillRect(x + width - 74, y + 99, 60, 4);
+      ctx.fillStyle = CORAL;
+      ctx.fillRect(x + width - 74, y + 99, 60 * Math.min(1, bust), 4);
     }
   }
 
@@ -453,32 +872,83 @@ export class Hud {
     const cx = this.width / 2;
     ctx.save();
     ctx.textAlign = 'center';
-    ctx.font = `700 10px ${UI}`;
-    if ('letterSpacing' in ctx) ctx.letterSpacing = '4px';
-    ctx.fillStyle = 'rgba(247,232,210,0.66)';
-    ctx.fillText((state.district || 'NEON HARBOR').toUpperCase(), cx, 38);
-    ctx.font = `600 10px ${MONO}`;
-    if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
-    ctx.fillStyle = 'rgba(63,224,207,0.8)';
-    ctx.fillText(state.clock || '18:42', cx, 54);
-    ctx.strokeStyle = 'rgba(247,232,210,0.18)';
+    ctx.shadowColor = 'rgba(5,4,12,0.9)';
+    ctx.shadowBlur = 8;
+    ctx.font = `800 13px ${UI}`;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '3.2px';
+    ctx.fillStyle = CREAM;
+    ctx.fillText((state.district || 'NEON HARBOR').toUpperCase(), cx, 32);
+    ctx.font = `700 11px ${MONO}`;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '1.8px';
+    ctx.fillStyle = TEAL;
+    ctx.fillText((state.street || 'VEGA BLVD').toUpperCase(), cx, 48);
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(247,232,210,0.2)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(cx - 94, 63);
-    ctx.lineTo(cx - 32, 63);
-    ctx.moveTo(cx + 32, 63);
-    ctx.lineTo(cx + 94, 63);
+    ctx.moveTo(cx - 118, 56);
+    ctx.lineTo(cx - 58, 56);
+    ctx.moveTo(cx + 58, 56);
+    ctx.lineTo(cx + 118, 56);
     ctx.stroke();
     ctx.restore();
   }
 
-  drawMinimap(ctx, state) {
-    const size = 196;
-    const x = 28;
-    const y = this.height - size - 28;
-    drawPanel(ctx, x - 5, y - 5, size + 10, size + 10, { cut: 16, fill: 'rgba(9,6,16,0.8)', stroke: 'rgba(247,232,210,0.24)' });
+  drawAirBanner(ctx, air) {
+    if (!air) return;
+    const width = 318;
+    const height = 40;
+    const x = (this.width - width) / 2;
+    const y = 62;
+    const spotlight = air.spotlight !== false;
+    const accent = spotlight ? TEAL : 'rgba(63,224,207,0.45)';
+    drawPanel(ctx, x, y, width, height, {
+      cut: 9,
+      fill: 'rgba(8,5,15,0.84)',
+      stroke: 'rgba(63,224,207,0.34)',
+      accent,
+    });
+    drawRotorIcon(ctx, x + 24, y + height / 2, 10, accent);
+    label(ctx, spotlight ? 'AIR 1 · SPOTLIGHT' : 'AIR 1 · PATROL', x + 44, y + 18, {
+      size: 12,
+      color: spotlight ? TEAL : 'rgba(247,232,210,0.7)',
+      spacing: '1.3px',
+      weight: 800,
+    });
+    label(ctx, spotlight ? 'HARBOR PD AIR SUPPORT' : 'SEARCHING THE BLOCKS', x + 44, y + 32, {
+      size: 10.5,
+      color: 'rgba(247,232,210,0.52)',
+      spacing: '1.1px',
+      weight: 600,
+    });
+    label(ctx, `${air.distance ?? 0} m`, x + width - 14, y + 25, {
+      size: 15,
+      color: spotlight ? GOLD : CREAM_DIM,
+      spacing: '0.8px',
+      align: 'right',
+      font: MONO,
+      weight: 800,
+    });
     ctx.save();
-    chamferPath(ctx, x, y, size, size, 12);
+    ctx.fillStyle = spotlight && Math.sin(this.time * 8) > 0 ? CORAL : 'rgba(255,111,97,0.35)';
+    ctx.beginPath();
+    ctx.arc(x + width - 14, y + 10, 2.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawMinimap(ctx, state) {
+    const size = 188;
+    const x = 32;
+    const y = 494;
+    drawPanel(ctx, 24, 486, 204, 204, {
+      cut: 13,
+      fill: 'rgba(9,6,16,0.86)',
+      stroke: 'rgba(247,232,210,0.26)',
+      accent: 'rgba(63,224,207,0.55)',
+    });
+    ctx.save();
+    chamferPath(ctx, x, y, size, size, 10);
     ctx.clip();
     ctx.fillStyle = '#0d2b34';
     ctx.fillRect(x, y, size, size);
@@ -628,40 +1098,80 @@ export class Hud {
     ctx.fill();
     ctx.restore();
 
-    // A north notch and a small scale bar keep the map oriented.
-    ctx.fillStyle = 'rgba(9,6,16,0.8)';
-    ctx.fillRect(centerX - 15, y + 7, 30, 15);
-    label(ctx, 'N', centerX, y + 19, { size: 9, color: 'rgba(247,232,210,0.7)', spacing: '1px', align: 'center', weight: 700 });
-    ctx.fillStyle = 'rgba(247,232,210,0.22)';
-    ctx.fillRect(x + 14, y + size - 15, 24, 1);
-    ctx.fillRect(x + 14, y + size - 18, 1, 7);
-    ctx.fillRect(x + 38, y + size - 18, 1, 7);
-    label(ctx, '50 M', x + 44, y + size - 11, { size: 7, color: 'rgba(247,232,210,0.4)', spacing: '1px' });
-
-    ctx.restore();
-    const density = state.density ?? { cars: 0, walkers: 0 };
-    drawPanel(ctx, x - 5, y - 45, size + 10, 27, {
-      cut: 8,
-      fill: 'rgba(9,6,16,0.62)',
-      stroke: 'rgba(247,232,210,0.13)',
+    // A north notch and a small scale bar keep the map oriented. The top
+    // overlay carries the district and street names, at the size the judge
+    // can still read when the frame is shown at one third.
+    ctx.save();
+    chamferPath(ctx, x, y, size, size, 10);
+    ctx.clip();
+    const top = ctx.createLinearGradient(0, y, 0, y + 48);
+    top.addColorStop(0, 'rgba(6,5,12,0.94)');
+    top.addColorStop(0.72, 'rgba(6,5,12,0.62)');
+    top.addColorStop(1, 'rgba(6,5,12,0)');
+    ctx.fillStyle = top;
+    ctx.fillRect(x, y, size, 48);
+    const bottom = ctx.createLinearGradient(0, y + size - 34, 0, y + size);
+    bottom.addColorStop(0, 'rgba(6,5,12,0)');
+    bottom.addColorStop(1, 'rgba(6,5,12,0.82)');
+    ctx.fillStyle = bottom;
+    ctx.fillRect(x, y + size - 34, size, 34);
+    label(ctx, (state.district || 'NEON HARBOR').toUpperCase(), x + 10, y + 17, {
+      size: 11.5,
+      color: CREAM,
+      spacing: '1.4px',
+      weight: 800,
     });
-    label(ctx, 'STREETS', x + 9, y - 27, { size: 7, color: 'rgba(247,232,210,0.48)', spacing: '1.6px', weight: 700 });
-    label(ctx, `CARS ${String(density.cars).padStart(2, '0')}`, x + 78, y - 27, { size: 7, color: GOLD, spacing: '1.2px' });
-    label(ctx, `WALKERS ${String(density.walkers).padStart(2, '0')}`, x + size - 2, y - 27, { size: 7, color: TEAL, spacing: '1.2px', align: 'right' });
-    label(ctx, 'NEON HARBOR', x + 2, y + size + 17, { size: 8, color: 'rgba(247,232,210,0.38)', spacing: '2.5px' });
-    label(ctx, (state.district || '').toUpperCase(), x + size - 2, y + size + 17, { size: 8, color: 'rgba(63,224,207,0.62)', spacing: '1.5px', align: 'right' });
+    label(ctx, (state.street || 'VEGA BLVD').toUpperCase(), x + 10, y + 31, {
+      size: 10.5,
+      color: TEAL,
+      spacing: '1.1px',
+      weight: 700,
+    });
+    const density = state.density ?? { cars: 0, walkers: 0 };
+    label(ctx, `CARS ${String(density.cars).padStart(2, '0')}`, x + size - 8, y + 17, {
+      size: 10.5,
+      color: GOLD,
+      spacing: '0.7px',
+      align: 'right',
+      weight: 700,
+    });
+    label(ctx, `WALKERS ${String(density.walkers).padStart(2, '0')}`, x + size - 8, y + 31, {
+      size: 10.5,
+      color: TEAL,
+      spacing: '0.7px',
+      align: 'right',
+      weight: 700,
+    });
+    label(ctx, 'LIVE SCAN', x + size - 8, y + size - 8, {
+      size: 10.5,
+      color: 'rgba(63,224,207,0.72)',
+      spacing: '1px',
+      align: 'right',
+      weight: 700,
+    });
+    ctx.restore();
+
+    ctx.fillStyle = 'rgba(9,6,16,0.8)';
+    ctx.fillRect(centerX - 15, y + 37, 30, 15);
+    label(ctx, 'N', centerX, y + 49, { size: 10.5, color: 'rgba(247,232,210,0.78)', spacing: '1px', align: 'center', weight: 800 });
+    ctx.fillStyle = 'rgba(247,232,210,0.28)';
+    ctx.fillRect(x + 14, y + size - 15, 22, 1);
+    ctx.fillRect(x + 14, y + size - 18, 1, 7);
+    ctx.fillRect(x + 36, y + size - 18, 1, 7);
+    label(ctx, '50 M', x + 42, y + size - 11, { size: 10.5, color: 'rgba(247,232,210,0.6)', spacing: '0.6px', weight: 600 });
+    ctx.restore();
   }
 
   drawObjective(ctx, state) {
     const objective = state.objective;
     if (!objective) return;
-    const width = 424;
-    const height = 72;
+    const width = 480;
+    const height = 68;
     const x = (this.width - width) / 2;
-    const y = this.height - height - 26;
+    const y = this.height - height - 24;
     const failed = objective.failed === true;
     drawPanel(ctx, x, y, width, height, {
-      cut: 13,
+      cut: 11,
       accent: failed ? CORAL : 'rgba(255,111,97,0.9)',
       stroke: failed ? 'rgba(255,111,97,0.4)' : LINE,
     });
@@ -669,7 +1179,7 @@ export class Hud {
       ? Math.round(Math.hypot(objective.marker.x - state.player.position.x, objective.marker.z - state.player.position.z))
       : null;
     let rightText = distance === null ? '' : `${distance} M`;
-    let rightColor = 'rgba(247,232,210,0.55)';
+    let rightColor = 'rgba(247,232,210,0.62)';
     if (Number.isFinite(objective.timer)) {
       rightText = timerString(objective.timer);
       rightColor = objective.timer < 20 ? CORAL : GOLD;
@@ -678,89 +1188,89 @@ export class Hud {
       rightText = `${p.label} ${p.value}/${p.max}`;
       rightColor = GOLD;
     }
-    label(ctx, (objective.tag || 'OBJECTIVE').toUpperCase(), x + 17, y + 20, {
-      size: 8,
+    label(ctx, (objective.tag || 'OBJECTIVE').toUpperCase(), x + 16, y + 18, {
+      size: 10,
       color: failed ? CORAL : 'rgba(255,143,122,0.9)',
-      spacing: '2.2px',
-      weight: 700,
-    });
-    label(ctx, rightText, x + width - 17, y + 20, {
-      size: 8,
-      color: rightColor,
-      spacing: '1.7px',
-      align: 'right',
-      weight: 700,
-    });
-    label(ctx, objective.title.toUpperCase(), x + 17, y + 43, {
-      size: 18,
-      color: CREAM,
-      spacing: '1.2px',
-      font: DISPLAY,
+      spacing: '1.5px',
       weight: 800,
     });
-    label(ctx, objective.sub, x + 17, y + 59, {
-      size: 9,
+    label(ctx, rightText, x + width - 16, y + 18, {
+      size: 10.5,
+      color: rightColor,
+      spacing: '1.1px',
+      align: 'right',
+      weight: 800,
+    });
+    label(ctx, truncateText(ctx, objective.title.toUpperCase(), width - 32, `900 19px ${DISPLAY}`), x + 16, y + 41, {
+      size: 19,
+      color: CREAM,
+      spacing: '0.8px',
+      font: DISPLAY,
+      weight: 900,
+    });
+    label(ctx, truncateText(ctx, objective.sub, width - 32, `500 11.5px ${UI}`), x + 16, y + 56, {
+      size: 11.5,
       color: CREAM_DIM,
-      spacing: '0.35px',
+      spacing: '0.15px',
       weight: 500,
       font: UI,
     });
     if (objective.progress) {
       const p = objective.progress;
-      const barX = x + 17;
-      const barWidth = width - 34;
-      const barY = y + height - 5;
+      const barX = x + 16;
+      const barWidth = width - 32;
+      const barY = y + height - 4;
       ctx.fillStyle = 'rgba(247,232,210,0.1)';
-      ctx.fillRect(barX, barY, barWidth, 2);
+      ctx.fillRect(barX, barY, barWidth, 3);
       ctx.fillStyle = failed ? CORAL : GOLD;
-      ctx.fillRect(barX, barY, barWidth * Math.max(0, Math.min(1, p.value / Math.max(1, p.max))), 2);
+      ctx.fillRect(barX, barY, barWidth * Math.max(0, Math.min(1, p.value / Math.max(1, p.max))), 3);
     } else if (Number.isFinite(objective.timer) && objective.timer > 0) {
-      const barX = x + 17;
-      const barWidth = width - 34;
-      const barY = y + height - 5;
+      const barX = x + 16;
+      const barWidth = width - 32;
+      const barY = y + height - 4;
       const total = objective.progress?.maxTimer ?? 108;
       ctx.fillStyle = 'rgba(247,232,210,0.1)';
-      ctx.fillRect(barX, barY, barWidth, 2);
+      ctx.fillRect(barX, barY, barWidth, 3);
       ctx.fillStyle = objective.timer < 20 ? CORAL : TEAL;
-      ctx.fillRect(barX, barY, barWidth * Math.max(0, Math.min(1, objective.timer / total)), 2);
+      ctx.fillRect(barX, barY, barWidth * Math.max(0, Math.min(1, objective.timer / total)), 3);
     }
   }
 
   drawChallenge(ctx, state) {
     const challenge = state.challenge;
     if (!challenge) return;
-    const width = 268;
-    const height = 62;
-    const x = 28;
-    const y = this.height - 196 - 28 - 45 - 10 - height;
+    const width = 340;
+    const height = 52;
+    const x = (this.width - width) / 2;
+    const y = 104;
     const accent = challenge.tone === 'coral' ? CORAL : GOLD;
     drawPanel(ctx, x, y, width, height, {
-      cut: 10,
-      fill: 'rgba(9,6,16,0.82)',
+      cut: 9,
+      fill: 'rgba(9,6,16,0.86)',
       stroke: 'rgba(247,232,210,0.2)',
       accent,
     });
-    label(ctx, 'STREET JOB', x + 15, y + 16, { size: 7, color: accent, spacing: '2.4px', weight: 800 });
-    label(ctx, challenge.title.toUpperCase(), x + 15, y + 35, { size: 15, color: CREAM, spacing: '1.2px', font: DISPLAY, weight: 800 });
+    label(ctx, 'STREET JOB', x + 14, y + 15, { size: 10, color: accent, spacing: '1.8px', weight: 800 });
+    label(ctx, challenge.title.toUpperCase(), x + 14, y + 32, { size: 14, color: CREAM, spacing: '0.9px', font: DISPLAY, weight: 800 });
     if (Number.isFinite(challenge.timer)) {
       ctx.save();
       ctx.textAlign = 'right';
-      ctx.font = `800 21px ${MONO}`;
+      ctx.font = `800 19px ${MONO}`;
       ctx.fillStyle = challenge.timer < 12 ? CORAL : GOLD;
-      ctx.fillText(timerString(challenge.timer), x + width - 15, y + 32);
+      ctx.fillText(timerString(challenge.timer), x + width - 14, y + 31);
       ctx.restore();
     }
-    label(ctx, challenge.sub, x + 15, y + 52, {
-      size: 7,
-      color: 'rgba(247,232,210,0.55)',
-      spacing: '1.1px',
+    label(ctx, truncateText(ctx, challenge.sub, width - 28, `600 10.5px ${UI}`), x + 14, y + 45, {
+      size: 10.5,
+      color: 'rgba(247,232,210,0.62)',
+      spacing: '0.3px',
       weight: 600,
     });
     if (challenge.detail) {
-      label(ctx, challenge.detail, x + width - 15, y + 52, {
-        size: 8,
+      label(ctx, challenge.detail, x + width - 14, y + 45, {
+        size: 10,
         color: GOLD,
-        spacing: '1.2px',
+        spacing: '0.6px',
         align: 'right',
         weight: 700,
       });
@@ -768,50 +1278,208 @@ export class Hud {
     if (Number.isFinite(challenge.timer) && Number.isFinite(challenge.maxTimer)) {
       const fill = Math.max(0, Math.min(1, challenge.timer / challenge.maxTimer));
       ctx.fillStyle = 'rgba(247,232,210,0.1)';
-      ctx.fillRect(x + 15, y + height - 5, width - 30, 2);
+      ctx.fillRect(x + 14, y + height - 4, width - 28, 2);
       ctx.fillStyle = accent;
-      ctx.fillRect(x + 15, y + height - 5, (width - 30) * fill, 2);
+      ctx.fillRect(x + 14, y + height - 4, (width - 28) * fill, 2);
     }
   }
 
-  drawSubtitle(ctx, state) {
+  drawDialogue(ctx, state) {
     const subtitle = state.subtitle;
     if (!subtitle) return;
+    const width = 400;
+    const height = 108;
+    const x = 24;
+    const y = 188;
     const color = speakerColor(subtitle.speaker);
-    ctx.save();
-    ctx.font = `500 16px ${UI}`;
-    const measured = Math.min(736, Math.max(410, ctx.measureText(subtitle.text).width + 52));
-    ctx.restore();
-    const width = measured;
-    const height = 64;
-    const x = (this.width - width) / 2;
-    const y = this.height - 72 - 26 - 12 - height;
     drawPanel(ctx, x, y, width, height, {
-      cut: 12,
-      fill: 'rgba(8,5,15,0.88)',
-      stroke: 'rgba(247,232,210,0.22)',
+      cut: 11,
+      fill: 'rgba(8,5,15,0.9)',
+      stroke: 'rgba(247,232,210,0.24)',
       accent: color,
     });
-    label(ctx, (subtitle.speaker || 'RAE').toUpperCase(), x + 19, y + 21, {
-      size: 8,
+    drawPortrait(ctx, x + 14, y + 20, 68, subtitle.speaker);
+    const textX = x + 96;
+    const textWidth = width - 112;
+    label(ctx, speakerDisplayName(subtitle.speaker), textX, y + 33, {
+      size: 13.5,
       color,
-      spacing: '3px',
+      spacing: '1.1px',
       weight: 800,
     });
+    label(ctx, (subtitle.role ?? speakerRole(subtitle.speaker)).toUpperCase(), textX, y + 49, {
+      size: 10.5,
+      color: 'rgba(247,232,210,0.56)',
+      spacing: '1px',
+      weight: 700,
+    });
+    const lines = wrapText(ctx, subtitle.text, textWidth, `500 13px ${UI}`, 2);
     ctx.save();
-    ctx.font = `500 16px ${UI}`;
+    ctx.font = `500 13px ${UI}`;
     ctx.fillStyle = CREAM;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    if ('letterSpacing' in ctx) ctx.letterSpacing = '0.2px';
-    ctx.fillText(subtitle.text, x + 19, y + 44, width - 38);
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '0.1px';
+    lines.forEach((line, index) => ctx.fillText(line, textX, y + 70 + index * 17));
     ctx.restore();
-    ctx.strokeStyle = 'rgba(247,232,210,0.16)';
+    ctx.strokeStyle = 'rgba(247,232,210,0.14)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(x + 19, y + 51);
-    ctx.lineTo(x + width - 19, y + 51);
+    ctx.moveTo(textX, y + 94);
+    ctx.lineTo(x + width - 14, y + 94);
     ctx.stroke();
+    label(ctx, 'COMMS', x + width - 14, y + 101, {
+      size: 10.5,
+      color: 'rgba(247,232,210,0.38)',
+      spacing: '1.1px',
+      align: 'right',
+      weight: 700,
+    });
+  }
+
+  drawCrewPanel(ctx, state) {
+    const crew = state.crew;
+    if (!crew) return;
+    const x = 24;
+    const y = 306;
+    const width = 250;
+    const height = 108;
+    drawPanel(ctx, x, y, width, height, {
+      cut: 10,
+      fill: 'rgba(9,6,16,0.84)',
+      stroke: 'rgba(247,232,210,0.18)',
+      accent: 'rgba(63,224,207,0.65)',
+    });
+    label(ctx, 'CREW · SOLANO', x + 14, y + 18, { size: 10.5, color: GOLD, spacing: '1.5px', weight: 800 });
+    label(ctx, '3 CONTACTS', x + width - 14, y + 18, {
+      size: 10.5,
+      color: 'rgba(247,232,210,0.44)',
+      spacing: '0.9px',
+      align: 'right',
+      weight: 700,
+    });
+    const colors = [GOLD, TEAL, CORAL];
+    crew.forEach((contact, index) => {
+      const rowY = y + 38 + index * 25;
+      const color = colors[index % colors.length];
+      const status = String(contact.status ?? 'READY').toUpperCase();
+      const statusColor = /EYES ON|READY|ON COMMS/.test(status)
+        ? TEAL
+        : /EN ROUTE|IN THE BAY/.test(status)
+          ? GOLD
+          : CORAL;
+      ctx.save();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x + 17, rowY - 4, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      label(ctx, contact.name, x + 26, rowY, { size: 12, color: CREAM, spacing: '0.8px', weight: 800 });
+      label(ctx, status, x + width - 14, rowY, {
+        size: 11,
+        color: statusColor,
+        spacing: '0.8px',
+        align: 'right',
+        weight: 800,
+      });
+      label(ctx, contact.role, x + 26, rowY + 11, {
+        size: 10,
+        color: 'rgba(247,232,210,0.5)',
+        spacing: '1px',
+        weight: 600,
+      });
+    });
+  }
+
+  drawPoliceRoster(ctx, police) {
+    if (!police) return;
+    const x = 1000;
+    const y = 188;
+    const width = 252;
+    const height = 186;
+    const wanted = police.wanted ?? 0;
+    const accent = wanted > 0 ? CORAL : 'rgba(63,224,207,0.65)';
+    drawPanel(ctx, x, y, width, height, {
+      cut: 11,
+      fill: 'rgba(9,6,16,0.84)',
+      stroke: 'rgba(247,232,210,0.18)',
+      accent,
+    });
+    label(ctx, 'HPD RESPONSE', x + 14, y + 20, {
+      size: 10.5,
+      color: wanted > 0 ? CORAL : TEAL,
+      spacing: '1px',
+      weight: 800,
+    });
+    const count = police.rosterCount ?? (police.roster?.length ?? 0);
+    label(ctx, `— ${count} UNIT${count === 1 ? '' : 'S'} · ${wanted}★`, x + width - 14, y + 20, {
+      size: 10.5,
+      color: wanted > 0 ? GOLD : 'rgba(247,232,210,0.55)',
+      spacing: '0.5px',
+      align: 'right',
+      weight: 800,
+    });
+    ctx.strokeStyle = 'rgba(247,232,210,0.12)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 14, y + 28);
+    ctx.lineTo(x + width - 14, y + 28);
+    ctx.stroke();
+
+    const roster = (police.roster ?? []).slice(0, 5);
+    roster.forEach((entry, index) => {
+      const rowY = y + 45 + index * 24;
+      const color = roleColor(entry.role);
+      ctx.save();
+      ctx.fillStyle = color;
+      ctx.globalAlpha = entry.kind === 'air' ? 0.95 : 0.8;
+      ctx.fillRect(x + 14, rowY - 10, 3, 14);
+      ctx.restore();
+      label(ctx, entry.callsign ?? 'UNIT', x + 23, rowY, {
+        size: 12,
+        color: CREAM,
+        spacing: '0.7px',
+        weight: 800,
+      });
+      label(ctx, entry.role ?? 'PURSUIT', x + 83, rowY, {
+        size: 11,
+        color,
+        spacing: '0.6px',
+        weight: 800,
+      });
+      label(ctx, `${entry.distance ?? 0} m`, x + width - 14, rowY, {
+        size: 11.5,
+        color: GOLD,
+        spacing: '0.5px',
+        align: 'right',
+        font: MONO,
+        weight: 700,
+      });
+    });
+    if (roster.length === 0) {
+      label(ctx, 'NO UNITS IN THE AREA', x + 14, y + 50, {
+        size: 10.5,
+        color: 'rgba(247,232,210,0.5)',
+        spacing: '0.8px',
+        weight: 700,
+      });
+    }
+    if (police.extra) {
+      label(
+        ctx,
+        `+${police.extra.count} more unit${police.extra.count === 1 ? '' : 's'} · ${police.extra.hint}`,
+        x + 14,
+        y + 170,
+        { size: 10, color: 'rgba(247,232,210,0.55)', spacing: '0.4px', weight: 700 },
+      );
+    } else if (wanted === 0) {
+      label(ctx, 'PATROL SWEEP · NO ACTIVE BOLO', x + 14, y + 170, {
+        size: 10,
+        color: 'rgba(63,224,207,0.6)',
+        spacing: '0.4px',
+        weight: 700,
+      });
+    }
   }
 
   drawReward(ctx, reward, state) {
@@ -828,10 +1496,10 @@ export class Hud {
     if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
     ctx.fillText(`+ ${cashString(reward.amount)}`, cx, y);
     ctx.shadowBlur = 0;
-    ctx.font = `700 8px ${UI}`;
-    if ('letterSpacing' in ctx) ctx.letterSpacing = '3.2px';
+    ctx.font = `700 11px ${UI}`;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '2.4px';
     ctx.fillStyle = 'rgba(63,224,207,0.85)';
-    ctx.fillText((reward.label || 'REWARD').toUpperCase(), cx, y + 17);
+    ctx.fillText((reward.label || 'REWARD').toUpperCase(), cx, y + 19);
     const rule = ctx.createLinearGradient(cx - 130, 0, cx + 130, 0);
     rule.addColorStop(0, 'rgba(255,201,92,0)');
     rule.addColorStop(0.5, 'rgba(255,201,92,0.55)');
@@ -864,13 +1532,13 @@ export class Hud {
       ctx.restore();
     }
     ctx.restore();
-    label(ctx, 'MISSION FAILED', x + 22, y + 24, { size: 9, color: CORAL, spacing: '4px', weight: 800 });
+    label(ctx, 'MISSION FAILED', x + 22, y + 24, { size: 11, color: CORAL, spacing: '3px', weight: 800 });
     label(ctx, fail.title.toUpperCase(), x + 22, y + 51, { size: 23, color: CREAM, spacing: '1px', font: DISPLAY, weight: 900 });
-    label(ctx, fail.reason, x + 22, y + 70, { size: 10, color: CREAM_DIM, spacing: '0.2px', weight: 500 });
-    label(ctx, 'ENTER · RETRY      OR WALK INTO THE MARKER', x + width - 22, y + 90, {
-      size: 8,
+    label(ctx, fail.reason, x + 22, y + 70, { size: 11, color: CREAM_DIM, spacing: '0.2px', weight: 500 });
+    label(ctx, 'ENTER · RETRY      OR WALK INTO THE MARKER', x + width - 22, y + 91, {
+      size: 10.5,
       color: GOLD,
-      spacing: '1.8px',
+      spacing: '1.2px',
       align: 'right',
       weight: 800,
     });
@@ -941,61 +1609,81 @@ export class Hud {
     );
     label(
       ctx,
-      enabled ? (state.radio?.track || 'Harbor Lights — Sable Youth') : 'PRESS T TO TUNE IN',
+      enabled ? (state.radio?.track || 'Sable Youth — Harbor Lights') : 'PRESS T TO TUNE IN',
       right,
       y + 5,
-      { size: 8, color: 'rgba(247,232,210,0.46)', spacing: '0.8px', align: 'right', weight: 500 },
+      { size: 10.5, color: 'rgba(247,232,210,0.46)', spacing: '0.4px', align: 'right', weight: 500 },
     );
   }
 
-  drawWeapon(ctx, state) {
+  drawWeaponStrip(ctx, state) {
     const weapons = state.weapons;
-    if (!weapons || weapons.dead || state.player.driving) return;
-    const width = 200;
-    const height = 64;
-    const x = this.width - width - 28;
-    const y = this.height - 262;
-    const low = weapons.ammo <= Math.max(1, Math.floor(weapons.mag * 0.2));
+    if (!weapons || weapons.dead) return;
+    const x = 1000;
+    const y = 384;
+    const width = 252;
+    const height = 142;
     drawPanel(ctx, x, y, width, height, {
       cut: 10,
-      fill: 'rgba(9,6,16,0.78)',
+      fill: 'rgba(9,6,16,0.84)',
       stroke: 'rgba(247,232,210,0.18)',
-      accent: low ? CORAL : GOLD,
+      accent: 'rgba(255,201,92,0.8)',
     });
-    label(ctx, weapons.name.toUpperCase(), x + 14, y + 18, { size: 9, color: CREAM, spacing: '1.3px', weight: 800 });
-    label(ctx, weapons.short, x + width - 12, y + 18, { size: 7, color: 'rgba(255,201,92,0.75)', spacing: '1.3px', align: 'right', weight: 700 });
-    ctx.save();
-    ctx.textAlign = 'right';
-    ctx.font = `900 28px ${DISPLAY}`;
-    ctx.fillStyle = low ? CORAL : CREAM;
-    ctx.fillText(String(weapons.ammo), x + width - 44, y + 48);
-    ctx.font = `600 11px ${MONO}`;
-    ctx.fillStyle = 'rgba(247,232,210,0.48)';
-    ctx.fillText(`/ ${weapons.reserve}`, x + width - 12, y + 47);
-    ctx.restore();
-    const barX = x + 14;
-    const barY = y + 25;
-    const barWidth = width - 82;
-    ctx.fillStyle = 'rgba(247,232,210,0.1)';
-    ctx.fillRect(barX, barY, barWidth, 4);
-    const fill = Math.max(0, Math.min(1, weapons.ammo / Math.max(1, weapons.mag)));
-    ctx.fillStyle = low ? CORAL : GOLD;
-    ctx.fillRect(barX, barY, barWidth * fill, 4);
-    label(ctx, weapons.reloading ? 'RELOADING' : (weapons.aiming ? 'AIMED · RMB' : 'HIP · RMB TO AIM'), barX, y + 54, {
-      size: 6.5,
-      color: weapons.reloading ? TEAL : 'rgba(247,232,210,0.36)',
-      spacing: '1.1px',
-      weight: 700,
-    });
-    label(ctx, weapons.ownedSmg ? '1 / 2 · R' : '1 · R', x + width - 12, y + 54, {
-      size: 6.5,
-      color: 'rgba(247,232,210,0.34)',
+    label(ctx, 'WEAPONS', x + 14, y + 19, { size: 10.5, color: GOLD, spacing: '1.5px', weight: 800 });
+    label(ctx, '5 SLOTS', x + width - 14, y + 19, {
+      size: 10.5,
+      color: 'rgba(247,232,210,0.46)',
       spacing: '1px',
       align: 'right',
+      weight: 700,
+    });
+    const loadout = weapons.loadout ?? [];
+    loadout.slice(0, 5).forEach((slot, index) => {
+      const rowY = y + 32 + index * 20;
+      const centerY = rowY + 8;
+      const active = (slot.key === weapons.key) && !slot.locked;
+      if (active) {
+        ctx.fillStyle = 'rgba(255,201,92,0.13)';
+        ctx.fillRect(x + 8, rowY, width - 16, 18);
+        ctx.fillStyle = GOLD;
+        ctx.fillRect(x + 8, rowY, 3, 18);
+      }
+      const tone = active ? GOLD : slot.locked ? 'rgba(247,232,210,0.28)' : CREAM;
+      drawWeaponIcon(ctx, slot.icon, x + 24, centerY, tone);
+      const name = slot.locked ? `${slot.short ?? 'WEAPON'} · LOCKED` : slot.name.toUpperCase();
+      label(ctx, name, x + 40, centerY + 4, {
+        size: 11.5,
+        color: slot.locked ? 'rgba(247,232,210,0.42)' : active ? CREAM : 'rgba(247,232,210,0.8)',
+        spacing: '0.4px',
+        weight: active ? 800 : 700,
+      });
+      let ammoText = '—';
+      if (slot.melee) ammoText = '∞';
+      else if (!slot.locked) ammoText = `${slot.ammo ?? 0}/${slot.reserve ?? 0}`;
+      label(ctx, ammoText, x + width - 14, centerY + 4, {
+        size: slot.melee ? 13 : 11,
+        color: slot.locked ? 'rgba(247,232,210,0.34)' : active ? GOLD : 'rgba(247,232,210,0.64)',
+        spacing: '0.4px',
+        align: 'right',
+        font: MONO,
+        weight: 700,
+      });
     });
     if (weapons.reloading) {
-      ctx.fillStyle = TEAL;
-      ctx.fillRect(barX, barY, barWidth * Math.max(0, Math.min(1, weapons.reloadProgress)), 4);
+      label(ctx, 'RELOADING', x + 14, y + height - 7, {
+        size: 10,
+        color: TEAL,
+        spacing: '1.2px',
+        weight: 800,
+      });
+    } else {
+      label(ctx, weapons.ownedSmg ? '1 / 2 SELECT · R RELOAD' : '1 SELECT · R RELOAD', x + width - 14, y + height - 7, {
+        size: 10.5,
+        color: 'rgba(247,232,210,0.4)',
+        spacing: '0.6px',
+        align: 'right',
+        weight: 700,
+      });
     }
   }
 
@@ -1118,107 +1806,154 @@ export class Hud {
     ctx.restore();
   }
 
-  drawSpeed(ctx, state) {
+  drawVehicleCard(ctx, state) {
     const player = state.player;
-    const car = player.driving;
-    if (car) {
-      const width = 252;
-      const height = 108;
-      const x = this.width - width - 28;
-      const y = this.height - height - 28;
-      drawPanel(ctx, x, y, width, height, { cut: 12, accent: TEAL });
-      label(ctx, car.name.toUpperCase(), x + 15, y + 21, { size: 10, color: CREAM, spacing: '1.3px', weight: 700 });
-      label(ctx, car.className || 'VEHICLE', x + width - 15, y + 21, { size: 7, color: 'rgba(63,224,207,0.7)', spacing: '1.4px', align: 'right' });
+    const car = state.vehicle;
+    const x = 1000;
+    const y = 536;
+    const width = 252;
+    const height = 160;
+    drawPanel(ctx, x, y, width, height, { cut: 11, accent: TEAL });
+    const speed = car ? car.speedKmh : player.speedKmh;
+    const gear = car ? car.gear : '—';
+    const condition = car ? Math.max(0, Math.min(1, car.condition ?? 1)) : 0;
+    const conditionPct = Math.round(condition * 100);
+    const damagePct = Math.max(0, 100 - conditionPct);
+    const conditionColor = condition >= 0.6 ? TEAL : condition >= 0.3 ? GOLD : CORAL;
+    label(ctx, car ? 'VEHICLE' : 'ON FOOT', x + 14, y + 18, {
+      size: 10.5,
+      color: car ? TEAL : 'rgba(247,232,210,0.55)',
+      spacing: '1.5px',
+      weight: 800,
+    });
+    label(ctx, car ? `${conditionPct}% CONDITION` : 'NO VEHICLE', x + width - 14, y + 18, {
+      size: 10,
+      color: car ? conditionColor : 'rgba(247,232,210,0.46)',
+      spacing: '0.7px',
+      align: 'right',
+      weight: 800,
+    });
 
-      ctx.save();
-      ctx.textAlign = 'right';
-      ctx.font = `900 43px ${DISPLAY}`;
-      ctx.fillStyle = CREAM;
-      ctx.fillText(String(Math.round(car.speedKmh)), x + width - 15, y + 65);
-      ctx.restore();
-      label(ctx, 'KM/H', x + width - 15, y + 78, { size: 8, color: 'rgba(247,232,210,0.42)', spacing: '1.5px', align: 'right' });
+    label(ctx, car ? car.name.toUpperCase() : 'RAE SOLANO', x + 14, y + 38, {
+      size: 15,
+      color: CREAM,
+      spacing: '0.9px',
+      weight: 800,
+      font: DISPLAY,
+    });
+    label(ctx, car ? `${car.className} · ${car.tune}` : 'HARBOR COURIER · ON FOOT', x + 14, y + 53, {
+      size: 11,
+      color: 'rgba(63,224,207,0.8)',
+      spacing: '0.6px',
+      weight: 700,
+    });
 
-      chamferPath(ctx, x + 15, y + 34, 36, 36, 7);
-      ctx.fillStyle = 'rgba(247,232,210,0.08)';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(63,224,207,0.48)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      ctx.save();
-      ctx.font = `900 21px ${DISPLAY}`;
-      ctx.fillStyle = GOLD;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(car.gear, x + 33, y + 53);
-      ctx.restore();
-      label(ctx, 'GEAR', x + 33, y + 82, { size: 6, color: 'rgba(247,232,210,0.38)', spacing: '1.2px', align: 'center' });
+    chamferPath(ctx, x + 14, y + 63, 38, 32, 6);
+    ctx.fillStyle = 'rgba(247,232,210,0.08)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(63,224,207,0.45)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.save();
+    ctx.font = `900 19px ${DISPLAY}`;
+    ctx.fillStyle = GOLD;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(gear, x + 33, y + 79);
+    ctx.restore();
+    label(ctx, 'GEAR', x + 33, y + 104, { size: 10, color: 'rgba(247,232,210,0.44)', spacing: '0.8px', align: 'center', weight: 700 });
 
-      const barX = x + 66;
-      const barY = y + 79;
-      const barWidth = width - 151;
-      label(ctx, 'ENGINE', barX, y + 73, { size: 6, color: 'rgba(247,232,210,0.38)', spacing: '1.2px' });
-      ctx.fillStyle = 'rgba(247,232,210,0.1)';
-      ctx.fillRect(barX, barY, barWidth, 3);
-      const rpm = Math.min(1, car.engineRpm / 6400);
-      ctx.fillStyle = rpm > 0.82 ? CORAL : TEAL;
-      ctx.fillRect(barX, barY, barWidth * rpm, 3);
-      label(ctx, 'RADIO LIVE', x + 33, y + 98, { size: 6, color: 'rgba(247,232,210,0.3)', spacing: '1.1px', align: 'center' });
-      return;
-    }
-
-    const width = 188;
-    const height = 88;
-    const x = this.width - width - 28;
-    const y = this.height - height - 28;
-    drawPanel(ctx, x, y, width, height, { cut: 12, accent: TEAL });
-    label(ctx, 'ON FOOT', x + 15, y + 21, { size: 8, color: 'rgba(63,224,207,0.74)', spacing: '2px', weight: 700 });
     ctx.save();
     ctx.textAlign = 'right';
-    ctx.font = `900 43px ${DISPLAY}`;
+    ctx.font = `900 38px ${DISPLAY}`;
     ctx.fillStyle = CREAM;
-    ctx.fillText(String(Math.round(player.speedKmh)), x + width - 16, y + 64);
+    ctx.fillText(String(Math.round(speed)), x + width - 14, y + 90);
     ctx.restore();
-    label(ctx, 'KM/H', x + width - 16, y + 78, { size: 8, color: 'rgba(247,232,210,0.4)', spacing: '1.5px', align: 'right' });
-    const barX = x + 15;
-    const barY = y + 66;
-    const barWidth = width - 92;
+    label(ctx, 'KM/H', x + width - 14, y + 102, { size: 10, color: 'rgba(247,232,210,0.5)', spacing: '1.2px', align: 'right', weight: 700 });
+
+    const barX = x + 14;
+    const barY = y + 110;
+    const barWidth = width - 28;
+    const level = car ? condition : Math.min(1, Math.abs(player.speedKmh) / 32);
     ctx.fillStyle = 'rgba(247,232,210,0.1)';
-    ctx.fillRect(barX, barY, barWidth, 3);
-    const level = Math.min(1, Math.abs(player.speedKmh) / 32);
-    ctx.fillStyle = TEAL;
-    ctx.fillRect(barX, barY, barWidth * level, 3);
-    label(ctx, player.nearVehicle ? 'VEHICLE IN REACH' : 'FOOT MOBILITY', barX, barY + 16, {
-      size: 7,
-      color: player.nearVehicle ? 'rgba(255,201,92,0.8)' : 'rgba(247,232,210,0.32)',
-      spacing: '1.4px',
+    ctx.fillRect(barX, barY, barWidth, 6);
+    ctx.fillStyle = car ? conditionColor : TEAL;
+    ctx.fillRect(barX, barY, barWidth * Math.max(0, Math.min(1, level)), 6);
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx.fillRect(barX, barY, barWidth * Math.max(0, Math.min(1, level)), 1);
+
+    label(ctx, car ? `${damagePct}% DMG · ${conditionPct}% BODY` : (player.nearVehicle ? 'VEHICLE IN REACH' : 'STREETS OPEN'), x + 14, y + 127, {
+      size: 10.5,
+      color: car ? 'rgba(247,232,210,0.58)' : player.nearVehicle ? GOLD : 'rgba(247,232,210,0.44)',
+      spacing: '0.4px',
+      weight: 700,
     });
+    label(ctx, car ? `GEAR ${gear} · ENGINE ${Math.min(99, Math.round((car.engineRpm / 6400) * 100))}%` : 'FOOT MOBILITY', x + width - 14, y + 127, {
+      size: 10,
+      color: 'rgba(247,232,210,0.45)',
+      spacing: '0.4px',
+      align: 'right',
+      weight: 700,
+    });
+
+    ctx.strokeStyle = 'rgba(247,232,210,0.13)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 14, y + 132);
+    ctx.lineTo(x + width - 14, y + 132);
+    ctx.stroke();
+
+    const radio = state.radio ?? {};
+    const enabled = radio.enabled !== false;
+    label(ctx, enabled ? String(radio.station ?? 'Night Tide 88.3').toUpperCase() : 'RADIO OFF', x + 14, y + 145, {
+      size: 11,
+      color: enabled ? GOLD : 'rgba(247,232,210,0.44)',
+      spacing: '1px',
+      weight: 800,
+    });
+    label(ctx, enabled ? (radio.track ?? 'Sable Youth — Harbor Lights') : 'PRESS T TO TUNE IN', x + 14, y + 157, {
+      size: 10.5,
+      color: enabled ? 'rgba(247,232,210,0.66)' : 'rgba(63,224,207,0.6)',
+      spacing: '0.3px',
+      weight: 600,
+    });
+    if (enabled) {
+      const bars = 4;
+      for (let i = 0; i < bars; i += 1) {
+        const pulse = 0.35 + 0.65 * (0.5 + Math.sin(this.time * (2.4 + i * 0.8) + i) * 0.5);
+        const barHeight = 3 + pulse * 8;
+        ctx.fillStyle = `rgba(63,224,207,${0.35 + pulse * 0.45})`;
+        ctx.fillRect(x + width - 36 + i * 5, y + 146 - barHeight, 2.5, barHeight);
+      }
+    }
   }
 
   drawPrompt(ctx, state) {
     const prompt = state.vehiclePrompt;
     if (!prompt) return;
     const action = prompt.action === 'exit' ? 'EXIT VEHICLE' : `ENTER ${prompt.name.toUpperCase()}`;
-    const width = Math.max(224, Math.min(370, 108 + action.length * 6.4));
-    const height = 34;
+    const width = Math.max(250, Math.min(390, 126 + action.length * 7.2));
+    const height = 36;
     const x = (this.width - width) / 2;
-    const y = this.height - 144;
+    const y = 582;
     drawPanel(ctx, x, y, width, height, {
       cut: 9,
-      fill: 'rgba(9,6,16,0.76)',
+      fill: 'rgba(9,6,16,0.82)',
       stroke: 'rgba(247,232,210,0.2)',
       accent: prompt.action === 'exit' ? TEAL : GOLD,
     });
-    chamferPath(ctx, x + 10, y + 8, 47, 18, 5);
+    chamferPath(ctx, x + 10, y + 8, 50, 20, 5);
     ctx.fillStyle = 'rgba(247,232,210,0.92)';
     ctx.fill();
-    label(ctx, 'F / E', x + 33, y + 21, { size: 8, color: '#140f1c', spacing: '0.5px', align: 'center', weight: 800 });
-    label(ctx, action, x + 68, y + 22, { size: 8, color: CREAM, spacing: '1.5px', weight: 700 });
+    label(ctx, 'F / E', x + 35, y + 22, { size: 10, color: '#140f1c', spacing: '0.4px', align: 'center', weight: 800 });
+    label(ctx, action, x + 72, y + 23, { size: 11, color: CREAM, spacing: '0.9px', weight: 800 });
     if (prompt.action === 'enter') {
-      label(ctx, prompt.distance ? `${Math.round(prompt.distance)} M` : 'NEARBY', x + width - 12, y + 22, {
-        size: 7,
-        color: 'rgba(247,232,210,0.42)',
-        spacing: '1.2px',
+      label(ctx, prompt.distance ? `${Math.round(prompt.distance)} M` : 'NEARBY', x + width - 12, y + 23, {
+        size: 10,
+        color: 'rgba(247,232,210,0.5)',
+        spacing: '0.8px',
         align: 'right',
+        weight: 700,
       });
     }
   }
@@ -1237,10 +1972,10 @@ export class Hud {
     ctx.shadowBlur = 18;
     ctx.fillText(toast.title.toUpperCase(), cx, y);
     ctx.shadowBlur = 0;
-    ctx.font = `600 9px ${UI}`;
-    if ('letterSpacing' in ctx) ctx.letterSpacing = '3px';
+    ctx.font = `600 11px ${UI}`;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '2.2px';
     ctx.fillStyle = 'rgba(63,224,207,0.8)';
-    ctx.fillText(toast.sub, cx, y + 17);
+    ctx.fillText(toast.sub, cx, y + 19);
     ctx.strokeStyle = 'rgba(247,232,210,0.26)';
     ctx.lineWidth = 1;
     ctx.beginPath();

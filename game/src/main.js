@@ -8,6 +8,7 @@
 import * as THREE from '../vendor/three.module.js';
 import {
   CAMERA,
+  DAY,
   HOURS,
   MINUTES,
   PALETTE,
@@ -16,6 +17,7 @@ import {
   RADIO,
   START_OBJECTIVE,
   districtAt,
+  streetAt,
 } from './config.js';
 import { World } from './world.js';
 import { Player } from './player.js';
@@ -84,6 +86,7 @@ class Game {
     this.accumulator = 0;
     this.lastFrame = 0;
     this.clockMinutes = HOURS * 60 + MINUTES;
+    this.day = DAY;
     this.objective = START_OBJECTIVE;
     this.titleView = DEFAULT_TITLE_VIEW;
     this.lastHudState = null;
@@ -105,8 +108,8 @@ class Game {
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.17;
-    this.renderer.setClearColor(0x1a1228, 1);
+    this.renderer.toneMappingExposure = 1.32;
+    this.renderer.setClearColor(0x080612, 1);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -621,6 +624,45 @@ class Game {
     return `${hours}:${minutes}`;
   }
 
+  // Respect is a readout of the run, not a second progression system: cash
+  // earned and story chapters cleared move it up the Strip's ladder.
+  respectState() {
+    const value = Math.min(250, Math.floor(this.player.cash / 20) + this.missions.index * 30);
+    const tiers = [
+      [200, 'HARBOR LEGEND'],
+      [140, 'SOLANO CREW'],
+      [85, 'HARBOR HEAVY'],
+      [45, 'STRIP RUNNER'],
+      [0, 'NEW BLOOD'],
+    ];
+    const rank = tiers.find(([floor]) => value >= floor)?.[1] ?? 'NEW BLOOD';
+    return { rank, value, max: 250 };
+  }
+
+  crewState() {
+    const driving = this.player.driving;
+    const wanted = this.police.wanted;
+    const active = Boolean(this.missions.active);
+    const failed = Boolean(this.missions.failure);
+    return [
+      {
+        name: 'MIRA SOL',
+        role: 'DRIVER',
+        status: failed ? 'STANDING BY' : active ? (driving ? 'ON COMMS' : 'EN ROUTE') : 'READY',
+      },
+      {
+        name: 'ODIN',
+        role: 'MECHANIC',
+        status: driving && driving.condition < 0.82 ? 'EN ROUTE' : 'IN THE BAY',
+      },
+      {
+        name: 'KIKI',
+        role: 'LOOKOUT',
+        status: wanted > 0 ? (this.police.status === 'search' ? 'BLACKOUT' : 'EYES ON') : 'ON THE CORNER',
+      },
+    ];
+  }
+
   hudState() {
     const player = this.player;
     const driving = player.driving;
@@ -648,16 +690,35 @@ class Game {
         distance: player.nearVehicle.distanceToBox(player.position.x, player.position.z) + 0.4,
       };
     }
+    const police = this.police.hudState;
     return {
       player,
       objective: this.objective,
       radio: this.radioState(),
       clock: this.clockString(),
+      day: this.day,
       district: districtAt(player.position.x, player.position.z),
+      street: streetAt(player.position.x, player.position.z),
+      missionCard: this.shot?.missionCard ?? this.missions.hudCard,
+      missionActive: Boolean(this.missions.active),
+      missionFailed: Boolean(this.missions.failure),
+      respect: this.respectState(),
+      crew: this.crewState(),
+      vehicle: driving
+        ? {
+            name: driving.name,
+            className: driving.className,
+            tune: driving.tune,
+            speedKmh: driving.speedKmh,
+            gear: driving.gear,
+            engineRpm: driving.engineRpm,
+            condition: driving.condition,
+          }
+        : null,
       vehicles: blips,
       density: this.traffic.density,
       vehiclePrompt,
-      police: this.police.hudState,
+      police,
       weapons: this.player.combatState,
       down: this.down,
       subtitle: this.missions.subtitle,
@@ -762,10 +823,34 @@ class Game {
         this.player.cameraPitch = pose.cameraPitch;
         this.player.cameraDistance = pose.distance;
         this.resetCityLife({ spawnBeach: shot.stage !== 'heist' });
+        if (shot.police) this.police.stageChase(shot.police, this.player);
         this.player.updateCamera(this.camera, 0, true);
         for (let i = 0; i < steps; i += 1) this.tick(STEP);
       }
       if (shot.stage) this.applyStageShot(shot);
+      // These final poses are applied after the simulation steps so the
+      // screenshot is deterministic: the helicopter, dialogue and bodywork
+      // stay exactly where the shot asked for them.
+      if (shot.air) this.police.stageAir(shot.air);
+      if (shot.dialogue) this.missions.subtitle = { ...shot.dialogue, life: 999 };
+      if (Number.isFinite(shot.health)) this.player.health = shot.health;
+      if (Number.isFinite(shot.armor)) this.player.armor = shot.armor;
+      this.hud.lastHealth = this.player.health;
+      this.hud.lastArmor = this.player.armor;
+      this.hud.healthFlash = 0;
+      this.hud.armorFlash = 0;
+      if (shot.weapons === 'smg') {
+        this.player.weapons.smg.owned = true;
+        this.player.weapons.smg.ammo = 32;
+        this.player.weapons.smg.reserve = 96;
+        this.player.weaponKey = 'smg';
+        this.player.syncGunModel();
+      }
+      if (Number.isFinite(shot.condition) && this.player.driving) {
+        this.player.driving.condition = shot.condition;
+      }
+      if (shot.armed) this.poseArmedPlayer(shot);
+      if (shot.drama) this.stageChaseDrama();
     }
 
     this.shotLocked = true;
@@ -801,6 +886,24 @@ class Game {
     this.effects.update(0.45, this.camera);
     this.missions.stageShotDrama(shot.stage);
     this.player.aiming = true;
+    this.player.damageFlash = 0.34;
+    this.hud.lastHealth = this.player.health;
+    this.hud.lastArmor = this.player.armor;
+    this.hud.healthFlash = 0;
+    this.hud.armorFlash = 0;
+  }
+
+  poseArmedPlayer(shot) {
+    const facing = shot.player?.facing ?? this.player.facing;
+    this.player.aiming = true;
+    this.player.humanoid.aiming = true;
+    this.player.gun.visible = true;
+    this.player.facing = facing;
+    this.player.humanoid.setFacing(facing);
+    for (let i = 0; i < 20; i += 1) this.player.humanoid.update(1 / 60, 0, false);
+    this.player.humanoid.aiming = false;
+    this.player.aiming = false;
+    this.player.gun.visible = true;
     this.player.damageFlash = 0.34;
     this.hud.lastHealth = this.player.health;
     this.hud.lastArmor = this.player.armor;
