@@ -357,6 +357,7 @@ class Game {
     this.player.weaponKey = 'pistol';
     this.player.weapons.pistol = { owned: true, ammo: 12, reserve: 60 };
     this.player.weapons.smg = { owned: false, ammo: 0, reserve: 0 };
+    this.player.weapons.shotgun = { owned: false, ammo: 0, reserve: 0 };
     this.player.syncGunModel();
     this.player.gun.visible = false;
     this.police.resetAfterDown();
@@ -648,6 +649,7 @@ class Game {
         distance: player.nearVehicle.distanceToBox(player.position.x, player.position.z) + 0.4,
       };
     }
+    if (this.shot?.hidePrompt) vehiclePrompt = null;
     return {
       player,
       objective: this.objective,
@@ -702,6 +704,10 @@ class Game {
       this.applyQualityVisuals(true);
       this.refreshQualityLabel();
     }
+    if (shot.daylight) {
+      this.world.setDaylight(true);
+      this.renderer.toneMappingExposure = 1.03;
+    }
     this.simTime = shot.time ?? 0;
     this.clockMinutes = HOURS * 60 + MINUTES;
     this.hud.suppressToasts = true;
@@ -746,10 +752,15 @@ class Game {
         this.traffic.reset({ spawnBeach: false });
         this.stageDriveShot(shot.drive);
         if (shot.chase) this.police.stageChase(shot.chase, this.player.driving);
+        this.stageShotPolice(shot);
+        this.stageShotLoadout(shot);
         this.player.updateCamera(this.camera, 0, true);
         for (let i = 0; i < steps; i += 1) this.tick(STEP);
         if (Number.isFinite(shot.health)) this.player.health = shot.health;
         if (Number.isFinite(shot.armor)) this.player.armor = shot.armor;
+        if (Number.isFinite(shot.vehicleDamage) && this.player.driving) {
+          this.player.driving.health = Math.max(0, 100 - shot.vehicleDamage);
+        }
         this.player.damageFlash = 0;
         if (shot.chase) this.stageChaseDrama();
         this.hud.lastHealth = this.player.health;
@@ -762,10 +773,19 @@ class Game {
         this.player.cameraPitch = pose.cameraPitch;
         this.player.cameraDistance = pose.distance;
         this.resetCityLife({ spawnBeach: shot.stage !== 'heist' });
+        this.stageShotPolice(shot);
+        this.stageShotLoadout(shot);
         this.player.updateCamera(this.camera, 0, true);
         for (let i = 0; i < steps; i += 1) this.tick(STEP);
       }
       if (shot.stage) this.applyStageShot(shot);
+      if (shot.camera) {
+        const [x, y, z] = shot.camera.position;
+        this.camera.position.set(x, y, z);
+        this.camera.fov = shot.camera.fov ?? CAMERA.fov;
+        this.camera.updateProjectionMatrix();
+        this.camera.lookAt(shot.camera.target[0], shot.camera.target[1], shot.camera.target[2]);
+      }
     }
 
     this.shotLocked = true;
@@ -773,6 +793,27 @@ class Game {
     if (this.hud.visible) this.hud.update(0, this.lastHudState);
     this.updateLookHint();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  stageShotPolice(shot) {
+    if (Number.isFinite(shot.wanted)) {
+      this.police.setWanted(shot.wanted, { silent: true });
+      this.player.wanted = this.police.wanted;
+    }
+    if (shot.air) this.police.stageAirUnit(shot.air);
+  }
+
+  stageShotLoadout(shot) {
+    if (shot.weapons) {
+      for (const [key, spec] of Object.entries(shot.weapons)) {
+        if (!this.player.weapons[key] || !spec || typeof spec !== 'object') continue;
+        this.player.weapons[key] = { ...this.player.weapons[key], ...spec };
+      }
+    }
+    if (shot.weaponKey && this.player.weapons[shot.weaponKey]?.owned) {
+      this.player.weaponKey = shot.weaponKey;
+      this.player.syncGunModel();
+    }
   }
 
   applyStageShot(shot) {
@@ -867,6 +908,21 @@ class Game {
     this.player.updateView(this.camera, 0, true);
   }
 
+  updateVehicleDamage(dt) {
+    this.damageSmokeTimer = Math.max(0, (this.damageSmokeTimer ?? 0) - dt);
+    const car = this.player.driving;
+    if (!car || car.damagePercent < 42 || this.damageSmokeTimer > 0) return;
+    this.damageSmokeTimer = car.damagePercent > 75 ? 0.075 : 0.16;
+    const rearX = car.position.x - Math.sin(car.yaw) * car.halfLength * 0.45;
+    const rearZ = car.position.z - Math.cos(car.yaw) * car.halfLength * 0.45;
+    this.effects.smokePuff(rearX, car.position.y + 0.62, rearZ, {
+      scale: 0.85 + car.damagePercent * 0.012,
+      life: 0.9 + car.damagePercent * 0.008,
+      color: car.damagePercent > 75 ? 0x2c2629 : 0x625960,
+      rise: 1.5,
+    });
+  }
+
   // ---------------------------------------------------------------- loop
 
   tick(dt) {
@@ -881,6 +937,7 @@ class Game {
         this.police.update(dt, this.simTime);
         this.player.wanted = this.police.wanted;
         this.vehicles.update(dt, this.simTime);
+        this.updateVehicleDamage(dt);
         this.player.syncFromVehicle();
         this.player.updateView(this.camera, dt);
         this.effects.update(dt, this.camera);
@@ -910,6 +967,7 @@ class Game {
         this.police.update(dt, this.simTime);
         this.player.wanted = this.police.wanted;
         this.vehicles.update(dt, this.simTime);
+        this.updateVehicleDamage(dt);
         this.player.syncFromVehicle();
         this.player.updateView(this.camera, dt);
         this.player.updateCombat(dt, input, this.camera);
@@ -1024,6 +1082,19 @@ try {
     },
     get down() {
       return game.down ? { type: game.down.type, timer: Math.round(game.down.timer * 100) / 100 } : null;
+    },
+    get airUnit() {
+      return game.police.hudState.airUnit;
+    },
+    get vehicle() {
+      const car = game.player.driving;
+      return car ? { name: car.name, damage: car.damagePercent, health: car.health } : null;
+    },
+    get car() {
+      return game.player.driving;
+    },
+    get weapons() {
+      return game.player.combatState.slots;
     },
     get combat() {
       return {

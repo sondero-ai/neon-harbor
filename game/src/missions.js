@@ -19,6 +19,23 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const pad2 = (value) => String(value).padStart(2, '0');
 const distance2 = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
 
+// One line per mission phase, shown under the objective tag so the HUD always
+// says where the job is, not just which job it is.
+const MISSION_STAGES = [
+  ['ACQUIRE THE VELA', 'DELIVER TO MOTOR ROW'],
+  ['SHAKE THE HARBOR PD', 'REACH THE SAFEHOUSE'],
+  ['GRAB THE LEDGER', 'BEAT THE DROP WINDOW'],
+  ['CLEAR THE PLAZA'],
+  ['CLEAR THE DECK', 'ESCAPE THE PIER'],
+];
+
+function stageLine(index, phase = 0) {
+  const stages = MISSION_STAGES[index] ?? MISSION_STAGES[0];
+  const step = clamp(Math.round(phase), 0, stages.length - 1);
+  const prefix = stages.length > 1 ? `STAGE ${step + 1} OF ${stages.length}` : 'STAGE';
+  return `${prefix} · ${stages[step]}`;
+}
+
 function raySphere(origin, direction, cx, cy, cz, radius) {
   const ox = origin.x - cx;
   const oy = origin.y - cy;
@@ -502,6 +519,7 @@ export class Missions {
         sub: 'Free roam · cash stashes · hot cars · heat runs · safehouse saves',
         marker: { x: SAFEHOUSE.x, z: SAFEHOUSE.z },
         tag: 'STORY COMPLETE · FREE ROAM',
+        stage: 'FREE ROAM · THE CITY IS OPEN',
       };
     } else {
       const def = STORY[this.index] ?? STORY[STORY.length - 1];
@@ -510,6 +528,7 @@ export class Missions {
         sub: def.idleSub,
         marker: { x: def.start.x, z: def.start.z },
         tag: `STORY · MISSION ${pad2(this.index + 1)} OF ${pad2(STORY.length)}`,
+        stage: `FREE ROAM · NEXT JOB: ${def.title.toUpperCase()}`,
       };
     }
     this.world.setObjectiveMarker(this.objective.marker.x, this.objective.marker.z);
@@ -522,6 +541,7 @@ export class Missions {
       sub,
       marker: marker ?? { x: this.player.position.x, z: this.player.position.z },
       tag: def ? `MISSION ${pad2(def.index + 1)} · ${def.title.toUpperCase()}` : this.objective?.tag,
+      stage: def ? stageLine(def.index, this.active?.phase ?? 0) : this.objective?.stage,
       progress,
       timer,
     };
@@ -740,7 +760,9 @@ export class Missions {
     this.player.armor = Math.max(this.player.armor, 75);
     this.player.grantWeapon('smg', 160);
     this.player.weapons.smg.reserve = Math.max(this.player.weapons.smg.reserve, 96);
-    this.player.selectWeapon('smg');
+    this.player.grantWeapon('shotgun', 24);
+    this.player.weapons.shotgun.reserve = Math.max(this.player.weapons.shotgun.reserve, 24);
+    this.player.selectWeapon('shotgun');
     const crates = [
       [-188, 65, 1.2], [-193, 75, 1.0], [-201, 62, 1.05], [-209, 77, 0.9],
       [-218, 64, 1.15], [-226, 75, 1.0], [-236, 63, 0.9], [-242, 77, 1.2],
@@ -954,6 +976,7 @@ export class Missions {
       sub: 'Press Enter or walk back into the marker.',
       marker: { x: def.start.x, z: def.start.z },
       tag: `MISSION ${pad2(def.index + 1)} FAILED`,
+      stage: 'STAGE · RETRY THE JOB',
       failed: true,
     };
     this.world.setObjectiveMarker(def.start.x, def.start.z);
@@ -1284,6 +1307,7 @@ export class Missions {
       sub: 'Tomas and his crew have the fountain covered.',
       marker: { x: 0, z: 8.4 },
       tag: 'MISSION 04 · FAMILY CUT',
+      stage: 'STAGE · HOLD THE FOUNTAIN',
       progress: { label: 'CREW', value: 2, max: 5 },
     };
     this.world.setObjectiveMarker(0, 8.4);
@@ -1330,6 +1354,7 @@ export class Missions {
       sub: 'Put Aurelio down and get off the deck.',
       marker: { x: -250, z: 70 },
       tag: 'MISSION 05 · PIER 9 BURNING',
+      stage: 'STAGE 1 OF 2 · CLEAR THE DECK',
       progress: { label: 'ENFORCERS', value: 4, max: 8 },
     };
     this.world.setObjectiveMarker(-250, 70);

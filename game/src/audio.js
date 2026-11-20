@@ -390,15 +390,21 @@ export class AudioSystem {
     if (!this.ctx) return;
     const time = this.ctx.currentTime;
     const smg = kind === 'smg';
-    this.noiseHit({ time, duration: smg ? 0.12 : 0.22, gain: smg ? 0.24 : 0.34, lowpass: smg ? 2600 : 1800 });
+    const shotgun = kind === 'shotgun';
+    this.noiseHit({
+      time,
+      duration: shotgun ? 0.3 : smg ? 0.12 : 0.22,
+      gain: shotgun ? 0.44 : smg ? 0.24 : 0.34,
+      lowpass: shotgun ? 1200 : smg ? 2600 : 1800,
+    });
     this.noiseHit({ time: time + 0.015, duration: 0.08, gain: 0.12, highpass: 2400 });
     this.note({
       type: 'sine',
-      frequency: smg ? 150 : 110,
+      frequency: shotgun ? 72 : smg ? 150 : 110,
       time,
-      duration: smg ? 0.1 : 0.16,
-      gain: 0.16,
-      filter: 600,
+      duration: shotgun ? 0.24 : smg ? 0.1 : 0.16,
+      gain: shotgun ? 0.24 : 0.16,
+      filter: shotgun ? 420 : 600,
     });
   }
 

@@ -10,6 +10,7 @@ import { makeGlowSprite } from './geo.js';
 const COLORS = {
   pistol: 0xffc95c,
   smg: 0x3fe0cf,
+  shotgun: 0xff8a6a,
   health: 0x7dff9f,
   armor: 0x7f9dff,
 };
@@ -68,19 +69,28 @@ function buildIcon(kind, materials) {
     return group;
   }
   const isSmg = kind === 'smg';
+  const isShotgun = kind === 'shotgun';
+  const length = isShotgun ? 0.78 : isSmg ? 0.62 : 0.46;
   const body = new THREE.Mesh(
-    new THREE.BoxGeometry(isSmg ? 0.12 : 0.1, isSmg ? 0.14 : 0.12, isSmg ? 0.62 : 0.46),
+    new THREE.BoxGeometry(isShotgun ? 0.18 : isSmg ? 0.12 : 0.1, isShotgun ? 0.1 : isSmg ? 0.14 : 0.12, length),
     materials.steel,
   );
   const grip = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.2, 0.1), materials.dark);
-  grip.position.set(0, -0.13, isSmg ? 0.02 : -0.04);
+  grip.position.set(0, -0.13, isShotgun ? -0.18 : isSmg ? 0.02 : -0.04);
   grip.rotation.x = 0.22;
   const accent = new THREE.Mesh(
-    new THREE.BoxGeometry(0.13, 0.035, isSmg ? 0.2 : 0.14),
-    isSmg ? materials.teal : materials.gold,
+    new THREE.BoxGeometry(isShotgun ? 0.2 : 0.13, 0.035, isSmg ? 0.2 : 0.14),
+    isSmg ? materials.teal : isShotgun ? materials.coral : materials.gold,
   );
-  accent.position.set(0, 0.085, isSmg ? 0.12 : 0.08);
+  accent.position.set(0, 0.085, isShotgun ? 0.18 : isSmg ? 0.12 : 0.08);
   group.add(body, grip, accent);
+  if (isShotgun) {
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.2), materials.dark);
+    stock.position.set(0, -0.02, -0.38);
+    const pump = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.085, 0.2), materials.dark);
+    pump.position.set(0, -0.045, 0.1);
+    group.add(stock, pump);
+  }
   return group;
 }
 
@@ -97,6 +107,7 @@ export class Pickups {
       steel: new THREE.MeshStandardMaterial({ color: 0x4d4b59, roughness: 0.35, metalness: 0.75 }),
       dark: new THREE.MeshStandardMaterial({ color: 0x17141d, roughness: 0.65, metalness: 0.3 }),
       teal: new THREE.MeshStandardMaterial({ color: 0x3fe0cf, roughness: 0.4, metalness: 0.2, emissive: 0x0d514c }),
+      coral: new THREE.MeshStandardMaterial({ color: 0xff8a6a, roughness: 0.4, metalness: 0.2, emissive: 0x5a1d10 }),
       gold: new THREE.MeshStandardMaterial({ color: 0xffc95c, roughness: 0.4, metalness: 0.2, emissive: 0x5a3b06 }),
       white: new THREE.MeshStandardMaterial({ color: 0xefe3cd, roughness: 0.6, metalness: 0.08 }),
       health: new THREE.MeshStandardMaterial({ color: 0x5cff8a, roughness: 0.5, emissive: 0x12602b }),
@@ -193,6 +204,10 @@ export class Pickups {
       const first = !player.weapons.smg.owned;
       player.grantWeapon('smg', 96);
       message = first ? 'KESTREL SMG · 32 / 96' : `KESTREL SMG · +${WEAPONS.smg.mag} AMMO`;
+    } else if (item.kind === 'shotgun') {
+      const first = !player.weapons.shotgun.owned;
+      player.grantWeapon('shotgun', 24);
+      message = first ? 'TIDEBREAKER 12 · 6 / 24' : `TIDEBREAKER 12 · +${WEAPONS.shotgun.mag} SHELLS`;
     } else if (item.kind === 'pistol') {
       player.grantWeapon('pistol', 48);
       message = 'SOLANO 9 · AMMO +48';

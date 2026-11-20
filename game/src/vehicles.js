@@ -462,6 +462,9 @@ export class Vehicle {
     this.skidDistance = 0;
     this.ai = null;
     this.removed = false;
+    this.maxHealth = 100;
+    this.health = 100;
+    this.damageCooldown = 0;
 
     this.group = new THREE.Group();
     this.group.name = `vehicle-${type}`;
@@ -554,6 +557,24 @@ export class Vehicle {
 
   get speedKmh() {
     return Math.abs(this.speed) * 3.6;
+  }
+
+  get damagePercent() {
+    return Math.round((1 - this.health / this.maxHealth) * 100);
+  }
+
+  get integrity() {
+    return Math.max(0, Math.min(100, Math.round((this.health / this.maxHealth) * 100)));
+  }
+
+  get wrecked() {
+    return this.health <= 0;
+  }
+
+  applyDamage(amount) {
+    const before = this.health;
+    this.health = Math.max(0, this.health - Math.max(0, amount));
+    return before - this.health;
   }
 
   get gear() {
@@ -658,6 +679,7 @@ export class Vehicle {
 
   update(dt, elapsed, world, skids) {
     if (this.removed) return;
+    this.damageCooldown = Math.max(0, this.damageCooldown - dt);
     if (this.driver) this.stepPhysics(dt, world, skids);
     else {
       this.velocity.x = 0;
@@ -682,13 +704,16 @@ export class Vehicle {
 
     const throttle = clamp(controls.throttle, -1, 1);
     const brake = clamp(controls.brake, 0, 1);
+    const healthRatio = this.health / this.maxHealth;
+    const powerScale = this.health <= 0 ? 0.34 : 0.72 + healthRatio * 0.28;
+    const topSpeed = spec.maxSpeed * (this.health <= 0 ? 0.6 : 0.8 + healthRatio * 0.2);
 
     if (throttle > 0) {
       if (forwardSpeed < -0.4) {
         forwardSpeed += spec.brake * 0.55 * throttle * dt;
       } else {
         const ratio = clamp(forwardSpeed / spec.maxSpeed, 0, 1);
-        const power = spec.acceleration * (1 - ratio * 0.72);
+        const power = spec.acceleration * (1 - ratio * 0.72) * powerScale;
         forwardSpeed += power * throttle * dt;
       }
     } else if (throttle < 0) {
@@ -696,7 +721,7 @@ export class Vehicle {
         forwardSpeed += spec.brake * throttle * dt;
       } else {
         const reverseRatio = clamp(-forwardSpeed / spec.reverseSpeed, 0, 1);
-        forwardSpeed += spec.acceleration * 0.55 * throttle * (1 - reverseRatio * 0.7) * dt;
+        forwardSpeed += spec.acceleration * 0.55 * throttle * (1 - reverseRatio * 0.7) * powerScale * dt;
       }
     }
 
@@ -708,7 +733,7 @@ export class Vehicle {
     if (Math.abs(forwardSpeed) > 0.05) forwardSpeed -= Math.sign(forwardSpeed) * rolling * dt;
     else if (Math.abs(throttle) < 0.02) forwardSpeed = 0;
 
-    forwardSpeed = clamp(forwardSpeed, -spec.reverseSpeed, spec.maxSpeed);
+    forwardSpeed = clamp(forwardSpeed, -spec.reverseSpeed, topSpeed);
 
     const speedRatio = clamp(Math.abs(forwardSpeed) / spec.maxSpeed, 0, 1);
     const steerLimit = spec.steer * (1 - speedRatio * 0.44);
@@ -754,6 +779,10 @@ export class Vehicle {
       this.velocity.x *= movedX ? 0.45 : -0.08;
       this.velocity.z *= movedZ ? 0.45 : -0.08;
       this.impact = Math.min(1, this.impact + Math.abs(forwardSpeed) * 0.035);
+      if (Math.abs(forwardSpeed) > 6.5 && this.damageCooldown <= 0) {
+        this.damageCooldown = 0.55;
+        this.applyDamage((Math.abs(forwardSpeed) - 5.5) * 1.15);
+      }
       break;
     }
 
@@ -960,6 +989,11 @@ export class Vehicles {
         b.velocity.multiplyScalar(bMoving ? 0.68 : 1);
         a.impact = Math.min(1, a.impact + 0.22);
         b.impact = Math.min(1, b.impact + 0.22);
+        if ((a.driver === 'player' || b.driver === 'player') && Math.abs(a.speed - b.speed) > 7) {
+          const crash = (Math.abs(a.speed - b.speed) - 5) * 0.55;
+          if (a.driver === 'player') a.applyDamage(crash);
+          if (b.driver === 'player') b.applyDamage(crash);
+        }
       }
     }
   }

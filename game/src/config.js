@@ -75,6 +75,8 @@ export const START_OBJECTIVE = {
   sub: 'Head west along Vega Strip, then south to the water.',
   marker: { x: -168, z: 70 },
   reward: 0,
+  tag: 'FREE ROAM · CASA LUNA',
+  stage: 'STAGE · FOLLOW THE CORAL MARKER',
 };
 
 // Three original stations. The sequencer in audio.js reads the same tempo and
@@ -135,6 +137,22 @@ export const WEAPONS = {
     kick: 0.006,
     auto: true,
   },
+  shotgun: {
+    name: 'Tidebreaker 12',
+    short: 'SHOTGUN',
+    damage: 15,
+    pellets: 7,
+    fireRate: 1.05,
+    mag: 6,
+    reserve: 24,
+    reload: 1.9,
+    spread: 0.042,
+    movingSpread: 0.012,
+    range: 44,
+    tracer: 0xffb066,
+    kick: 0.028,
+    auto: false,
+  },
 };
 
 export const POLICE = {
@@ -142,6 +160,7 @@ export const POLICE = {
   shootFromStars: 3,
   officersFromStars: 3,
   roadblockFromStars: 4,
+  airFromStars: 4,
   cruiseSpeed: 0.94,
   maxCruisers: 4,
   maxOfficers: 4,
@@ -160,6 +179,7 @@ export const PICKUPS = [
   { kind: 'health', x: -52.5, z: 18.2, label: 'Medkit' },
   { kind: 'armor', x: 16, z: 36.4, label: 'Armor Vest' },
   { kind: 'smg', x: -170, z: 67.5, label: 'Kestrel SMG' },
+  { kind: 'shotgun', x: -207, z: 88, label: 'Tidebreaker 12' },
   { kind: 'health', x: 64, z: 21.2, label: 'Medkit' },
   { kind: 'armor', x: -196, z: 118, label: 'Armor Vest' },
   { kind: 'pistol', x: 108, z: 36.4, label: 'Solano 9' },
@@ -201,7 +221,7 @@ export function roadHalf() {
 }
 
 export function districtAt(x, z) {
-  if (x < -144 && z > 20 && z < 130) return 'Pier 9';
+  if (x < -144 && Math.abs(z - WORLD.pier.z) < 30) return 'Pier 9';
   if (x < -144) return 'Casa Luna Beach';
   if (z < -90 && x < 20) return 'North Point';
   if (x > 120) return 'Motor Row';

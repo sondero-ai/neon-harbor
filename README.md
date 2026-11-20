@@ -14,9 +14,10 @@ streetlights and hand-built neon.
 You play courier **Rae Solano**, back in the harbor to settle a family debt.
 The build is the whole first chapter: a seeded city, a third-person camera
 that stays out of walls, seven drivable vehicle classes, grid traffic and
-pedestrians, a five-star police response, two hitscan weapons, five story
-missions with dialogue and combat, free-roam jobs, three synthesised radio
-stations, a canvas HUD and a local save.
+pedestrians, a five-star police response with a searchlight helicopter at
+high heat, three hitscan weapons, five story missions with dialogue and
+combat, free-roam jobs, three synthesised radio stations, a canvas HUD and a
+local save.
 
 ## Play
 
@@ -37,8 +38,8 @@ same mouse drag looks around. **Enter** confirms the focused menu action.
   **Space** is the handbrake. Hold it through a corner to drift; the rear
   tires leave skid marks. **Left click** or **H** sounds the horn.
 - On foot, **left click** fires, **right click** aims and tightens the camera.
-  **R** reloads, **1** selects the Solano 9 pistol and **2** the Kestrel SMG
-  once it has been picked up.
+  **R** reloads, **1** selects the Solano 9 pistol, **2** the Kestrel SMG and
+  **3** the Tidebreaker 12 shotgun once they have been picked up.
 - **Mouse** looks around; the **wheel** pulls the foot camera in or out.
 - **T** switches the radio on or off, **`[`** and **`]`** change stations, and
   **M** mutes. **`-`** and **`=`** trim the master volume.
@@ -73,7 +74,8 @@ the marker for the next.
 4. **Family Cut** — Tomas' crew springs an ambush at the fountain. Fight out
    of the plaza and learn where Aurelio is waiting. ($2,400)
 5. **Pier 9 Burning** — clear Aurelio's enforcers from the pier, set the place
-   on fire and escape before the deck goes up. ($6,000)
+   on fire and escape before the deck goes up. ($6,000) The pier lockup also
+   supplies the Tidebreaker 12 shotgun for the close work.
 
 Combat missions put real low-poly crew on the street with chest and head hit
 boxes, line-of-sight checks, advancing and firing AI, death poses and a boss
@@ -113,7 +115,10 @@ The sun sits low in the west. Warm fog blends the distance, emissive windows
 and signs carry the neon, and instanced pools under the streetlights and blade
 signs spill colour onto the pavement. The water plane scrolls its surface
 texture, the foam breathes, a points cloud supplies the sun glitter, the
-lighthouse beam turns, and cloud sprites drift over the skyline. A typical 1280×720 frame in
+lighthouse beam turns, and cloud sprites drift over the skyline. The beach
+showcase shot swaps in a clear midday sky, higher sun, cooler fog and a
+lighthouse with its lamp off; the rest of the game keeps the golden hour. A
+typical 1280×720 frame in
 this build uses roughly 250–400 draw calls and runs comfortably above 60 fps
 on a desktop GPU.
 
@@ -147,22 +152,31 @@ view and follows the road grid toward the player with a small breadth-first
 route, then switches to a direct pursuit, rams at speed and fires from the
 window once the heat reaches three stars. At three stars cruisers also stop and
 put officers on foot, and at four a two-car roadblock with waiting officers can
-appear ahead of a moving car. Every officer and cruiser is a real target: shots
-land on heads, bodies and bodywork, cruisers have health and explode when
-destroyed, and the minimap draws their blips. When the player is out of sight
-for a few seconds the department switches to a search around the last known
-position; after a longer wait the stars fall one at a time and the units stand
-down. Stopped on foot, close to an officer, with no weapon raised and no recent
-shot, the bust timer runs. The flow hands control back to `main.js`, which
-paints the wasted/busted overlay, takes a cut of the cash and respawns Rae.
+appear ahead of a moving car. At four stars Harbor PD also launches **Air 1**:
+a helicopter orbits the pursuit at rooftop height, its main and tail rotors
+turn, and a searchlight cone plus spotlight track the player or the last known
+position during a search. The HUD raises an **AIR UNIT** cue, marks the
+aircraft on the minimap and adds `AIR` to the pursuit line. Every officer and
+cruiser is a real target: shots land on heads, bodies and bodywork, cruisers
+have health and explode when destroyed, and the minimap draws their blips.
+When the player is out of sight for a few seconds the department switches to a
+search around the last known position; after a longer wait the stars fall one
+at a time and the units stand down. Stopped on foot, close to an officer, with
+no weapon raised and no recent shot, the bust timer runs. The flow hands control
+back to `main.js`, which paints the wasted/busted overlay, takes a cut of the
+cash and respawns Rae.
 
-Combat lives on `player.js`: the pistol and SMG are hitscan with spread,
-recoil, muzzle flash, tracer, impact sparks, a hit marker, magazine and reserve
-ammo and a reload timer. Bullets stop on the nearest collider, vehicle or
-officer, so cover works. Armor absorbs part of each hit before health; damage
-shakes the camera and reddens the screen edge. `pickups.js` places both weapons
-plus medkits and armor on chrome rings around the map; they float, glow,
-respawn and announce themselves in a toast.
+Combat lives on `player.js`: the pistol, SMG and shotgun are hitscan with
+spread, recoil, muzzle flash, tracer, impact sparks, a hit marker, magazine and
+reserve ammo and a reload timer. The Tidebreaker fires a seven-pellet cone and
+counts one trigger pull as one heat event. Bullets stop on the nearest
+collider, vehicle or officer, so cover works. Armor absorbs part of each hit
+before health; damage shakes the camera and reddens the screen edge.
+`pickups.js` places all three weapons plus medkits and armor on chrome rings
+around the map; they float, glow, respawn and announce themselves in a toast.
+Vehicles carry a 0–100 integrity value: wall impacts, police rams, collisions
+and gunfire all take a percentage, heavy damage costs top speed and power, and
+smoke starts pouring from the rear of a badly bent car.
 
 ## Effects, HUD and audio
 
@@ -175,21 +189,24 @@ explosion.
 `hud.js` is a Canvas 2D layer over the WebGL view: health and armor bars with
 hit flashes, a cash card, the live wanted stars and pursuit/search status, the
 district and clock, a baked minimap with the player arrow, traffic blips,
-alternating red/blue police and officer blips, mission enemies in coral and the
-objective marker, live car/walker counts, the mission tag, objective and
-distance, progress or a countdown, the radio line, the context prompt, the
-on-foot weapon panel with magazine and reserve, a dynamic crosshair and hit
+alternating red/blue police and officer blips, the air-unit rotor blip, mission
+enemies in coral and the objective marker, live car/walker counts, the mission
+tag, a dedicated stage line, objective and distance, progress or a countdown,
+the radio line, the context prompt, an always-on three-slot weapon strip, the
+on-foot weapon panel with magazine and reserve, a vehicle integrity percentage
+on the driving panel, the AIR UNIT searchlight cue, a dynamic crosshair and hit
 marker, and either the on-foot readout or the driving panel with vehicle name,
-speed, gear and engine load. Dialogue appears as a speaker-coloured subtitle
-above the objective; rewards and mission results arrive as toasts and a gold
-cash banner. Street jobs get their own progress panel above the minimap.
+speed, gear, engine load and damage. Dialogue appears as a speaker-coloured
+subtitle above the objective; rewards and mission results arrive as toasts and
+a gold cash banner. Street jobs get their own progress panel above the minimap.
 Getting wasted or busted takes over the screen with a full-frame overlay, drops
 part of the cash on hand and returns Rae to the strip with the heat cleared; a
 failed mission stays on screen with a retry prompt until you take it again.
 
 `audio.js` builds the whole soundscape with WebAudio oscillators and noise: an
 engine hum tracking rpm, load and speed, a two-tone siren whose level follows
-the nearest cruiser or officer, pistol and SMG reports, impacts, explosions,
+the nearest cruiser or officer, distinct pistol, SMG and shotgun reports,
+impacts, explosions,
 the horn, reload clicks, pickup chimes, hurt and wasted/busted stings, and menu
 blips. Three original station loops — synthwave, chiptune and surf — are
 sequenced live from the same oscillator kit: Night Tide 88.3, KNRV 104.7 and
@@ -202,23 +219,28 @@ and mute persist with the quality setting.
 `screenshots/` holds exactly four real Chrome renders at **1280×720 JPEG**,
 each under 256 KiB. The first by name is the cover.
 
-- `1-cover.jpg` — `?shot=chase`: four wanted stars, three cruisers and two
-  officers closing on the Riptide, the `Break the Blockade` objective, the
-  minimap full of blips and 78 km/h on the speed panel.
+- `1-cover.jpg` — `?shot=beach`: the bright midday showcase. Rae's coral Vela
+  GT cuts across Casa Luna Beach, Air 1 hangs overhead with its rotors and
+  searchlight cone, and the pier, lighthouse, palms and ocean fill the frame.
+  The HUD shows four stars, the AIR UNIT cue, `DAMAGE 24%`, the mission stage
+  line and the three-slot PISTOL / SMG / SHOTGUN strip.
 - `2-street.jpg` — `?shot=street`: Rae on foot on Vega Strip with lane traffic,
-  a taxi, crossing pedestrians, the safehouse ring, `Find Pier 9` and the
-  minimap.
+  a taxi, crossing pedestrians, the safehouse ring, `Find Pier 9`, the stage
+  line and the three-slot strip.
 - `3-mission.jpg` — `?shot=mission`: Tomas' ambush around the Luna Plaza
-  fountain, aimed fire and tracers, the `Survive the Ambush` objective and the
-  mission dialogue line.
+  fountain, aimed fire and tracers, the `Survive the Ambush` objective, the
+  `HOLD THE FOUNTAIN` stage and the mission dialogue line.
 - `4-title.jpg` — `?shot=start`: the title and menu over the live golden-hour
   skyline, Sunset Hotel, the pier and the water.
 
 Every shot builds the real world, player, police or mission director, weapons,
 effects and HUD, runs a fixed number of simulation steps and then freezes. Shot
 mode forces high quality, suppresses toasts and the fresh-slot title card, and
-does not depend on pointer lock or the wall clock. The other staged poses
-(`drive`, `heist`, `pier`) remain available for development checks.
+does not depend on pointer lock or the wall clock. The beach pose also stages a
+fixed Air 1 orbit, a 24% damaged player car and a full three-weapon loadout
+without touching the live save. The other staged poses (`start`, `street`,
+`drive`, `chase`, `mission`, `heist`, `pier`) remain available for development
+checks; `chase` now stages Air 1 as well.
 
 ## Build the entry
 
@@ -253,15 +275,17 @@ libraries, no generated bundles and no binary assets in `game/`.
 - `game/src/main.js` — boot, fixed-step loop, screen state machine, quality,
   save wiring, vehicle entry/exit, radio state and deterministic shot staging.
 - `game/src/world.js` — city generation, ground/collision/camera queries, beach,
-  pier, lighthouse, ocean, sky, lights, signs, light pools and animation.
+  pier, lighthouse, ocean, sky, lights, signs, light pools and animation, plus
+  the clear-day sky/light rig used by the beach shot.
 - `game/src/geo.js` — reusable mesh, facade, sign and billboard factories, and
   the geometry merge.
 - `game/src/vehicles.js` — seven vehicle classes, meshes, arcade physics,
-  lights and pooled skid marks.
+  lights, pooled skid marks and per-vehicle integrity/damage.
 - `game/src/traffic.js` — lane traffic, signals, following, pedestrians,
   crosswalk crossings, beach/pier crowd and shot staging.
 - `game/src/police.js` — wanted level, pursuit driving, search/decay, cruiser
-  and officer combat, roadblocks, busted/wasted handshake, chase staging.
+  and officer combat, roadblocks, the Air 1 helicopter with rotor and
+  searchlight, busted/wasted handshake, chase staging.
 - `game/src/missions.js` — the five-mission director: markers, dialogue queue,
   mission enemies and bosses, objectives, timers, rewards, failure and retry,
   pier fire, and mission/heist staging.
@@ -275,13 +299,15 @@ libraries, no generated bundles and no binary assets in `game/`.
 - `game/src/audio.js` — the WebAudio engine, sirens, guns, impacts, horn, UI
   blips, stings and three live radio sequencers.
 - `game/src/hud.js` — the Canvas 2D HUD, minimap, blips, wanted status,
-  subtitles, objective/progress/timer, street-job panel, rewards, weapon panel,
-  crosshair, failure/down/ending screens.
+  subtitles, stage line, objective/progress/timer, street-job panel, rewards,
+  three-slot weapon strip, vehicle damage, AIR UNIT cue, crosshair,
+  failure/down/ending screens.
 - `game/src/input.js` — keyboard, mouse, wheel, pointer lock and mouse edges.
 - `game/src/save.js` — guarded localStorage save, story/mission index, weapons,
   quality, volume and mute settings.
-- `game/src/random.js`, `config.js` — seeded RNG and shared constants.
-- `game/src/shots.js` — the fixed `start`, `street`, `drive`, `chase`,
+- `game/src/random.js`, `config.js` — seeded RNG, shared constants and the
+  pistol/SMG/shotgun specs.
+- `game/src/shots.js` — the fixed `start`, `street`, `drive`, `chase`, `beach`,
   `mission`, `heist` and `pier` screenshot poses.
 - `game/vendor/` — three.js r180's minified module and core builds behind the
   one-line `three.module.js` shim.

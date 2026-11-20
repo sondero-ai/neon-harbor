@@ -284,12 +284,14 @@ export class Hud {
     this.drawVitals(ctx, state.player);
     this.drawMoneyAndStars(ctx, state.player, state.police);
     this.drawDistrict(ctx, state);
+    this.drawAirUnitCue(ctx, state);
     this.drawMinimap(ctx, state);
     this.drawObjective(ctx, state);
     this.drawChallenge(ctx, state);
     this.drawSubtitle(ctx, state);
     this.drawRadio(ctx, state);
     this.drawSpeed(ctx, state);
+    this.drawWeaponStrip(ctx, state);
     this.drawWeapon(ctx, state);
     this.drawPrompt(ctx, state);
     this.drawCrosshair(ctx, state);
@@ -416,6 +418,7 @@ export class Hud {
     if (wanted > 0) {
       const searching = police?.status === 'search';
       const units = police?.units?.length ?? 0;
+      const air = police?.airUnit?.active === true;
       const blink = Math.sin(this.time * 7.5) > 0;
       const statusColor = searching ? GOLD : CORAL;
       ctx.save();
@@ -425,7 +428,11 @@ export class Hud {
       ctx.restore();
       label(
         ctx,
-        searching ? 'SEARCHING · LAST KNOWN AREA' : `PURSUIT · ${units} UNIT${units === 1 ? '' : 'S'}`,
+        searching
+          ? `SEARCHING · ${air ? 'AIR UNIT OVERHEAD' : 'LAST KNOWN AREA'}`
+          : units > 0
+            ? `PURSUIT · ${units} UNIT${units === 1 ? '' : 'S'}${air ? ' · AIR' : ''}`
+            : `PURSUIT · ${air ? 'AIR UNIT' : 'NO UNITS'}`,
         right,
         145,
         { size: 8, color: statusColor, spacing: '1.7px', align: 'right', weight: 800 },
@@ -470,6 +477,62 @@ export class Hud {
     ctx.lineTo(cx + 94, 63);
     ctx.stroke();
     ctx.restore();
+  }
+
+  drawAirUnitCue(ctx, state) {
+    const air = state.police?.airUnit;
+    if (!air?.active) return;
+    const width = 202;
+    const height = 24;
+    const x = (this.width - width) / 2;
+    const y = 70;
+    const pulse = 0.5 + 0.5 * Math.sin(this.time * 6.2);
+    drawPanel(ctx, x, y, width, height, {
+      cut: 8,
+      fill: 'rgba(18,7,10,0.8)',
+      stroke: `rgba(255,111,97,${0.35 + pulse * 0.35})`,
+      accent: CORAL,
+    });
+    ctx.save();
+    ctx.translate(x + 16, y + 12);
+    ctx.rotate(this.time * 2.6);
+    ctx.strokeStyle = `rgba(255,160,135,${0.55 + pulse * 0.4})`;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-6, 0); ctx.lineTo(6, 0);
+    ctx.moveTo(0, -6); ctx.lineTo(0, 6);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, 2.4, 0, Math.PI * 2);
+    ctx.fillStyle = CORAL;
+    ctx.fill();
+    ctx.rotate(-this.time * 2.6);
+    ctx.strokeStyle = 'rgba(255,220,205,0.4)';
+    ctx.beginPath();
+    ctx.arc(0, 0, 8.2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    label(ctx, 'AIR UNIT', x + 31, y + 16, {
+      size: 8.5,
+      color: CORAL,
+      spacing: '2.4px',
+      weight: 800,
+    });
+    label(ctx, air.searchlight ? 'SEARCHLIGHT' : 'OVERWATCH', x + width - 11, y + 16, {
+      size: 6.5,
+      color: 'rgba(247,232,210,0.62)',
+      spacing: '1.4px',
+      align: 'right',
+      weight: 700,
+    });
+    label(ctx, `${air.altitude} M`, x + width - 86, y + 16, {
+      size: 6.5,
+      color: 'rgba(255,201,92,0.72)',
+      spacing: '1px',
+      align: 'right',
+      font: MONO,
+      weight: 700,
+    });
   }
 
   drawMinimap(ctx, state) {
@@ -583,6 +646,32 @@ export class Hud {
         ctx.fillRect(centerX + dx - 2, centerY + dy - 2, 4, 4);
         ctx.restore();
       }
+      const air = police.airUnit;
+      if (air?.active) {
+        let dx = (air.x - state.player.position.x) * destScale;
+        let dy = (air.z - state.player.position.z) * destScale;
+        const distance = Math.hypot(dx, dy);
+        if (distance > limit) {
+          dx = (dx / distance) * limit;
+          dy = (dy / distance) * limit;
+        }
+        ctx.save();
+        ctx.translate(centerX + dx, centerY + dy);
+        ctx.rotate(this.time * 2.2);
+        ctx.strokeStyle = 'rgba(255,150,125,0.95)';
+        ctx.lineWidth = 1.6;
+        ctx.shadowColor = CORAL;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(-7, 0); ctx.lineTo(7, 0);
+        ctx.moveTo(0, -7); ctx.lineTo(0, 7);
+        ctx.stroke();
+        ctx.fillStyle = CORAL;
+        ctx.beginPath();
+        ctx.arc(0, 0, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
     }
 
     if (state.missionEnemies?.length) {
@@ -656,7 +745,7 @@ export class Hud {
     const objective = state.objective;
     if (!objective) return;
     const width = 424;
-    const height = 72;
+    const height = 88;
     const x = (this.width - width) / 2;
     const y = this.height - height - 26;
     const failed = objective.failed === true;
@@ -678,27 +767,33 @@ export class Hud {
       rightText = `${p.label} ${p.value}/${p.max}`;
       rightColor = GOLD;
     }
-    label(ctx, (objective.tag || 'OBJECTIVE').toUpperCase(), x + 17, y + 20, {
+    label(ctx, (objective.tag || 'OBJECTIVE').toUpperCase(), x + 17, y + 19, {
       size: 8,
       color: failed ? CORAL : 'rgba(255,143,122,0.9)',
       spacing: '2.2px',
       weight: 700,
     });
-    label(ctx, rightText, x + width - 17, y + 20, {
+    label(ctx, rightText, x + width - 17, y + 19, {
       size: 8,
       color: rightColor,
       spacing: '1.7px',
       align: 'right',
       weight: 700,
     });
-    label(ctx, objective.title.toUpperCase(), x + 17, y + 43, {
+    label(ctx, (objective.stage || 'STAGE · FREE ROAM').toUpperCase(), x + 17, y + 34, {
+      size: 7.2,
+      color: failed ? 'rgba(255,170,150,0.8)' : 'rgba(63,224,207,0.86)',
+      spacing: '1.5px',
+      weight: 700,
+    });
+    label(ctx, objective.title.toUpperCase(), x + 17, y + 58, {
       size: 18,
       color: CREAM,
       spacing: '1.2px',
       font: DISPLAY,
       weight: 800,
     });
-    label(ctx, objective.sub, x + 17, y + 59, {
+    label(ctx, objective.sub, x + 17, y + 74, {
       size: 9,
       color: CREAM_DIM,
       spacing: '0.35px',
@@ -709,7 +804,7 @@ export class Hud {
       const p = objective.progress;
       const barX = x + 17;
       const barWidth = width - 34;
-      const barY = y + height - 5;
+      const barY = y + height - 4;
       ctx.fillStyle = 'rgba(247,232,210,0.1)';
       ctx.fillRect(barX, barY, barWidth, 2);
       ctx.fillStyle = failed ? CORAL : GOLD;
@@ -717,7 +812,7 @@ export class Hud {
     } else if (Number.isFinite(objective.timer) && objective.timer > 0) {
       const barX = x + 17;
       const barWidth = width - 34;
-      const barY = y + height - 5;
+      const barY = y + height - 4;
       const total = objective.progress?.maxTimer ?? 108;
       ctx.fillStyle = 'rgba(247,232,210,0.1)';
       ctx.fillRect(barX, barY, barWidth, 2);
@@ -948,6 +1043,60 @@ export class Hud {
     );
   }
 
+  drawWeaponStrip(ctx, state) {
+    const weapons = state.weapons;
+    const slots = weapons?.slots;
+    if (!weapons || weapons.dead || !slots?.length) return;
+    const width = 228;
+    const height = 30;
+    const x = this.width - width - 28;
+    const y = state.player.driving ? this.height - 222 : this.height - 300;
+    drawPanel(ctx, x, y, width, height, {
+      cut: 8,
+      fill: 'rgba(9,6,16,0.74)',
+      stroke: 'rgba(247,232,210,0.16)',
+      accent: 'rgba(255,201,92,0.7)',
+    });
+    const gap = 4;
+    const slotWidth = (width - 16 - gap * (slots.length - 1)) / slots.length;
+    for (let i = 0; i < slots.length; i += 1) {
+      const slot = slots[i];
+      const sx = x + 8 + i * (slotWidth + gap);
+      const sy = y + 5;
+      chamferPath(ctx, sx, sy, slotWidth, 20, 5);
+      ctx.fillStyle = slot.active
+        ? 'rgba(255,201,92,0.17)'
+        : slot.owned ? 'rgba(247,232,210,0.065)' : 'rgba(247,232,210,0.025)';
+      ctx.fill();
+      ctx.strokeStyle = slot.active
+        ? 'rgba(255,201,92,0.9)'
+        : slot.owned ? 'rgba(247,232,210,0.24)' : 'rgba(247,232,210,0.09)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      label(ctx, String(slot.slot), sx + 5, sy + 14, {
+        size: 6.5,
+        color: slot.active ? GOLD : slot.owned ? 'rgba(247,232,210,0.5)' : 'rgba(247,232,210,0.2)',
+        font: MONO,
+        weight: 700,
+      });
+      label(ctx, slot.short, sx + 14, sy + 14, {
+        size: 6.2,
+        color: slot.active ? CREAM : slot.owned ? 'rgba(247,232,210,0.66)' : 'rgba(247,232,210,0.24)',
+        spacing: '0.5px',
+        weight: 700,
+      });
+      if (slot.owned) {
+        label(ctx, String(slot.ammo), sx + slotWidth - 5, sy + 14, {
+          size: 7,
+          color: slot.active ? GOLD : 'rgba(247,232,210,0.45)',
+          align: 'right',
+          font: MONO,
+          weight: 700,
+        });
+      }
+    }
+  }
+
   drawWeapon(ctx, state) {
     const weapons = state.weapons;
     if (!weapons || weapons.dead || state.player.driving) return;
@@ -987,7 +1136,7 @@ export class Hud {
       spacing: '1.1px',
       weight: 700,
     });
-    label(ctx, weapons.ownedSmg ? '1 / 2 · R' : '1 · R', x + width - 12, y + 54, {
+    label(ctx, 'SLOTS 1-3 · R', x + width - 12, y + 54, {
       size: 6.5,
       color: 'rgba(247,232,210,0.34)',
       spacing: '1px',
@@ -1162,7 +1311,20 @@ export class Hud {
       const rpm = Math.min(1, car.engineRpm / 6400);
       ctx.fillStyle = rpm > 0.82 ? CORAL : TEAL;
       ctx.fillRect(barX, barY, barWidth * rpm, 3);
-      label(ctx, 'RADIO LIVE', x + 33, y + 98, { size: 6, color: 'rgba(247,232,210,0.3)', spacing: '1.1px', align: 'center' });
+      const damage = Math.max(0, Math.min(100, car.damagePercent ?? 0));
+      const severity = damage > 60 ? CORAL : damage > 20 ? GOLD : TEAL;
+      label(ctx, `DAMAGE ${damage}%`, x + 15, y + 98, {
+        size: 6.8,
+        color: severity,
+        spacing: '1.1px',
+        weight: 800,
+      });
+      ctx.fillStyle = 'rgba(247,232,210,0.1)';
+      ctx.fillRect(x + 94, y + 94, width - 109, 3);
+      ctx.fillStyle = severity;
+      ctx.globalAlpha = damage > 60 ? 0.62 + 0.38 * (0.5 + Math.sin(this.time * 5) * 0.5) : 1;
+      ctx.fillRect(x + 94, y + 94, (width - 109) * (damage / 100), 3);
+      ctx.globalAlpha = 1;
       return;
     }
 
@@ -1226,7 +1388,7 @@ export class Hud {
   drawToast(ctx, toast) {
     const alpha = Math.min(1, toast.life * 0.8);
     const cx = this.width / 2;
-    const y = 104;
+    const y = 128;
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.textAlign = 'center';

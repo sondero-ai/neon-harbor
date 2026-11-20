@@ -36,7 +36,7 @@ export const SaveStore = {
         mission: clamp(Math.round(finite(parsed.mission, 0)), 0, 99),
         storyDone: parsed.storyDone === true,
         playSeconds: Math.max(0, finite(parsed.playSeconds, 0)),
-        weaponKey: parsed.weaponKey === 'smg' ? 'smg' : 'pistol',
+        weaponKey: parsed.weaponKey === 'smg' || parsed.weaponKey === 'shotgun' ? parsed.weaponKey : 'pistol',
         weapons: parsed.weapons && typeof parsed.weapons === 'object' ? parsed.weapons : null,
         savedAt: finite(parsed.savedAt, 0),
         cameraYaw: finite(parsed.cameraYaw, PLAYER.spawnCameraYaw),

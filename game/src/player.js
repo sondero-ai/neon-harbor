@@ -60,6 +60,7 @@ export class Player {
     this.weapons = {
       pistol: { owned: true, ammo: WEAPONS.pistol.mag, reserve: WEAPONS.pistol.reserve },
       smg: { owned: false, ammo: 0, reserve: 0 },
+      shotgun: { owned: false, ammo: 0, reserve: 0 },
     };
     this.aiming = false;
     this.fireCooldown = 0;
@@ -112,6 +113,7 @@ export class Player {
     if (save.weapons) {
       const pistol = save.weapons.pistol;
       const smg = save.weapons.smg;
+      const shotgun = save.weapons.shotgun;
       this.weapons.pistol = {
         owned: pistol?.owned !== false,
         ammo: clamp(Math.round(Number(pistol?.ammo) || 0), 0, WEAPONS.pistol.mag),
@@ -122,7 +124,12 @@ export class Player {
         ammo: clamp(Math.round(Number(smg?.ammo) || 0), 0, WEAPONS.smg.mag),
         reserve: clamp(Math.round(Number(smg?.reserve) || 0), 0, 999),
       };
-      this.weaponKey = save.weaponKey === 'smg' && this.weapons.smg.owned ? 'smg' : 'pistol';
+      this.weapons.shotgun = {
+        owned: shotgun?.owned === true,
+        ammo: clamp(Math.round(Number(shotgun?.ammo) || 0), 0, WEAPONS.shotgun.mag),
+        reserve: clamp(Math.round(Number(shotgun?.reserve) || 0), 0, 999),
+      };
+      this.weaponKey = this.weapons[save.weaponKey]?.owned ? save.weaponKey : 'pistol';
       this.syncGunModel();
     }
     this.cameraYaw = save.cameraYaw;
@@ -159,9 +166,23 @@ export class Player {
     smgSight.position.set(0, 0.085, 0.26);
     this.smgModel.add(smgBody, smgStock, smgMag, smgSight);
 
+    this.shotgunModel = new THREE.Group();
+    const barrelA = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.055, 0.62), steel);
+    barrelA.position.set(-0.033, 0.045, 0.26);
+    const barrelB = barrelA.clone();
+    barrelB.position.x = 0.033;
+    const shotgunStock = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.14, 0.25), dark);
+    shotgunStock.position.set(0, -0.035, -0.15);
+    shotgunStock.rotation.x = -0.08;
+    const shotgunPump = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.085, 0.22), dark);
+    shotgunPump.position.set(0, -0.025, 0.2);
+    const shotgunSight = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.022, 0.03), accent);
+    shotgunSight.position.set(0, 0.085, 0.52);
+    this.shotgunModel.add(barrelA, barrelB, shotgunStock, shotgunPump, shotgunSight);
+
     this.inputBlocked = false;
     this.gun = new THREE.Group();
-    this.gun.add(this.pistolModel, this.smgModel);
+    this.gun.add(this.pistolModel, this.smgModel, this.shotgunModel);
     this.gun.position.set(0, -0.37, 0.055);
     this.gun.visible = false;
     this.humanoid.arms.right.elbowPivot.add(this.gun);
@@ -174,6 +195,7 @@ export class Player {
   syncGunModel() {
     this.pistolModel.visible = this.weaponKey === 'pistol';
     this.smgModel.visible = this.weaponKey === 'smg';
+    this.shotgunModel.visible = this.weaponKey === 'shotgun';
   }
 
   applyTransform() {
@@ -197,6 +219,7 @@ export class Player {
       weapons: {
         pistol: { ...this.weapons.pistol },
         smg: { ...this.weapons.smg },
+        shotgun: { ...this.weapons.shotgun },
       },
       cameraYaw: this.cameraYaw,
       cameraPitch: this.cameraPitch,
@@ -359,6 +382,14 @@ export class Player {
       mag: spec.mag,
       reserve: ammo.reserve,
       ownedSmg: this.weapons.smg.owned,
+      slots: Object.entries(WEAPONS).map(([key, weapon], index) => ({
+        key,
+        slot: index + 1,
+        short: weapon.short,
+        owned: this.weapons[key].owned,
+        active: key === this.weaponKey,
+        ammo: this.weapons[key].ammo,
+      })),
       reloading: this.reloadTimer > 0,
       reloadProgress: this.reloadTimer > 0 ? 1 - this.reloadTimer / Math.max(0.01, this.reloadTotal) : 1,
       aiming: this.aiming,
@@ -408,6 +439,7 @@ export class Player {
 
     if (input.wasPressed('Digit1')) this.selectWeapon('pistol');
     if (input.wasPressed('Digit2')) this.selectWeapon('smg');
+    if (input.wasPressed('Digit3')) this.selectWeapon('shotgun');
     if (input.wasPressed('KeyR')) this.startReload();
 
     if (this.reloadTimer > 0) {
@@ -452,45 +484,49 @@ export class Player {
     this.humanoid.setFacing(this.facing);
 
     const origin = camera.position.clone();
-    const direction = camera.getWorldDirection(new THREE.Vector3());
+    const forward = camera.getWorldDirection(new THREE.Vector3());
     const spread = this.aiming ? spec.spread : spec.spread + spec.movingSpread;
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
-    direction.addScaledVector(right, (Math.random() - 0.5) * spread * 2);
-    direction.addScaledVector(up, (Math.random() - 0.5) * spread * 2);
-    direction.normalize();
-
-    const worldHit = this.world.raycast(origin, direction, spec.range);
-    const maxDistance = worldHit ? worldHit.distance : spec.range;
-    const policeTarget = this.police ? this.police.traceShot(origin, direction, maxDistance) : null;
-    const missionTarget = this.missions ? this.missions.traceShot(origin, direction, maxDistance) : null;
-    let target = policeTarget;
-    if (missionTarget && (!target || missionTarget.distance < target.distance)) target = missionTarget;
-    const endpoint = new THREE.Vector3();
-    if (target) {
-      endpoint.copy(target.point);
-      this.hitMarker = 1;
-      if (target.enemy && this.missions) {
-        this.missions.applyPlayerHit(target, spec.damage, { weapon: this.weaponKey });
-      } else if (this.police) {
-        this.police.applyPlayerHit(target, spec.damage, { weapon: this.weaponKey });
-      }
-    } else if (worldHit) {
-      endpoint.copy(worldHit.point);
-      if (this.effects) this.effects.impact(worldHit.point, worldHit.normal, worldHit.kind === 'building' ? 'concrete' : 'concrete');
-    } else {
-      endpoint.copy(origin).addScaledVector(direction, spec.range);
-    }
-
+    const pellets = Math.max(1, spec.pellets ?? 1);
     const muzzle = new THREE.Vector3(
       this.position.x + Math.sin(this.facing) * 0.62,
       this.position.y + 1.36,
       this.position.z + Math.cos(this.facing) * 0.62,
     );
+    for (let pellet = 0; pellet < pellets; pellet += 1) {
+      const direction = forward.clone();
+      direction.addScaledVector(right, (Math.random() - 0.5) * spread * 2);
+      direction.addScaledVector(up, (Math.random() - 0.5) * spread * 2);
+      direction.normalize();
+
+      const worldHit = this.world.raycast(origin, direction, spec.range);
+      const maxDistance = worldHit ? worldHit.distance : spec.range;
+      const policeTarget = this.police ? this.police.traceShot(origin, direction, maxDistance) : null;
+      const missionTarget = this.missions ? this.missions.traceShot(origin, direction, maxDistance) : null;
+      let target = policeTarget;
+      if (missionTarget && (!target || missionTarget.distance < target.distance)) target = missionTarget;
+      const endpoint = new THREE.Vector3();
+      if (target) {
+        endpoint.copy(target.point);
+        this.hitMarker = 1;
+        if (target.enemy && this.missions) {
+          this.missions.applyPlayerHit(target, spec.damage, { weapon: this.weaponKey });
+        } else if (this.police) {
+          // One trigger pull is one heat event even when a shotgun lands several pellets.
+          this.police.applyPlayerHit(target, spec.damage, { weapon: this.weaponKey, suppressHeat: pellet > 0 });
+        }
+      } else if (worldHit) {
+        endpoint.copy(worldHit.point);
+        if (this.effects) this.effects.impact(worldHit.point, worldHit.normal, 'concrete');
+      } else {
+        endpoint.copy(origin).addScaledVector(direction, spec.range);
+      }
+      if (this.effects) this.effects.tracer(muzzle, endpoint, spec.tracer);
+    }
     if (this.effects) {
       this.effects.muzzle(muzzle.x, muzzle.y, muzzle.z, 0xffd79a);
-      this.effects.tracer(muzzle, endpoint, spec.tracer);
-      this.effects.shake(spec.auto ? 0.09 : 0.16);
+      this.effects.shake(spec.auto ? 0.09 : spec.pellets ? 0.26 : 0.16);
     }
     if (this.audio) this.audio.gunshot(this.weaponKey);
     if (this.police) this.police.reportGunfire(this.position.x, this.position.z);

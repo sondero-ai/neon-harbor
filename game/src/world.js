@@ -126,6 +126,9 @@ export class World {
   constructor(scene, { quality = 'high' } = {}) {
     this.scene = scene;
     this.quality = quality;
+    this.daylight = false;
+    this.sunDir = SUN_DIR.clone();
+    this.focus = { x: 20, z: 30 };
     this.scene.fog = new THREE.Fog(PALETTE.fog, 72, 680);
     this.root = new THREE.Group();
     this.root.name = 'harbor';
@@ -280,6 +283,63 @@ export class World {
       }
     });
     skyTexture.wrapS = THREE.RepeatWrapping;
+    this.duskSkyTexture = skyTexture;
+
+    // A second, clear-day sky used by the beach showcase. Same sphere, same
+    // mapping; only the light rig and fog change with it.
+    const dayTexture = canvasTexture(1024, 512, (ctx, width, height) => {
+      const gradient = ctx.createLinearGradient(0, 0, 0, height);
+      gradient.addColorStop(0, '#245b9c');
+      gradient.addColorStop(0.16, '#3b7cb8');
+      gradient.addColorStop(0.34, '#68a9d6');
+      gradient.addColorStop(0.48, '#a6d5ec');
+      gradient.addColorStop(0.555, '#dff3fb');
+      gradient.addColorStop(0.6, '#f2fbff');
+      gradient.addColorStop(0.66, '#c7e4e8');
+      gradient.addColorStop(0.82, '#8fb4bd');
+      gradient.addColorStop(1, '#5e8d9c');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+
+      const rng = makeRng(0xda7);
+      // Small, soft cumulus rather than one huge bloom, so the sky stays blue
+      // behind the HUD and the helicopter silhouette.
+      for (let i = 0; i < 34; i += 1) {
+        const x = rng.range(0, width);
+        const y = rng.range(height * 0.16, height * 0.52);
+        const puff = rng.range(9, 34);
+        ctx.fillStyle = `rgba(255,255,255,${rng.range(0.04, 0.13)})`;
+        for (let j = 0; j < 4; j += 1) {
+          ctx.beginPath();
+          ctx.ellipse(
+            x + rng.range(-puff, puff),
+            y + rng.range(-puff * 0.14, puff * 0.14),
+            rng.range(puff * 0.35, puff),
+            rng.range(puff * 0.12, puff * 0.26),
+            0,
+            0,
+            Math.PI * 2,
+          );
+          ctx.fill();
+        }
+      }
+      for (let i = 0; i < 10; i += 1) {
+        const x = rng.range(0, width);
+        const y = rng.range(height * 0.14, height * 0.42);
+        ctx.fillStyle = `rgba(255,255,255,${rng.range(0.025, 0.07)})`;
+        ctx.beginPath();
+        ctx.ellipse(x, y, rng.range(40, 110), rng.range(1.5, 5), rng.range(-0.04, 0.04), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // A thin veil near the horizon keeps the sea and sky from meeting hard.
+      const haze = ctx.createLinearGradient(0, height * 0.5, 0, height * 0.62);
+      haze.addColorStop(0, 'rgba(255,255,255,0)');
+      haze.addColorStop(1, 'rgba(255,255,255,0.3)');
+      ctx.fillStyle = haze;
+      ctx.fillRect(0, height * 0.5, width, height * 0.12);
+    });
+    dayTexture.wrapS = THREE.RepeatWrapping;
+    this.daySkyTexture = dayTexture;
 
     const skyMaterial = new THREE.MeshBasicMaterial({
       map: skyTexture,
@@ -338,7 +398,13 @@ export class World {
   }
 
   focusAt(x, z) {
-    this.sun.position.set(x + SUN_DIR.x * 120, SUN_DIR.y * 120 + 12, z + SUN_DIR.z * 120);
+    this.focus.x = x;
+    this.focus.z = z;
+    this.sun.position.set(
+      x + this.sunDir.x * 120,
+      this.sunDir.y * 120 + 12,
+      z + this.sunDir.z * 120,
+    );
     this.sun.target.position.set(x, 0, z);
     this.sun.target.updateMatrixWorld();
   }
@@ -350,6 +416,76 @@ export class World {
     this.sun.shadow.mapSize.set(preset.shadowMap, preset.shadowMap);
     this.sun.shadow.map?.dispose();
     this.sun.shadow.map = null;
+  }
+
+  /**
+   * Swap the golden-hour rig for clear midday. The city itself is unchanged;
+   * the beach cover uses this so the contact sheet has one obvious daytime
+   * frame without forfeiting the dusk look of the rest of the game.
+   */
+  setDaylight(active = true) {
+    if (this.daylight === active) return;
+    this.daylight = active;
+    if (active) {
+      this.scene.fog.color.setHex(0xd8edf5);
+      this.scene.fog.near = 110;
+      this.scene.fog.far = 980;
+      this.hemi.color.setHex(0xe7f5ff);
+      this.hemi.groundColor.setHex(0xa58d73);
+      this.hemi.intensity = 2.35;
+      this.ambient.color.setHex(0xb9d4e4);
+      this.ambient.intensity = 0.72;
+      this.sun.color.setHex(0xfff7e6);
+      this.sun.intensity = 3.5;
+      this.fill.color.setHex(0xc3dcff);
+      this.fill.intensity = 0.72;
+      this.sunDir.set(0.38, 0.86, 0.34).normalize();
+      this.sunHalo.material.color.setHex(0xfff6d9);
+      this.sunHalo.material.opacity = 0.28;
+      this.sunHalo.visible = false;
+      this.sunCore.material.color.setHex(0xffffff);
+      this.sunCore.material.opacity = 0.92;
+      this.sunCore.visible = false;
+      if (this.water) {
+        this.water.material.emissive.setHex(0x0f3b46);
+        this.water.material.emissiveIntensity = 0.12;
+      }
+      if (this.sparkles) this.sparkles.material.opacity = 0.3;
+      if (this.foam) this.foam.material.color.setHex(0xffffff);
+      this.skySphere.material.map = this.daySkyTexture;
+    } else {
+      this.scene.fog.color.setHex(PALETTE.fog);
+      this.scene.fog.near = 72;
+      this.scene.fog.far = 680;
+      this.hemi.color.setHex(0xffd0a6);
+      this.hemi.groundColor.setHex(0x58405a);
+      this.hemi.intensity = 1.98;
+      this.ambient.color.setHex(0xa589a2);
+      this.ambient.intensity = 0.55;
+      this.sun.color.setHex(0xffb476);
+      this.sun.intensity = 3.05;
+      this.fill.color.setHex(0x99a2dd);
+      this.fill.intensity = 1.1;
+      this.sunDir.copy(SUN_DIR);
+      this.sunHalo.material.color.setHex(0xff9b62);
+      this.sunHalo.material.opacity = 0.42;
+      this.sunHalo.visible = true;
+      this.sunCore.material.color.setHex(0xfff3cf);
+      this.sunCore.material.opacity = 0.95;
+      this.sunCore.visible = true;
+      if (this.water) {
+        this.water.material.emissive.setHex(0x09232b);
+        this.water.material.emissiveIntensity = 0.32;
+      }
+      if (this.sparkles) this.sparkles.material.opacity = 0.5;
+      if (this.foam) this.foam.material.color.setHex(0xfff2dc);
+      this.skySphere.material.map = this.duskSkyTexture;
+    }
+    this.skySphere.material.needsUpdate = true;
+    if (this.beam) this.beam.visible = !active;
+    this.sunHalo.position.copy(this.sunDir).multiplyScalar(1120);
+    this.sunCore.position.copy(this.sunDir).multiplyScalar(1118);
+    this.focusAt(this.focus.x, this.focus.z);
   }
 
   // ---------------------------------------------------------------- ground
