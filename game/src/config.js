@@ -33,17 +33,18 @@ export const WORLD = {
   },
 };
 
-// The build is dressed for golden hour. A low sun in the west-southwest throws
-// long shadows across the Strip and the harbor; the sky runs from a pale peach
-// horizon to clear blue overhead, with a warm key light and a lifted ambient
-// fill. The neon signs, lit windows and streetlight pools stay exactly where
-// they were; they simply share the scene with a much brighter sky.
+// The build is dressed for a late-afternoon golden hour. The sun sits high in
+// the west and throws warm, soft-edged shadows across the Strip and the
+// harbor; the sky runs from a pale peach horizon to clear blue overhead, and
+// the key, fill and hemisphere lights keep facades, asphalt and sidewalks in
+// full daylight. The neon signs, lit windows and streetlight pools stay
+// exactly where they were; they simply share the scene with a brighter sky.
 export const TIME_OF_DAY = {
   preset: 'golden-hour',
-  sunDir: [-0.8, 0.18, 0.56],
-  exposure: 1.2,
-  clearColor: 0xf0bd92,
-  fog: { color: 0xefb98b, near: 115, far: 880 },
+  sunDir: [-0.82, 0.55, 0.14],
+  exposure: 1.3,
+  clearColor: 0xf3c69e,
+  fog: { color: 0xf2c7a0, near: 125, far: 960 },
   sky: {
     top: '#1c5fa8',
     upper: '#2f7cc2',
@@ -55,24 +56,24 @@ export const TIME_OF_DAY = {
     deep: '#8f6049',
   },
   sun: {
-    color: 0xffc47f,
-    intensity: 2.35,
-    haloColor: 0xffd39b,
-    haloOpacity: 0.3,
-    haloScale: 175,
-    washColor: 0xffb877,
-    washOpacity: 0.06,
-    washScale: 520,
-    coreColor: 0xfff4dc,
+    color: 0xffd09a,
+    intensity: 3.0,
+    haloColor: 0xffd7a8,
+    haloOpacity: 0.34,
+    haloScale: 230,
+    washColor: 0xffc08a,
+    washOpacity: 0.14,
+    washScale: 1000,
+    coreColor: 0xfff6e2,
     coreOpacity: 0.95,
-    coreScale: 32,
-    shadowRadius: 94,
-    shadowFar: 500,
+    coreScale: 34,
+    shadowRadius: 108,
+    shadowFar: 560,
   },
-  hemi: { sky: 0xa8cff0, ground: 0xa37b58, intensity: 1.42 },
-  ambient: { color: 0xffdcb8, intensity: 0.46 },
-  fill: { color: 0xffc79c, intensity: 0.62 },
-  cloud: { color: 0xfff1df, minOpacity: 0.16, maxOpacity: 0.3 },
+  hemi: { sky: 0xbadcff, ground: 0xb2875e, intensity: 2.0 },
+  ambient: { color: 0xffe2c2, intensity: 0.8 },
+  fill: { color: 0xffd0a4, intensity: 1.06 },
+  cloud: { color: 0xfff3e4, minOpacity: 0.2, maxOpacity: 0.36 },
 };
 
 export const PLAYER = {
@@ -206,11 +207,12 @@ export const PICKUPS = [
   { kind: 'pistol', x: 108, z: 36.4, label: 'Solano 9' },
 ];
 
-// The story opens late on the fourth night: the Strip is still awake, the
-// radio is on, and the Harbor PD air unit is already overhead.
-export const DAY = 4;
-export const HOURS = 23;
-export const MINUTES = 41;
+// The story opens late on the fifth afternoon: the sun is still high over the
+// water, the Strip is waking up, the radio is on, and the Harbor PD air unit
+// is already overhead.
+export const DAY = 5;
+export const HOURS = 18;
+export const MINUTES = 12;
 
 const STREET_NAMES_X = {
   189: 'EAST YARD',

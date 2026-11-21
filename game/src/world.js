@@ -320,10 +320,10 @@ export class World {
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
 
-    // A warm bounce from the opposite side lifts the shaded faces without
-    // flattening the scene the way pure ambient would.
+    // A warm, high bounce from the opposite side lifts the shaded faces
+    // without flattening the scene the way pure ambient would.
     this.fill = new THREE.DirectionalLight(light.fill.color, light.fill.intensity);
-    this.fill.position.set(130, 70, -110);
+    this.fill.position.set(140, 95, -120);
     this.scene.add(this.fill);
 
     this.focusAt(20, 30);
@@ -352,16 +352,16 @@ export class World {
 
   buildGround() {
     const asphalt = canvasTexture(128, 128, (ctx, width, height) => {
-      ctx.fillStyle = '#35303d';
+      ctx.fillStyle = '#514b5b';
       ctx.fillRect(0, 0, width, height);
       const rng = makeRng(0xa55f);
       for (let i = 0; i < 1100; i += 1) {
-        const shade = rng.range(24, 92);
+        const shade = rng.range(48, 126);
         ctx.fillStyle = `rgba(${shade + 8},${shade + 2},${shade + 12},${rng.range(0.08, 0.35)})`;
         ctx.fillRect(rng.range(0, width), rng.range(0, height), rng.range(0.5, 2), rng.range(0.5, 2));
       }
       for (let i = 0; i < 5; i += 1) {
-        ctx.strokeStyle = 'rgba(7,6,10,0.4)';
+        ctx.strokeStyle = 'rgba(22,18,28,0.35)';
         ctx.lineWidth = 0.7;
         ctx.beginPath();
         let x = rng.range(0, width);
@@ -386,15 +386,15 @@ export class World {
     this.root.add(ground);
 
     const pavement = canvasTexture(128, 128, (ctx, width, height) => {
-      ctx.fillStyle = '#716168';
+      ctx.fillStyle = '#8c7c83';
       ctx.fillRect(0, 0, width, height);
       const rng = makeRng(0x51de);
       for (let i = 0; i < 500; i += 1) {
-        const shade = rng.range(72, 135);
+        const shade = rng.range(98, 168);
         ctx.fillStyle = `rgba(${shade},${shade - 8},${shade + 2},${rng.range(0.06, 0.22)})`;
         ctx.fillRect(rng.range(0, width), rng.range(0, height), rng.range(0.5, 2), rng.range(0.5, 2));
       }
-      ctx.strokeStyle = 'rgba(45,36,42,0.5)';
+      ctx.strokeStyle = 'rgba(58,46,54,0.45)';
       ctx.lineWidth = 1;
       for (let i = 0; i <= width; i += 32) {
         ctx.beginPath();
@@ -508,11 +508,11 @@ export class World {
 
   buildBeach() {
     const sandTexture = canvasTexture(128, 128, (ctx, width, height) => {
-      ctx.fillStyle = '#c9a071';
+      ctx.fillStyle = '#d2a978';
       ctx.fillRect(0, 0, width, height);
       const rng = makeRng(0x5a4d);
       for (let i = 0; i < 1600; i += 1) {
-        const value = rng.range(150, 232);
+        const value = rng.range(170, 246);
         ctx.fillStyle = `rgba(${value},${value - 20},${value - 50},${rng.range(0.08, 0.36)})`;
         ctx.fillRect(rng.range(0, width), rng.range(0, height), rng.range(0.5, 1.6), rng.range(0.5, 1.6));
       }
@@ -569,9 +569,9 @@ export class World {
   buildOcean() {
     const waterTexture = canvasTexture(256, 256, (ctx, width, height) => {
       const gradient = ctx.createLinearGradient(0, 0, 0, height);
-      gradient.addColorStop(0, '#2f6e7b');
-      gradient.addColorStop(0.5, '#255966');
-      gradient.addColorStop(1, '#1c4554');
+      gradient.addColorStop(0, '#3a8490');
+      gradient.addColorStop(0.5, '#2f6f7c');
+      gradient.addColorStop(1, '#255866');
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, width, height);
       const rng = makeRng(0x0cea);

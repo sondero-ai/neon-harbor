@@ -110,10 +110,12 @@ antennas, emissive storefronts and neon boards. Landmarks include the Sunset
 Hotel tower, Casa Luna on the beach, Motor Row, the Luna Plaza fountain, the
 radio mast, the Vega Strip arch, Pier 9 and its lighthouse.
 
-The build is dressed for golden hour. A low sun in the west-southwest throws
-long shadows across the blocks, the sky runs from pale peach at the horizon to
-clear blue overhead, and a warm key light with a lifted ambient fill carries
-the street while the emissive windows and neon still burn. Instanced pools
+The build is dressed for a late-afternoon golden hour. A raised, warm sun in
+the west throws soft shadows across the blocks, the sky runs from pale peach
+at the horizon to clear blue overhead, and a strong key light with lifted
+ambient, hemisphere and fill light keeps facades, asphalt and sidewalks in
+daylight while the emissive windows and neon still read against the brighter
+scene. Instanced pools
 under the streetlights and blade signs spill colour onto the pavement. The
 water plane scrolls its surface texture, the foam breathes, a points cloud
 supplies the sun glitter, the lighthouse beam turns, and warm cloud sprites
@@ -192,7 +194,7 @@ blips, mission enemies in coral and the objective marker, plus the crew panel
 (Mira Sol, Odin and Kiki with live role/status lines) and an NPC dialogue box
 with a drawn portrait, speaker name, role and line. The right rail carries the
 cash card, five wanted stars, `PURSUIT · 6 UNITS` or the search status, the
-`DAY 4 · 23:41` clock, the `STRIP RUNNER · 62/250 RESPECT` meter, the HPD
+`DAY 5 · 18:12` clock, the `STRIP RUNNER · 62/250 RESPECT` meter, the HPD
 response roster with named callsigns, roles and distances, the five-slot weapon
 strip (Solano 9, Kestrel SMG, street knife, and locked rifle and RPG slots), and
 the vehicle card with model, class, tune, a large speed readout, condition and
@@ -315,7 +317,7 @@ libraries, no generated bundles and no binary assets in `game/`.
 - `game/src/input.js` — keyboard, mouse, wheel, pointer lock and mouse edges.
 - `game/src/save.js` — guarded localStorage save, story/mission index, weapons,
   quality, volume and mute settings.
-- `game/src/random.js`, `config.js` — seeded RNG, the night clock, the
+- `game/src/random.js`, `config.js` — seeded RNG, the game clock, the
   golden-hour light preset, district and street names, tune labels and shared
   constants.
 - `game/src/shots.js` — the fixed `start`, `street`, `blockade`, `drive`,

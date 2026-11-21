@@ -818,14 +818,14 @@ export class Hud {
     ctx.lineTo(x + width - 14, y + 103);
     ctx.stroke();
 
-    label(ctx, `DAY ${state.day ?? 4} · ${state.clock ?? '23:41'}`, x + 14, y + 123, {
+    label(ctx, `DAY ${state.day ?? 5} · ${state.clock ?? '18:12'}`, x + 14, y + 123, {
       size: 12.5,
       color: CREAM,
       spacing: '1.1px',
       weight: 800,
       font: MONO,
     });
-    label(ctx, 'NIGHT SHIFT', x + width - 14, y + 123, {
+    label(ctx, 'GOLDEN HOUR', x + width - 14, y + 123, {
       size: 10,
       color: 'rgba(63,224,207,0.72)',
       spacing: '1.4px',
