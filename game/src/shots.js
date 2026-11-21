@@ -135,7 +135,7 @@ export const SHOTS = {
       wanted: 4,
       units: [
         { x: -44, z: 20.8, yaw: -Math.PI / 2, speed: 10, mode: 'pursue', callsign: 'UNIT 12', shootTimer: 0.34 },
-        { x: -34, z: 19.8, yaw: -Math.PI / 2, speed: 8, mode: 'pursue', callsign: 'UNIT 07', shootTimer: 0.52 },
+        { x: -38, z: 27.0, yaw: -Math.PI / 2, speed: 8, mode: 'pursue', callsign: 'UNIT 07', shootTimer: 0.52 },
         { x: -4, z: 27.0, yaw: 0, mode: 'block', callsign: 'UNIT 21', shootTimer: 0.8 },
       ],
       officers: [

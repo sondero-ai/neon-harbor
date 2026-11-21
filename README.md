@@ -7,9 +7,10 @@
 Neon Harbor is an original third-person open-world crime game for the desktop
 browser. It runs from plain static files with no build step, no package
 install and no network request after the page loads. The setting is a
-neon-night coastal city: six by six blocks of low-rise storefronts and
-downtown towers, a wide beach, a long pier, a working lighthouse, palms,
-streetlights and hand-built neon under a deep indigo sky.
+sun-soaked coastal city at golden hour: six by six blocks of low-rise
+storefronts and downtown towers, a wide beach, a long pier, a working
+lighthouse, palms, streetlights and hand-built neon under a warm peach-and-blue
+sky.
 
 You play courier **Rae Solano**, back in the harbor to settle a family debt.
 The build is the whole first chapter: a seeded city, a third-person camera
@@ -109,14 +110,15 @@ antennas, emissive storefronts and neon boards. Landmarks include the Sunset
 Hotel tower, Casa Luna on the beach, Motor Row, the Luna Plaza fountain, the
 radio mast, the Vega Strip arch, Pier 9 and its lighthouse.
 
-It is 23:41 on the fourth night. A moon and a field of stars sit over the
-harbor, a magenta band of city light pollution hangs on the horizon, and cool
-moonlight plus the warm emissive windows and neon carry the scene. Instanced
-pools under the streetlights and blade signs spill colour onto the pavement.
-The water plane scrolls its surface texture, the foam breathes, a points cloud
-supplies the night glitter, the lighthouse beam turns, and cloud sprites drift
-over the skyline. A typical 1280×720 frame in this build uses roughly 250–450
-draw calls and runs comfortably above 60 fps on a desktop GPU.
+The build is dressed for golden hour. A low sun in the west-southwest throws
+long shadows across the blocks, the sky runs from pale peach at the horizon to
+clear blue overhead, and a warm key light with a lifted ambient fill carries
+the street while the emissive windows and neon still burn. Instanced pools
+under the streetlights and blade signs spill colour onto the pavement. The
+water plane scrolls its surface texture, the foam breathes, a points cloud
+supplies the sun glitter, the lighthouse beam turns, and warm cloud sprites
+drift over the skyline. A typical 1280×720 frame in this build uses roughly
+250–450 draw calls and runs comfortably above 60 fps on a desktop GPU.
 
 ## Traffic and driving
 
@@ -159,7 +161,7 @@ paints the wasted/busted overlay, takes a cut of the cash and respawns Rae.
 
 The same director owns **Air 1**, an HPD helicopter that patrols above the
 streets with a spinning main rotor, a tail rotor, navigation lights and a
-visible searchlight cone. It sweeps the pavement on a quiet night and locks the
+visible searchlight cone. It sweeps the pavement over the Strip and locks the
 beam onto Rae's car once a pursuit starts; its horizontal range feeds the
 top-centre `AIR 1 · SPOTLIGHT` banner and the response roster. Each cruiser,
 officer and the air unit gets a callsign and a live role — RAMMING, PURSUIT,
@@ -221,18 +223,20 @@ each under 256 KiB. The first by name is the cover. They are captured by
 `tools/capture.mjs` from the live page with headless Chrome; nothing is
 composited and no filters are applied.
 
-- `1-cover.jpg` — `?shot=chase`: the night chase on Vega Strip with the red
-  Riptide, two HPD cruisers with lit bars, lane traffic, crosswalk pedestrians,
-  the MART neon, Air 1 and its searchlight overhead, and the full HUD at once:
+- `1-cover.jpg` — `?shot=chase`: the golden-hour chase on Vega Strip with the
+  red Riptide, two HPD cruisers with lit bars, lane traffic, crosswalk
+  pedestrians, the MART neon, Air 1 and its searchlight overhead, and the full
+  HUD at once:
   CH.2 mission card, six-unit response roster, Sgt. Vale dispatch dialogue,
   crew panel, five-slot weapon strip and the Riptide vehicle card at 78 km/h.
 - `2-street.jpg` — `?shot=blockade`: an HPD roadblock on Vega Strip at four
   stars, the six-unit roster with RAMMING, SPOTLIGHT, CLOSING IN and ROADBLOCK
   entries, Sgt. Vale on the radio, and the player caught in Air 1's beam.
-- `3-mission.jpg` — `?shot=heist`: the Pier 9 docks at night, the lighthouse,
-  burning barrels, Aurelio's enforcers and tracers, the CH.5 · LAST EXIT /
-  PIER 9 BURNING card, the `CLEAR PIER 9` objective and the Pier 9 minimap.
-- `4-title.jpg` — `?shot=start`: the title and menu over the live night
+- `3-mission.jpg` — `?shot=heist`: the Pier 9 docks at golden hour, the
+  lighthouse, burning barrels, Aurelio's enforcers and tracers, the CH.5 ·
+  LAST EXIT / PIER 9 BURNING card, the `CLEAR PIER 9` objective and the Pier 9
+  minimap.
+- `4-title.jpg` — `?shot=start`: the title and menu over the live golden-hour
   skyline, Sunset Hotel, the pier and the full extent of the city.
 
 Every shot builds the real world, player, police or mission director, weapons,
@@ -281,8 +285,8 @@ libraries, no generated bundles and no binary assets in `game/`.
 - `game/src/main.js` — boot, fixed-step loop, screen state machine, quality,
   save wiring, vehicle entry/exit, radio state and deterministic shot staging.
 - `game/src/world.js` — city generation, ground/collision/camera queries, beach,
-  pier, lighthouse, ocean, the night sky and moon, lights, signs, light pools
-  and animation.
+  pier, lighthouse, ocean, the golden-hour sky and sun, lights, signs, light
+  pools and animation.
 - `game/src/geo.js` — reusable mesh, facade, sign and billboard factories, and
   the geometry merge.
 - `game/src/vehicles.js` — seven vehicle classes, meshes, arcade physics,
@@ -311,8 +315,9 @@ libraries, no generated bundles and no binary assets in `game/`.
 - `game/src/input.js` — keyboard, mouse, wheel, pointer lock and mouse edges.
 - `game/src/save.js` — guarded localStorage save, story/mission index, weapons,
   quality, volume and mute settings.
-- `game/src/random.js`, `config.js` — seeded RNG, the night clock, district and
-  street names, tune labels and shared constants.
+- `game/src/random.js`, `config.js` — seeded RNG, the night clock, the
+  golden-hour light preset, district and street names, tune labels and shared
+  constants.
 - `game/src/shots.js` — the fixed `start`, `street`, `blockade`, `drive`,
   `chase`, `mission`, `heist` and `pier` screenshot poses.
 - `game/vendor/` — three.js r180's minified module and core builds behind the

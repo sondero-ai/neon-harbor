@@ -16,6 +16,7 @@ import {
   QUALITY_PRESETS,
   RADIO,
   START_OBJECTIVE,
+  TIME_OF_DAY,
   districtAt,
   streetAt,
 } from './config.js';
@@ -108,8 +109,8 @@ class Game {
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.32;
-    this.renderer.setClearColor(0x080612, 1);
+    this.renderer.toneMappingExposure = TIME_OF_DAY.exposure;
+    this.renderer.setClearColor(TIME_OF_DAY.clearColor, 1);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 

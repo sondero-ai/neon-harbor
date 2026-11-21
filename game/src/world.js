@@ -8,10 +8,10 @@
 import * as THREE from '../vendor/three.module.js';
 import {
   BLOCK_CENTERS,
-  PALETTE,
   QUALITY_PRESETS,
   ROADS,
   SEED,
+  TIME_OF_DAY,
   WORLD,
 } from './config.js';
 import {
@@ -35,7 +35,7 @@ const ROAD_HALF = WORLD.roadWidth / 2;
 const BLOCK_HALF = WORLD.blockSize / 2;
 const DECK = WORLD.pier;
 const WATER_Y = -0.44;
-const SUN_DIR = new THREE.Vector3(...WORLD.sunDir).normalize();
+const SUN_DIR = new THREE.Vector3(...TIME_OF_DAY.sunDir).normalize();
 const UP = new THREE.Vector3(0, 1, 0);
 const clamp = THREE.MathUtils.clamp;
 const lerp = THREE.MathUtils.lerp;
@@ -126,7 +126,7 @@ export class World {
   constructor(scene, { quality = 'high' } = {}) {
     this.scene = scene;
     this.quality = quality;
-    this.scene.fog = new THREE.Fog(PALETTE.fog, 72, 680);
+    this.scene.fog = new THREE.Fog(TIME_OF_DAY.fog.color, TIME_OF_DAY.fog.near, TIME_OF_DAY.fog.far);
     this.root = new THREE.Group();
     this.root.name = 'harbor';
     scene.add(this.root);
@@ -225,78 +225,30 @@ export class World {
 
   buildSky() {
     const skyTexture = canvasTexture(1024, 512, (ctx, width, height) => {
-      // Vega Strip after midnight: indigo overhead, a magenta band of city
-      // light along the horizon, and a moon instead of the sunset.
+      // Golden hour over the harbor: clear blue overhead, a pale peach band of
+      // haze sitting on the horizon, and warm light spilling up from the west.
       const gradient = ctx.createLinearGradient(0, 0, 0, height);
-      gradient.addColorStop(0, '#040410');
-      gradient.addColorStop(0.16, '#090a20');
-      gradient.addColorStop(0.32, '#15102e');
-      gradient.addColorStop(0.45, '#261543');
-      gradient.addColorStop(0.53, '#482052');
-      gradient.addColorStop(0.575, '#7a2e5a');
-      gradient.addColorStop(0.61, '#a8445f');
-      gradient.addColorStop(0.66, '#5a2948');
-      gradient.addColorStop(0.8, '#24152c');
-      gradient.addColorStop(1, '#080612');
+      gradient.addColorStop(0, TIME_OF_DAY.sky.top);
+      gradient.addColorStop(0.16, TIME_OF_DAY.sky.upper);
+      gradient.addColorStop(0.32, TIME_OF_DAY.sky.middle);
+      gradient.addColorStop(0.44, TIME_OF_DAY.sky.lower);
+      gradient.addColorStop(0.5, TIME_OF_DAY.sky.horizon);
+      gradient.addColorStop(0.535, TIME_OF_DAY.sky.warm);
+      gradient.addColorStop(0.58, TIME_OF_DAY.sky.below);
+      gradient.addColorStop(0.72, TIME_OF_DAY.sky.deep);
+      gradient.addColorStop(1, '#7d5545');
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, width, height);
 
-      // City light pollution, warm and pink, sitting on the horizon.
-      const horizon = ctx.createRadialGradient(width * 0.42, height * 0.6, 10, width * 0.42, height * 0.6, width * 0.56);
-      horizon.addColorStop(0, 'rgba(255,86,132,0.22)');
-      horizon.addColorStop(0.4, 'rgba(160,60,120,0.09)');
-      horizon.addColorStop(1, 'rgba(80,20,80,0)');
-      ctx.fillStyle = horizon;
-      ctx.fillRect(0, 0, width, height);
-
+      // A few thin, warm clouds above the horizon. The larger cloud sprites in
+      // buildClouds() carry the rest of the sky.
       const rng = makeRng(0x57a2);
-      for (let i = 0; i < 190; i += 1) {
+      for (let i = 0; i < 12; i += 1) {
         const x = rng.range(0, width);
-        const y = rng.range(8, height * 0.49);
-        const radius = rng.range(0.4, 1.7);
-        ctx.fillStyle = `rgba(225,235,255,${rng.range(0.1, 0.62)})`;
-        ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      for (let i = 0; i < 6; i += 1) {
-        ctx.fillStyle = 'rgba(255,255,255,0.9)';
-        ctx.beginPath();
-        ctx.arc(rng.range(0, width), rng.range(8, height * 0.36), rng.range(1.4, 2.2), 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // The moon: a cold disc with a soft halo.
-      const moonX = width * 0.73;
-      const moonY = height * 0.17;
-      const moonGlow = ctx.createRadialGradient(moonX, moonY, 4, moonX, moonY, width * 0.15);
-      moonGlow.addColorStop(0, 'rgba(190,210,255,0.24)');
-      moonGlow.addColorStop(0.28, 'rgba(150,170,235,0.08)');
-      moonGlow.addColorStop(1, 'rgba(90,110,190,0)');
-      ctx.fillStyle = moonGlow;
-      ctx.fillRect(moonX - width * 0.16, moonY - width * 0.16, width * 0.32, width * 0.32);
-      const moonCore = ctx.createRadialGradient(moonX - 4, moonY - 4, 1, moonX, moonY, 15);
-      moonCore.addColorStop(0, '#f4f7ff');
-      moonCore.addColorStop(0.72, '#c9d6f5');
-      moonCore.addColorStop(1, '#8c9dd4');
-      ctx.fillStyle = moonCore;
-      ctx.beginPath();
-      ctx.arc(moonX, moonY, 13, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(110,130,180,0.22)';
-      for (const [dx, dy, r] of [[-4, 2, 2.4], [3, -3, 1.8], [1, 5, 1.4]]) {
-        ctx.beginPath();
-        ctx.arc(moonX + dx, moonY + dy, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Thin night clouds drifting under the stars.
-      for (let i = 0; i < 16; i += 1) {
-        const x = rng.range(0, width);
-        const y = rng.range(height * 0.22, height * 0.52);
-        const rx = rng.range(30, 110);
+        const y = rng.range(height * 0.18, height * 0.46);
+        const rx = rng.range(30, 120);
         const ry = rng.range(2, 7);
-        ctx.fillStyle = `rgba(96,62,120,${rng.range(0.04, 0.12)})`;
+        ctx.fillStyle = `rgba(255,238,215,${rng.range(0.04, 0.12)})`;
         ctx.beginPath();
         ctx.ellipse(x, y, rx, ry, rng.range(-0.1, 0.1), 0, Math.PI * 2);
         ctx.fill();
@@ -316,48 +268,61 @@ export class World {
     this.skySphere.renderOrder = -1000;
     this.skyRoot.add(this.skySphere);
 
-    // The moon is painted into the sky texture; the old sun sprites are kept
-    // out of the night frame.
-    const halo = makeGlowSprite(0x8fa8ff, 120, 0.0);
+    // The low sun: a wide warm wash, a soft halo and a hot core. All three sit
+    // on the same direction as the directional light, so the disc and the long
+    // shadows agree.
+    const wash = makeGlowSprite(TIME_OF_DAY.sun.washColor, TIME_OF_DAY.sun.washScale, TIME_OF_DAY.sun.washOpacity);
+    wash.position.copy(SUN_DIR).multiplyScalar(1126);
+    wash.renderOrder = -902;
+    wash.material.fog = false;
+    this.skyRoot.add(wash);
+
+    const halo = makeGlowSprite(TIME_OF_DAY.sun.haloColor, TIME_OF_DAY.sun.haloScale, TIME_OF_DAY.sun.haloOpacity);
     halo.position.copy(SUN_DIR).multiplyScalar(1120);
     halo.renderOrder = -900;
     halo.material.fog = false;
-    halo.visible = false;
     this.skyRoot.add(halo);
 
-    const core = makeGlowSprite(0xe8efff, 34, 0.0);
+    const core = makeGlowSprite(TIME_OF_DAY.sun.coreColor, TIME_OF_DAY.sun.coreScale, TIME_OF_DAY.sun.coreOpacity);
     core.position.copy(SUN_DIR).multiplyScalar(1118);
     core.renderOrder = -899;
     core.material.fog = false;
-    core.visible = false;
     this.skyRoot.add(core);
+    this.sunWash = wash;
     this.sunHalo = halo;
     this.sunCore = core;
   }
 
   buildLights() {
     const preset = QUALITY_PRESETS[this.quality] ?? QUALITY_PRESETS.high;
-    this.hemi = new THREE.HemisphereLight(0x7f8fd6, 0x171322, 1.38);
+    const light = TIME_OF_DAY;
+    this.hemi = new THREE.HemisphereLight(light.hemi.sky, light.hemi.ground, light.hemi.intensity);
     this.scene.add(this.hemi);
 
-    this.ambient = new THREE.AmbientLight(0x4a4266, 0.56);
+    this.ambient = new THREE.AmbientLight(light.ambient.color, light.ambient.intensity);
     this.scene.add(this.ambient);
 
-    this.sun = new THREE.DirectionalLight(0x9fb2ff, 0.65);
+    // The key light is the low sun. Its warm colour carries the long shadows;
+    // the wider shadow camera keeps those shadows from being clipped near the
+    // player as the light rakes across the blocks.
+    this.sun = new THREE.DirectionalLight(light.sun.color, light.sun.intensity);
     this.sun.castShadow = preset.shadows;
     this.sun.shadow.mapSize.set(preset.shadowMap, preset.shadowMap);
-    this.sun.shadow.camera.left = -76;
-    this.sun.shadow.camera.right = 76;
-    this.sun.shadow.camera.top = 76;
-    this.sun.shadow.camera.bottom = -76;
+    this.sun.shadow.camera.left = -light.sun.shadowRadius;
+    this.sun.shadow.camera.right = light.sun.shadowRadius;
+    this.sun.shadow.camera.top = light.sun.shadowRadius;
+    this.sun.shadow.camera.bottom = -light.sun.shadowRadius;
     this.sun.shadow.camera.near = 12;
-    this.sun.shadow.camera.far = 300;
+    this.sun.shadow.camera.far = light.sun.shadowFar;
+    this.sun.shadow.camera.updateProjectionMatrix();
     this.sun.shadow.bias = -0.00035;
     this.sun.shadow.normalBias = 0.055;
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
 
-    this.fill = new THREE.DirectionalLight(0x6f83cf, 1.0);
+    // A warm bounce from the opposite side lifts the shaded faces without
+    // flattening the scene the way pure ambient would.
+    this.fill = new THREE.DirectionalLight(light.fill.color, light.fill.intensity);
     this.fill.position.set(130, 70, -110);
     this.scene.add(this.fill);
 
@@ -365,7 +330,11 @@ export class World {
   }
 
   focusAt(x, z) {
-    this.sun.position.set(x + SUN_DIR.x * 120, SUN_DIR.y * 120 + 12, z + SUN_DIR.z * 120);
+    // Keep the light far enough outside the city that the low, raking shadow
+    // camera never sits inside a tower, and keep its direction exactly on the
+    // painted sun disc.
+    const distance = 300;
+    this.sun.position.set(x + SUN_DIR.x * distance, SUN_DIR.y * distance, z + SUN_DIR.z * distance);
     this.sun.target.position.set(x, 0, z);
     this.sun.target.updateMatrixWorld();
   }
@@ -2163,9 +2132,9 @@ export class World {
     for (const [x, y, z, sx, sy] of positions) {
       const material = new THREE.SpriteMaterial({
         map: cloudTexture,
-        color: 0xffd6bd,
+        color: TIME_OF_DAY.cloud.color,
         transparent: true,
-        opacity: rng.range(0.14, 0.28),
+        opacity: rng.range(TIME_OF_DAY.cloud.minOpacity, TIME_OF_DAY.cloud.maxOpacity),
         depthWrite: false,
         fog: false,
         toneMapped: false,
