@@ -54,6 +54,25 @@ function lanePoint(axis, line, direction, along) {
   return { x: line - direction * LANE_OFFSET, z: along, yaw: laneYaw(axis, direction) };
 }
 
+// Same ray/sphere test the Harbor PD uses, kept local so the traffic module
+// stays independent of police.js.
+function raySphere(origin, direction, cx, cy, cz, radius) {
+  const ox = origin.x - cx;
+  const oy = origin.y - cy;
+  const oz = origin.z - cz;
+  const b = ox * direction.x + oy * direction.y + oz * direction.z;
+  const c = ox * ox + oy * oy + oz * oz - radius * radius;
+  const discriminant = b * b - c;
+  if (discriminant < 0) return null;
+  const root = Math.sqrt(discriminant);
+  const t = -b - root;
+  if (t < 0.05) {
+    const t2 = -b + root;
+    return t2 > 0.05 ? t2 : null;
+  }
+  return t;
+}
+
 const clothing = [0xd75543, 0x3f8f8f, 0xe4d6b8, 0x6a7f54, 0x8a4f6d, 0x4b5f8c, 0xe0a94f, 0x9c3b42, 0x557a6a, 0xc7a887];
 const pants = [0x252334, 0x3a3340, 0x2d3f4a, 0x51463c, 0x1d222c, 0x5d5548];
 const skins = [0xb87a60, 0x8c5a44, 0xd9a37c, 0x6e4636, 0xc28d6a, 0x9c6c50];
@@ -148,9 +167,10 @@ const hairs = [0x24161c, 0x3b241c, 0x17141a, 0x6b4a2c, 0x8f8272, 0x4a2b33];class
     const slot = ped.slot;
     const bob = Math.abs(Math.sin(ped.phase)) * 0.034 * ped.motion;
     const scale = ped.scale;
-    this._euler.set(0, ped.yaw, 0);
+    const fall = ped.fall ?? 0;
+    this._euler.set(-fall * 1.45, ped.yaw, 0);
     this._quaternion.setFromEuler(this._euler);
-    this._position.set(ped.x, ped.y + bob, ped.z);
+    this._position.set(ped.x, ped.y + bob + 0.12 * fall, ped.z);
     this._scale.set(scale, scale, scale);
     this._base.compose(this._position, this._quaternion, this._scale);
 
@@ -185,6 +205,7 @@ export class Traffic {
     this.world = world;
     this.vehicles = vehicles;
     this.player = player;
+    this.onPedDeath = null;
     this.rng = makeRng(0x51ee7);
     this.cars = [];
     this.peds = [];
@@ -561,6 +582,13 @@ export class Traffic {
       speed: this.rng.range(1.05, 1.55),
       phase: phase ?? this.rng.range(0, TAU),
       motion: 0.6,
+      health: 55,
+      dead: false,
+      deadTimer: 0,
+      fall: 0,
+      fleeTimer: 0,
+      fleeFromX: 0,
+      fleeFromZ: 0,
       mode,
       target: target ?? { x, z },
       anchor: anchor ?? { x, z },
@@ -626,6 +654,61 @@ export class Traffic {
     this.crowd.hide(ped.slot);
   }
 
+  // ---------------------------------------------------------------- combat
+
+  /** Nearest living pedestrian the player's ray can hit, with chest and head spheres. */
+  traceShot(origin, direction, maxDistance) {
+    let best = null;
+    for (const ped of this.peds) {
+      if (!ped.active || ped.dead) continue;
+      const chest = raySphere(origin, direction, ped.x, ped.y + 1.12 * ped.scale, ped.z, 0.42);
+      const head = raySphere(origin, direction, ped.x, ped.y + 1.55 * ped.scale, ped.z, 0.22);
+      let distance = null;
+      let headshot = false;
+      if (head !== null && (chest === null || head <= chest)) {
+        distance = head;
+        headshot = true;
+      } else if (chest !== null) {
+        distance = chest;
+      }
+      if (distance === null || distance > maxDistance) continue;
+      if (!best || distance < best.distance) {
+        best = {
+          type: 'ped',
+          ped,
+          headshot,
+          distance,
+          point: new THREE.Vector3(origin.x + direction.x * distance, origin.y + direction.y * distance, origin.z + direction.z * distance),
+        };
+      }
+    }
+    return best;
+  }
+
+  applyPlayerHit(target, damage) {
+    const ped = target?.ped;
+    if (!ped || !ped.active || ped.dead) return;
+    ped.health -= damage * (target.headshot ? 1.75 : 1);
+    if (this.player) {
+      this.player.hitMarker = 1;
+      if (this.player.effects) this.player.effects.impact(target.point, null, 'metal');
+      if (this.player.audio) this.player.audio.impact(0.9);
+    }
+    if (ped.health > 0) return;
+    ped.dead = true;
+    ped.deadTimer = 8;
+    ped.health = 0;
+    for (const other of this.peds) {
+      if (other === ped || !other.active || other.dead) continue;
+      if (Math.hypot(other.x - ped.x, other.z - ped.z) < 9) {
+        other.fleeTimer = 4;
+        other.fleeFromX = ped.x;
+        other.fleeFromZ = ped.z;
+      }
+    }
+    this.onPedDeath?.(ped);
+  }
+
   pickBeachTarget(ped) {
     const anchorOnPier = this.world.groundHeightAt(ped.anchor.x, ped.anchor.z) > 1;
     if (anchorOnPier) {
@@ -650,6 +733,26 @@ export class Traffic {
   updatePeds(dt, elapsed) {
     for (const ped of this.peds) {
       if (!ped.active) continue;
+      if (ped.dead) {
+        ped.deadTimer -= dt;
+        ped.fall = Math.min(1, ped.fall + dt / 0.45);
+        ped.motion = 0;
+        if (ped.deadTimer <= 0) this.despawnPed(ped);
+        continue;
+      }
+      if (ped.fleeTimer > 0) {
+        ped.fleeTimer -= dt;
+        const dx = ped.x - ped.fleeFromX;
+        const dz = ped.z - ped.fleeFromZ;
+        const distance = Math.hypot(dx, dz) || 1;
+        ped.target = { x: ped.x + (dx / distance) * 12, z: ped.z + (dz / distance) * 12 };
+        const moving = this.walkToward(ped, ped.speed * 1.6, dt);
+        ped.phase += dt * 7;
+        ped.motion = damp(ped.motion, 1, 8, dt);
+        ped.y = damp(ped.y, this.world.groundHeightAt(ped.x, ped.z), 15, dt);
+        if (ped.fleeTimer <= 0) this.setNextCorner(ped);
+        continue;
+      }
       const ground = this.world.groundHeightAt(ped.x, ped.z);
       let moving = false;
 

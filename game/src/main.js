@@ -123,6 +123,7 @@ class Game {
     this.player.effects = this.effects;
     this.player.audio = this.audio;
     this.traffic = new Traffic(this.scene, this.world, this.vehicles, this.player);
+    this.player.traffic = this.traffic;
     this.police = new Police(this.scene, this.world, this.vehicles, this.player, this.traffic, this.effects, this.audio, {
       onDown: (type) => this.beginDown(type),
     });
@@ -1113,6 +1114,29 @@ try {
     get traffic() {
       const density = game.traffic.density;
       return { cars: density.cars, walkers: density.walkers, totalVehicles: game.vehicles.count };
+    },
+    get pedestrians() {
+      const peds = game.traffic.peds.filter((ped) => ped.active);
+      return {
+        active: peds.length,
+        alive: peds.filter((ped) => !ped.dead).length,
+        dead: peds.filter((ped) => ped.dead).length,
+        fleeing: peds.filter((ped) => ped.fleeTimer > 0).length,
+        near: peds
+          .map((ped) => ({ ped, d: Math.hypot(ped.x - game.player.position.x, ped.z - game.player.position.z) }))
+          .filter(({ d }) => d < 40)
+          .sort((a, b) => a.d - b.d)
+          .slice(0, 10)
+          .map(({ ped }) => ({ x: Math.round(ped.x * 10) / 10, z: Math.round(ped.z * 10) / 10, health: ped.health, dead: ped.dead })),
+      };
+    },
+    get view() {
+      return { cameraYaw: game.player.cameraYaw, cameraPitch: game.player.cameraPitch };
+    },
+    debug: {
+      traffic: game.traffic,
+      player: game.player,
+      camera: game.camera,
     },
     get police() {
       const hud = game.police.hudState;
