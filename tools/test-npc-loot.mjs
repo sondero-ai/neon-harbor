@@ -3457,6 +3457,68 @@ const TESTS = [
           && world.collides(-88, -18, 1.2) === false && world.collides(-88, 18, 1.2) === false);
       check('test 27: the forecourt is not vehicle-blocked',
         world.vehicleBlocked(-100, 0, false) === false && world.vehicleBlocked(-92, -18, false) === false);
+
+      const player = neon?.debug?.player;
+      const vehicles = neon?.debug?.vehicles;
+      const interactions = neon?.debug?.interactions;
+      const hud = neon?.debug?.hud;
+      const key = (type, code) => window.dispatchEvent(new KeyboardEvent(type, {
+        code, key: code.replace('Key', '').toLowerCase(), bubbles: true, cancelable: true,
+      }));
+      // A ?shot= page suppresses toasts for the capture; this group asserts them.
+      hud.suppressToasts = false;
+
+      const car = vehicles.spawn('sedan', { x: -96.5, z: -11, yaw: -Math.PI / 2, fuel: 0.4 });
+      car.condition = 0.5;
+      player.enterVehicle(car);
+      neon.advance(1 / 60);
+      check('test 27: a car at the pump prompts SERVICE at the quoted price',
+        interactions.prompt?.action === 'fuel' && interactions.prompt?.detail === '$123',
+        JSON.stringify(interactions.prompt));
+      check('test 27: the HUD carries the fuel level', neon.state?.vehicle?.fuel === 0.4,
+        JSON.stringify(neon.state?.vehicle ?? null));
+
+      player.cash = 1000;
+      key('keydown', 'KeyE');
+      neon.advance(1 / 60);
+      key('keyup', 'KeyE');
+      check('test 27: E refuels and repairs and debits the quote',
+        car.fuel === 1 && car.condition === 1 && player.cash === 877,
+        JSON.stringify({ fuel: car.fuel, condition: car.condition, cash: player.cash }));
+      neon.advance(1 / 60);
+      check('test 27: a fully serviced car has no service prompt', interactions.prompt?.action !== 'fuel');
+
+      key('keydown', 'KeyF');
+      neon.advance(1 / 60);
+      key('keyup', 'KeyF');
+      check('test 27: F still exits at a pump and does not service', player.driving === null);
+
+      const poor = vehicles.spawn('muscle', { x: -96.5, z: 11, yaw: -Math.PI / 2, fuel: 0.5 });
+      player.enterVehicle(poor);
+      player.cash = 20;
+      neon.advance(1 / 60);
+      key('keydown', 'KeyE');
+      neon.advance(1 / 60);
+      key('keyup', 'KeyE');
+      check('test 27: a wallet short of the quote refuses and keeps the car as it was',
+        poor.fuel === 0.5 && player.cash === 20 && hud?.toast?.title === 'NOT ENOUGH CASH',
+        JSON.stringify({ fuel: poor.fuel, cash: player.cash, toast: hud?.toast?.title }));
+
+      poor.fuel = 0.1;
+      neon.advance(1 / 60);
+      check('test 27: a low tank raises the LOW FUEL toast', hud?.toast?.title === 'LOW FUEL',
+        JSON.stringify(hud?.toast));
+
+      // An empty tank turns throttle into nothing while the car stays drivable.
+      const dry = vehicles.spawn('sedan', { x: -70, z: -6, yaw: 0, fuel: 0, driver: 'ai' });
+      dry.controls.throttle = 1;
+      dry.controls.brake = 0;
+      const dryZ = dry.position.z;
+      neon.advance(1);
+      check('test 27: an empty car cannot accelerate',
+        Math.abs(dry.speed) < 0.5 && Math.abs(dry.position.z - dryZ) < 0.5,
+        JSON.stringify({ speed: dry.speed, z: dry.position.z }));
+
       return results;
     },
   },

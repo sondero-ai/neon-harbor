@@ -4,18 +4,21 @@
 // acts, and returns whether it did so, letting main.js pass `allowE: false` to
 // the player's enter/exit path. F stays the unconditional vehicle key.
 
+import { quoteService } from './fuel.js';
+
 const SEAT_REACH = 1.8;
 const REGISTER_REACH = 2.0;
 const PARKED_CAR_REACH = 2.0;
 const PODIUM_REACH = 2.2;
 
 export class Interactions {
-  constructor({ player, world, vehicles = null, parking = null, robbery = null } = {}) {
+  constructor({ player, world, vehicles = null, parking = null, robbery = null, gasStation = null } = {}) {
     this.player = player;
     this.world = world;
     this.vehicles = vehicles;
     this.parking = parking;
     this.robbery = robbery;
+    this.gasStation = gasStation;
     this.prompt = null;
   }
 
@@ -55,8 +58,21 @@ export class Interactions {
 
     // While stopped in the valet zone, E parks the car instead of exiting it.
     // F still leaves the car, because the player's exit path never sees E once
-    // this returns true.
+    // this returns true. A pump inside the station takes priority over valet,
+    // so E services and never exits while the car is on a pump pad.
     if (player.driving) {
+      if (this.gasStation && Math.abs(player.driving.speed) < 0.5) {
+        const pump = this.gasStation.atPump(player.position, 3.5);
+        const quote = pump ? quoteService(player.driving) : null;
+        if (quote && quote.total > 0) {
+          this.prompt = { action: 'fuel', label: 'SERVICE', detail: `$${quote.total}` };
+          if (input.wasPressed('KeyE')) {
+            input.consumePressed('KeyE');
+            this.gasStation.service(player);
+            return true;
+          }
+        }
+      }
       if (this.parking && Math.abs(player.driving.speed) < 0.5 && this.parking.atValetZone(player.position)) {
         this.prompt = { action: 'valet', label: 'VALET', detail: 'PARK THE CAR' };
         if (input.wasPressed('KeyE')) {

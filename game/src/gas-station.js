@@ -11,6 +11,7 @@
 
 import * as THREE from '../vendor/three.module.js';
 import { WORLD } from './config.js';
+import { quoteService } from './fuel.js';
 import { makeSignTexture, mergeGeometries } from './geo.js';
 import { addBox, addCylinder, basicMaterial, material } from './world-kit.js';
 
@@ -62,6 +63,7 @@ export class GasStation {
     this.pumps = PUMP_POINTS.map((point) => ({ ...point }));
     this.slots = PUMP_SLOTS.map((slot) => ({ ...slot, car: null, phase: 'free', timer: 0 }));
     this.lights = [];
+    this.onToast = null;
 
     const group = new THREE.Group();
     group.name = 'solano-fuel';
@@ -308,6 +310,27 @@ export class GasStation {
       }
     }
     return best;
+  }
+
+  /**
+   * Fill the tank and repair the body for the quoted total, paid in cash. A
+   * full, undamaged car costs nothing and is not a service. A wallet short of
+   * the quote is refused with a toast; the car and the cash stay as they were.
+   */
+  service(player) {
+    const car = player?.driving;
+    if (!car) return { ok: false, quote: null };
+    const quote = quoteService(car);
+    if (quote.total <= 0) return { ok: false, quote };
+    if (player.cash < quote.total) {
+      this.onToast?.({ title: 'NOT ENOUGH CASH', sub: `NEED $${quote.total}`, life: 2.6 });
+      return { ok: false, quote };
+    }
+    player.cash -= quote.total;
+    car.fuel = 1;
+    car.condition = 1;
+    this.onToast?.({ title: 'SERVICE COMPLETE', sub: `$${quote.total} · FULL TANK · BODY REPAIRED`, life: 2.8 });
+    return { ok: true, quote };
   }
 
   /** Clear the slots between city resets; a fresh city has no station cars. */

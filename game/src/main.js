@@ -40,6 +40,7 @@ import { Police } from './police.js';
 import { Pickups } from './pickups.js';
 import { Missions, MISSION_COUNT, missionName } from './missions.js';
 import { Activities } from './activities.js';
+import { LOW_FUEL } from './fuel.js';
 
 const STEP = 1 / 60;
 const MAX_STEPS = 5;
@@ -158,6 +159,12 @@ class Game {
     };
     this.interactions.parking = this.parking;
     this.gasStation = this.world.gasStation;
+    if (this.gasStation) {
+      this.gasStation.onToast = (toast) => {
+        if (!this.hud.suppressToasts) this.hud.toast = toast;
+      };
+    }
+    this.interactions.gasStation = this.gasStation;
     this.pickups = new Pickups(this.scene, this.world, this.effects, {
       audio: this.audio,
       onPickup: (message) => {
@@ -541,6 +548,7 @@ class Game {
     this.mallLife?.reset();
     this.robbery?.reset();
     this.parking?.reset(this.environment.minutes);
+    this.lowFuelWarned = false;
   }
 
   spawnOpeningCars() {
@@ -963,6 +971,7 @@ class Game {
             gear: driving.gear,
             engineRpm: driving.engineRpm,
             condition: driving.condition,
+            fuel: driving.fuel,
           }
         : null,
       vehicles: blips,
@@ -1269,6 +1278,13 @@ class Game {
         if (input.wasPressed('Minus')) this.changeVolume(-0.08);
         if (input.wasPressed('Equal')) this.changeVolume(0.08);
         this.player.update(dt, input);
+        const tank = this.player.driving;
+        if (!tank) this.lowFuelWarned = false;
+        else if (tank.fuel > 0.35) this.lowFuelWarned = false;
+        else if (tank.fuel < LOW_FUEL && !this.lowFuelWarned) {
+          this.lowFuelWarned = true;
+          if (!this.hud.suppressToasts) this.hud.toast = { title: 'LOW FUEL', sub: 'FIND A SOLANO FUEL STATION', life: 3 };
+        }
         this.mallLife.update(dt, this.environment.minutes);
         this.traffic.update(dt, this.simTime);
         this.parking.update(dt, this.environment.minutes);
@@ -1476,6 +1492,9 @@ try {
     },
     get hudRadio() {
       return game.lastHudState?.radio ?? game.hudState().radio;
+    },
+    get state() {
+      return game.lastHudState;
     },
     get audio() {
       return {
