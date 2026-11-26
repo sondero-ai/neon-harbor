@@ -34,6 +34,9 @@ export class Humanoid {
     this.air = 0;
     this.aiming = false;
     this.aimAmount = 0;
+    // Knife swing progress, 0..1. Applied on top of the walk and aim poses so
+    // the right arm and hand thrust forward instead of only the blade.
+    this.melee = 0;
 
     const jacket = material(0xdf5961, { roughness: 0.72 });
     const jacketDark = material(0x9c3b45, { roughness: 0.8 });
@@ -226,6 +229,20 @@ export class Humanoid {
       this.torso.rotation.y = -0.13 * aim;
     } else {
       this.torso.rotation.y = 0;
+    }
+
+    // The stab: shoulder forward, elbow extended and the left arm countering.
+    // The sine envelope peaks mid-swing, so melee = 0 leaves the pose exactly
+    // as the walk and aim blocks left it.
+    if (this.melee > 0.001) {
+      const thrust = Math.sin(Math.PI * clamp(this.melee, 0, 1));
+      this.arms.right.shoulderPivot.rotation.x = -1.78 * thrust + (1 - thrust) * this.arms.right.shoulderPivot.rotation.x;
+      this.arms.right.shoulderPivot.rotation.z = -0.3 * thrust + (1 - thrust) * this.arms.right.shoulderPivot.rotation.z;
+      this.arms.right.elbowPivot.rotation.x = 0.02 * thrust + (1 - thrust) * this.arms.right.elbowPivot.rotation.x;
+      this.arms.left.shoulderPivot.rotation.x = 0.42 * thrust + (1 - thrust) * this.arms.left.shoulderPivot.rotation.x;
+      this.arms.left.shoulderPivot.rotation.z = 0.24 * thrust + (1 - thrust) * this.arms.left.shoulderPivot.rotation.z;
+      this.arms.left.elbowPivot.rotation.x = -0.5 * thrust + (1 - thrust) * this.arms.left.elbowPivot.rotation.x;
+      this.torso.rotation.y = -0.26 * thrust + (1 - thrust) * this.torso.rotation.y;
     }
 
     const bob = Math.abs(Math.sin(this.phase)) * 0.038 * stride;

@@ -2036,6 +2036,126 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 16: knife arm',
+    shot: 'street',
+    body: function knifeArm() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const debug = neon && neon.debug;
+      const player = debug && debug.player;
+      const humanoid = player && player.humanoid;
+      const traffic = debug && debug.traffic;
+      const police = debug && debug.police;
+      const camera = debug && debug.camera;
+      const vehicles = debug && debug.vehicles;
+      const missing = [];
+      if (!player || typeof player.fireWeapon !== 'function') missing.push('player.fireWeapon');
+      if (!humanoid || !humanoid.arms || !humanoid.arms.right) missing.push('humanoid.arms.right');
+      if (!traffic || typeof traffic.spawnPed !== 'function') missing.push('traffic.spawnPed');
+      if (!police || typeof police.clearWanted !== 'function') missing.push('police.clearWanted');
+      if (!camera || !camera.position) missing.push('__neon.debug.camera');
+      if (!vehicles || !vehicles.list) missing.push('__neon.debug.vehicles');
+      check('test 16: knife-arm hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      const round = (value) => Math.round(value * 1000) / 1000;
+      police.clearWanted({ quiet: true });
+      police.clearUnits();
+      police.clearOfficers();
+      police.stageAir({ x: 640, y: 40, z: 640 });
+      traffic.reset({ spawnBeach: false });
+      for (const car of [...vehicles.list]) vehicles.remove(car);
+
+      player.teleport(81, 0, Math.PI, 0);
+      player.health = 100;
+      player.armor = 0;
+      player.dead = false;
+      player.weaponKey = 'pistol';
+      player.gun.visible = false;
+      player.syncGunModel();
+      player.cameraPitch = -0.27;
+      player.cameraDistance = 3.1;
+      player.updateView(camera, 1 / 60, true);
+      neon.advance(1 / 60);
+      player.selectWeapon('knife');
+      neon.advance(1 / 60);
+
+      const right = humanoid.arms.right;
+      const measureElbow = () => {
+        right.elbowPivot.updateWorldMatrix(true, false);
+        const elements = right.elbowPivot.matrixWorld.elements;
+        return { x: elements[12], y: elements[13], z: elements[14] };
+      };
+      const idleShoulder = right.shoulderPivot.rotation.x;
+      const idleElbow = measureElbow();
+      check(
+        'test 16: the knife arm starts in the idle pose',
+        humanoid.melee === 0 && Math.abs(idleShoulder) < 0.01,
+        `melee=${humanoid.melee} shoulder=${round(idleShoulder)}`,
+      );
+
+      const forwardX = -Math.sin(player.cameraYaw);
+      const forwardZ = -Math.cos(player.cameraYaw);
+      const victim = traffic.spawnPed({
+        x: player.position.x + forwardX * 1.5,
+        z: player.position.z + forwardZ * 1.5,
+        armed: false,
+      });
+      check('test 16: a stab target spawns', Boolean(victim), 'spawnPed returned null');
+      if (!victim) return results;
+
+      player.fireCooldown = 0;
+      player.fireWeapon(camera);
+      check(
+        'test 16: the stab still kills the target and starts the swing',
+        victim.dead === true && player.meleeSwing === 0.28,
+        `dead=${victim.dead} swing=${player.meleeSwing}`,
+      );
+
+      neon.advance(0.14);
+      const duringShoulder = right.shoulderPivot.rotation.x;
+      const duringElbow = measureElbow();
+      const forwardGain = (duringElbow.x - idleElbow.x) * Math.sin(player.facing)
+        + (duringElbow.z - idleElbow.z) * Math.cos(player.facing);
+      check(
+        'test 16: the right shoulder swings forward at the start of the stab',
+        duringShoulder < idleShoulder - 0.5 && humanoid.melee > 0.3,
+        `idle=${round(idleShoulder)} during=${round(duringShoulder)} melee=${round(humanoid.melee)}`,
+      );
+      check(
+        'test 16: the hand itself thrusts ahead of the chest',
+        forwardGain > 0.25,
+        `forward=${round(forwardGain)}`,
+      );
+      check(
+        'test 16: the blade keeps its secondary rotation',
+        player.knifeModel.rotation.x < -0.5,
+        `blade=${round(player.knifeModel.rotation.x)}`,
+      );
+
+      neon.advance(0.3);
+      const returned = measureElbow();
+      const returnDistance = Math.hypot(
+        returned.x - idleElbow.x,
+        returned.y - idleElbow.y,
+        returned.z - idleElbow.z,
+      );
+      check(
+        'test 16: the arm returns to the idle pose when the swing ends',
+        humanoid.melee === 0
+          && player.meleeSwing === 0
+          && Math.abs(right.shoulderPivot.rotation.x - idleShoulder) < 0.02
+          && returnDistance < 0.06,
+        `melee=${humanoid.melee} shoulder=${round(right.shoulderPivot.rotation.x)} distance=${round(returnDistance)}`,
+      );
+      return results;
+    },
+  },
 ];
 
 async function main() {

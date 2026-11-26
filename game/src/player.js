@@ -512,6 +512,8 @@ export class Player {
     if (this.knifeModel) {
       const swing = this.meleeSwing > 0 ? 1 - this.meleeSwing / 0.28 : 0;
       this.knifeModel.rotation.x = -Math.sin(swing * Math.PI) * 1.15;
+      // The arm and hand follow the same swing, a beat behind the blade.
+      this.humanoid.melee = this.meleeSwing > 0 ? swing : 0;
     }
 
     if (this.knockdown > 0) {
