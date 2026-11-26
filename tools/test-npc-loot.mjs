@@ -2449,6 +2449,198 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 19: volume settings',
+    shot: 'street',
+    body: function volumeSettings() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const debug = neon && neon.debug;
+      const audio = debug && debug.audio;
+      const titleSlider = document.getElementById('title-volume');
+      const pauseSlider = document.getElementById('pause-volume');
+      const titleValue = document.getElementById('title-volume-value');
+      const pauseValue = document.getElementById('pause-volume-value');
+      const titleMute = document.getElementById('title-mute');
+      const pauseMute = document.getElementById('pause-mute');
+      const missing = [];
+      if (!neon || !neon.audio) missing.push('__neon.audio');
+      if (!audio || typeof audio.unlock !== 'function') missing.push('__neon.debug.audio');
+      if (!titleSlider || !pauseSlider) missing.push('volume sliders');
+      if (!titleValue || !pauseValue) missing.push('volume labels');
+      if (!titleMute || !pauseMute) missing.push('mute buttons');
+      if (!neon || typeof neon.pauseGame !== 'function' || typeof neon.resumeGame !== 'function') missing.push('pause hooks');
+      check('test 19: volume hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      const readSettings = () => {
+        try {
+          return JSON.parse(localStorage.getItem('neon-harbor.settings.v1') || 'null');
+        } catch {
+          return null;
+        }
+      };
+      const key = (type, code) => {
+        const event = new KeyboardEvent(type, { code, key: code, bubbles: true, cancelable: true });
+        window.dispatchEvent(event);
+        return event;
+      };
+      const tap = (code) => {
+        key('keydown', code);
+        neon.advance(0.1);
+        key('keyup', code);
+      };
+
+      audio.unlock();
+      const startPercent = Math.round(audio.volume * 100);
+      check(
+        'test 19: both panels start in sync with the loaded settings',
+        titleSlider.value === String(startPercent)
+          && pauseSlider.value === String(startPercent)
+          && titleValue.textContent === `${startPercent}%`
+          && pauseValue.textContent === `${startPercent}%`,
+        JSON.stringify({ startPercent, title: titleSlider.value, pause: pauseSlider.value }),
+      );
+      check(
+        'test 19: the sliders are 0-100 range inputs',
+        [titleSlider, pauseSlider].every((slider) => (
+          slider.type === 'range' && slider.min === '0' && slider.max === '100' && slider.step === '1'
+        )),
+        JSON.stringify([titleSlider, pauseSlider].map((slider) => ({
+          type: slider.type, min: slider.min, max: slider.max, step: slider.step,
+        }))),
+      );
+
+      // Dragging the title slider changes the live output, both readouts and
+      // the persisted settings.
+      titleSlider.value = '32';
+      titleSlider.dispatchEvent(new Event('input', { bubbles: true }));
+      let saved = readSettings();
+      check(
+        'test 19: the title slider sets the master volume to 32%',
+        neon.audio.volume === 0.32
+          && audio.volume === 0.32
+          && titleValue.textContent === '32%'
+          && pauseValue.textContent === '32%'
+          && pauseSlider.value === '32',
+        JSON.stringify({ volume: audio.volume, title: titleValue.textContent, pause: pauseValue.textContent }),
+      );
+      check(
+        'test 19: the slider writes the volume and unmuted state into settings',
+        saved !== null && saved.volume === 0.32 && saved.muted === false,
+        JSON.stringify(saved),
+      );
+
+      // Mute from the title panel updates both panels and the save.
+      titleMute.click();
+      saved = readSettings();
+      check(
+        'test 19: the title mute button mutes and updates both panels',
+        audio.muted === true
+          && neon.audio.muted === true
+          && titleMute.getAttribute('aria-pressed') === 'true'
+          && pauseMute.getAttribute('aria-pressed') === 'true'
+          && titleMute.textContent === 'Muted'
+          && pauseMute.textContent === 'Muted'
+          && saved !== null
+          && saved.muted === true,
+        JSON.stringify({ muted: audio.muted, title: titleMute.textContent, saved }),
+      );
+
+      // The = key raises the volume, lifts the mute and syncs both sliders.
+      tap('Equal');
+      saved = readSettings();
+      check(
+        'test 19: = raises the volume, unmutes and syncs the sliders',
+        Math.abs(audio.volume - 0.4) < 1e-9
+          && audio.muted === false
+          && titleSlider.value === '40'
+          && pauseSlider.value === '40'
+          && titleValue.textContent === '40%'
+          && pauseValue.textContent === '40%'
+          && titleMute.getAttribute('aria-pressed') === 'false'
+          && saved !== null
+          && Math.abs(saved.volume - 0.4) < 1e-9
+          && saved.muted === false,
+        JSON.stringify({ volume: audio.volume, muted: audio.muted, title: titleSlider.value, saved }),
+      );
+
+      // M stays in sync with the buttons, and pressing it again restores.
+      tap('KeyM');
+      check(
+        'test 19: M mutes in sync with both panels',
+        audio.muted === true
+          && titleMute.getAttribute('aria-pressed') === 'true'
+          && pauseMute.getAttribute('aria-pressed') === 'true'
+          && titleSlider.value === '40',
+        JSON.stringify({ muted: audio.muted, title: titleMute.textContent, slider: titleSlider.value }),
+      );
+      tap('KeyM');
+      check(
+        'test 19: M restores the level without changing the percentage',
+        audio.muted === false
+          && titleMute.getAttribute('aria-pressed') === 'false'
+          && Math.abs(audio.volume - 0.4) < 1e-9,
+        JSON.stringify({ muted: audio.muted, volume: audio.volume }),
+      );
+
+      // The pause panel is wired to the same path.
+      neon.pauseGame();
+      const pauseVisible = document.getElementById('screen-pause').hidden === false;
+      pauseSlider.value = '64';
+      pauseSlider.dispatchEvent(new Event('input', { bubbles: true }));
+      saved = readSettings();
+      check(
+        'test 19: the pause slider sets 64% and syncs the title panel',
+        pauseVisible
+          && neon.audio.volume === 0.64
+          && titleSlider.value === '64'
+          && pauseValue.textContent === '64%'
+          && titleValue.textContent === '64%'
+          && saved !== null
+          && saved.volume === 0.64,
+        JSON.stringify({ visible: pauseVisible, volume: audio.volume, title: titleSlider.value, saved }),
+      );
+      pauseMute.click();
+      check(
+        'test 19: the pause mute button mutes both panels',
+        audio.muted === true
+          && titleMute.getAttribute('aria-pressed') === 'true'
+          && pauseMute.getAttribute('aria-pressed') === 'true',
+        JSON.stringify({ muted: audio.muted, title: titleMute.textContent }),
+      );
+      pauseMute.click();
+      neon.resumeGame();
+
+      // Clamping at both ends keeps the UI honest.
+      titleSlider.value = '0';
+      titleSlider.dispatchEvent(new Event('input', { bubbles: true }));
+      check(
+        'test 19: zero volume shows 0%',
+        audio.volume === 0 && titleValue.textContent === '0%' && pauseSlider.value === '0',
+        JSON.stringify({ volume: audio.volume, label: titleValue.textContent }),
+      );
+      titleSlider.value = '137';
+      titleSlider.dispatchEvent(new Event('input', { bubbles: true }));
+      check(
+        'test 19: values above 100 clamp to 100%',
+        audio.volume === 1
+          && titleValue.textContent === '100%'
+          && pauseValue.textContent === '100%'
+          && titleSlider.value === '100',
+        JSON.stringify({ volume: audio.volume, label: titleValue.textContent, slider: titleSlider.value }),
+      );
+
+      // Leave the profile where the next run expects it.
+      titleSlider.value = '72';
+      titleSlider.dispatchEvent(new Event('input', { bubbles: true }));
+      return results;
+    },
+  },
 ];
 
 async function main() {

@@ -75,6 +75,12 @@ class Game {
       pauseClock: byId('pause-clock'),
       pauseMission: byId('pause-mission'),
       pauseQualityNote: byId('pause-quality-note'),
+      titleVolume: byId('title-volume'),
+      titleVolumeValue: byId('title-volume-value'),
+      titleMute: byId('title-mute'),
+      pauseVolume: byId('pause-volume'),
+      pauseVolumeValue: byId('pause-volume-value'),
+      pauseMute: byId('pause-mute'),
       lookButton: byId('btn-continue'),
     };
 
@@ -237,6 +243,35 @@ class Game {
     click('btn-pause-quality', () => this.toggleQuality());
     click('btn-save-title', () => this.saveAndReturn());
     click('btn-controls-back', () => this.backFromControls());
+    click('title-mute', () => this.toggleMute());
+    click('pause-mute', () => this.toggleMute());
+    this.bindVolumeSliders();
+  }
+
+  bindVolumeSliders() {
+    for (const element of [this.ui.titleVolume, this.ui.pauseVolume]) {
+      if (!element) continue;
+      element.addEventListener('input', () => this.setVolumeLevel(Number(element.value) / 100));
+      element.addEventListener('pointerdown', () => this.audio.unlock());
+    }
+    this.syncAudioControls();
+  }
+
+  syncAudioControls() {
+    const percent = Math.round((this.audio?.volume ?? 0.72) * 100);
+    const muted = Boolean(this.audio?.muted);
+    const panels = [
+      [this.ui.titleVolume, this.ui.titleVolumeValue, this.ui.titleMute],
+      [this.ui.pauseVolume, this.ui.pauseVolumeValue, this.ui.pauseMute],
+    ];
+    for (const [slider, label, button] of panels) {
+      if (slider) slider.value = String(percent);
+      if (label) label.textContent = `${percent}%`;
+      if (button) {
+        button.textContent = muted ? 'Muted' : 'Mute';
+        button.setAttribute('aria-pressed', muted ? 'true' : 'false');
+      }
+    }
   }
 
   bindWindow() {
@@ -364,6 +399,7 @@ class Game {
     this.audio.setSiren(0, 0);
     this.updateLookHint();
     this.updateContinueButton();
+    this.syncAudioControls();
     this.world.focusAt(this.titleView.target[0], this.titleView.target[2]);
     this.setTitleCamera();
   }
@@ -612,6 +648,7 @@ class Game {
     const muted = this.audio.toggleMute();
     this.settings.muted = muted;
     SaveStore.saveSettings(this.settings);
+    this.syncAudioControls();
     if (!this.hud.suppressToasts) {
       const state = this.radio.state;
       this.hud.toast = {
@@ -622,16 +659,26 @@ class Game {
     }
   }
 
-  changeVolume(delta) {
+  setVolumeLevel(value, { toast = false } = {}) {
     this.audio.unlock();
-    this.audio.setVolume(this.audio.volume + delta);
+    const volume = Math.max(0, Math.min(1, Number(value) || 0));
+    // Setting a level also lifts an old mute, so the gesture is audible.
+    this.audio.muted = false;
+    this.audio.setVolume(volume);
+    if (this.audio.master && this.audio.ctx) {
+      this.audio.master.gain.setTargetAtTime(this.audio.volume, this.audio.ctx.currentTime, 0.03);
+    }
     this.settings.volume = this.audio.volume;
     this.settings.muted = false;
-    this.audio.muted = false;
     SaveStore.saveSettings(this.settings);
-    if (!this.hud.suppressToasts) {
+    this.syncAudioControls();
+    if (toast && !this.hud.suppressToasts) {
       this.hud.toast = { title: `Volume ${Math.round(this.audio.volume * 100)}%`, sub: 'MINUS / EQUALS', life: 1.6 };
     }
+  }
+
+  changeVolume(delta) {
+    this.setVolumeLevel(this.audio.volume + delta, { toast: true });
   }
 
   announceVehicle(enteredCar, exitedCar, carjacked = false) {
@@ -724,6 +771,7 @@ class Game {
     this.input.releaseLock();
     this.input.consumeMouse();
     this.updatePauseStats();
+    this.syncAudioControls();
     this.saveProgress();
     setHidden(this.ui.pause, false);
     this.updateLookHint();
