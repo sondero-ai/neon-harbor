@@ -18,6 +18,10 @@ pedestrians, a five-star police response, two hitscan weapons, five story
 missions with dialogue and combat, free-roam jobs, three synthesised radio
 stations, a canvas HUD and a local save.
 
+Pedestrians are shootable: they fall where they die, the crowd around them
+panics, and every human NPC death — pedestrian, mission enemy or police
+officer — leaves cash or ammunition on the pavement.
+
 ## Play
 
 Node 22.18 or newer serves the folder; the game itself is HTML, CSS, ES
@@ -173,6 +177,23 @@ shakes the camera and reddens the screen edge. `pickups.js` places both weapons
 plus medkits and armor on chrome rings around the map; they float, glow,
 respawn and announce themselves in a toast.
 
+Pedestrians are targets too. Every walker carries a chest sphere and a head
+sphere, 55 health and the same ×1.75 headshot multiplier as the officers: a
+34-damage pistol round drops one in two body hits or a single clean headshot.
+The body folds into an instanced fall, lies on the pavement for about eight
+seconds and then goes; anyone within nine metres panics, sprints off for four
+seconds and then walks back to their route. Heat is unchanged and
+witness-based: every shot still reports gunfire, so a nearby officer or
+cruiser responds the usual way.
+
+Every human NPC death leaves exactly one item: 60% cash, 30% Solano 9 ammo
+(+12) and, once the Kestrel SMG is owned, 10% an SMG crate (+32); before the
+unlock that share folds back into pistol ammo. Pedestrian and officer cash
+pays $15–70 in $5 steps, mission enemies pay $40–120 and the boss pays a flat
+$150. The drop lands on a small glowing ring, pays out when Rae walks over it,
+announces itself in a toast, and expires after 30 seconds; a collected or
+expired drop never respawns.
+
 ## Effects, HUD and audio
 
 `effects.js` owns fixed-size pools for sparks, smoke, flash sprites and tracers,
@@ -274,6 +295,25 @@ three.js builds and the one-line `three.module.js` shim are vendored files and
 are listed by path and size rather than shown as source. There are no other
 libraries, no generated bundles and no binary assets in `game/`.
 
+## Testing
+
+Two dependency-free checks cover the death and loot systems; run both from the
+repository root:
+
+```bash
+node --test test/loot.test.mjs     # pure loot table
+node tools/test-npc-loot.mjs       # headless Chrome end-to-end
+```
+
+`test/loot.test.mjs` pins the death-drop weights, the $5 cash steps and bounds,
+and the SMG gate without a browser. `tools/test-npc-loot.mjs` serves `game/`,
+launches headless Chrome through the DevTools protocol like
+`tools/capture.mjs`, and drives the frozen `?shot=street` and `?shot=blockade`
+scenes through `window.__neon`: pedestrian hitboxes, damage and death, the
+fall and eight-second corpse, panic flee and recovery, loot pickup, 30-second
+expiry and reset, the real `player.fireWeapon` path and officer death loot.
+Set `CHROME` to a Chrome or Chromium executable if the default lookup misses.
+
 ## Source map
 
 - `game/index.html` — page, title/pause/controls markup, CSS, boot-error
@@ -297,6 +337,8 @@ libraries, no generated bundles and no binary assets in `game/`.
   pier fire, and mission/heist staging.
 - `game/src/activities.js` — cash stashes, the rotating hot-car delivery, the
   Heat Run, the safehouse save/heal/clear-heat point and their street panels.
+- `game/src/loot.js` — the pure death-drop table: weights, $5 cash steps and
+  the SMG unlock gate.
 - `game/src/player.js`, `humanoid.js` — movement, driving, chase camera,
   vehicle collision, hitscan weapons, aiming, damage and Rae's low-poly
   walk/run/aim cycle.
@@ -320,6 +362,9 @@ libraries, no generated bundles and no binary assets in `game/`.
 - `main.ts`, `serve.ts`, `vendor/makefun-game.ts` — entrypoint, development
   server and the bounty's dossier library.
 - `tools/capture.mjs` — the stdlib-only headless-Chrome screenshot driver.
+- `tools/test-npc-loot.mjs` — the stdlib-only headless-Chrome E2E for
+  pedestrian death, panic and loot across the frozen street and blockade
+  scenes.
 
 ## Bounty and license
 
