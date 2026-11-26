@@ -32,6 +32,7 @@ import {
   makeStreetlightGeometry,
   mergeGeometries,
 } from './geo.js';
+import { GlowField } from './glow-field.js';
 import { makeRng } from './random.js';
 
 const ROAD_HALF = WORLD.roadWidth / 2;
@@ -155,6 +156,9 @@ export class World {
     this.boats = [];
     this.landmarks = {};
     this.rng = makeRng(SEED ^ 0x4a17);
+    this.glowField = new GlowField(scene);
+    this.streetGlowIndices = [];
+    this.pierGlowIndices = [];
 
     this.buildSky();
     this.buildLights();
@@ -173,6 +177,7 @@ export class World {
     this.buildSigns();
     this.buildClouds();
     this.finishMergedMeshes();
+    this.glowField.build();
   }
 
   setObjectiveMarker(x, z) {
@@ -471,7 +476,10 @@ export class World {
     if (this.lampMaterial) {
       this.lampMaterial.color.setHex(0xffc37a).multiplyScalar(0.32 + 0.68 * palette.street);
     }
-    if (this.lampGlowMaterial) this.lampGlowMaterial.opacity = 0.38 * (0.1 + 0.9 * palette.street);
+    const streetGlow = 0.38 * (0.1 + 0.9 * palette.street);
+    for (const index of this.streetGlowIndices) this.glowField.setBrightness(index, streetGlow);
+    const pierGlow = 0.4 * (0.15 + 0.85 * palette.street);
+    for (const index of this.pierGlowIndices) this.glowField.setBrightness(index, pierGlow);
     if (this.streetPoolMaterial) this.streetPoolMaterial.opacity = 0.14 * palette.street;
 
     if (this.water) {
@@ -1392,11 +1400,18 @@ export class World {
   }
 
   addBeacon(x, y, z, scale = 1) {
-    const sprite = makeGlowSprite(0xff5446, 6 * scale, 0.85);
-    sprite.position.set(x, y, z);
-    sprite.renderOrder = 5;
-    this.root.add(sprite);
-    this.beacons.push({ sprite, phase: this.rng.range(0, 6.28), speed: this.rng.range(1.1, 2.1) });
+    const glowIndex = this.glowField.add({
+      x, y, z,
+      scaleX: 6 * scale,
+      scaleY: 6 * scale,
+      color: 0xff5446,
+      brightness: 0.85,
+    });
+    this.beacons.push({
+      glowIndex,
+      phase: this.rng.range(0, 6.28),
+      speed: this.rng.range(1.1, 2.1),
+    });
   }
 
   buildHotel(cx, cz) {
@@ -1855,9 +1870,15 @@ export class World {
 
     for (let x = DECK.minX + 10; x < DECK.maxX - 8; x += 20) {
       for (const side of [-1, 1]) {
-        const glow = makeGlowSprite(0xffb46a, 2.8, 0.4);
-        glow.position.set(x, DECK.deckY + 1.35, DECK.z + side * (DECK.halfWidth - 0.4));
-        this.root.add(glow);
+        const glowIndex = this.glowField.add({
+          x,
+          y: DECK.deckY + 1.35,
+          z: DECK.z + side * (DECK.halfWidth - 0.4),
+          scaleX: 2.8,
+          color: 0xffb46a,
+          brightness: 0.4,
+        });
+        this.pierGlowIndices.push(glowIndex);
       }
     }
 
@@ -1947,9 +1968,14 @@ export class World {
     cap.position.set(x, y + 4.2, z);
     this.root.add(cap);
 
-    const lanternGlow = makeGlowSprite(0xffd27d, 24, 0.9);
-    lanternGlow.position.set(x, y + 1.8, z);
-    this.root.add(lanternGlow);
+    this.glowField.add({
+      x,
+      y: y + 1.8,
+      z,
+      scaleX: 24,
+      color: 0xffd27d,
+      brightness: 0.9,
+    });
 
     const beamMaterial = new THREE.MeshBasicMaterial({
       color: 0xffdd9d,
@@ -2172,23 +2198,18 @@ export class World {
     lights.receiveShadow = true;
     this.root.add(lights, lamps);
 
-    const lampGlowMaterial = new THREE.SpriteMaterial({
-      map: makeGlowTexture(),
-      color: 0xffb668,
-      transparent: true,
-      opacity: 0.38,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      toneMapped: false,
-    });
-    this.lampGlowMaterial = lampGlowMaterial;
     entries.forEach((entry, index) => {
       if (index % 5 !== 0) return;
-      const glow = new THREE.Sprite(lampGlowMaterial);
-      glow.scale.setScalar(3.0);
       const offsetX = Math.sin(entry.ry + Math.PI / 2) * 0;
-      glow.position.set(entry.x + Math.cos(entry.ry) * 1.56, entry.y + 5.94, entry.z - Math.sin(entry.ry) * 1.56 + offsetX);
-      this.root.add(glow);
+      const glowIndex = this.glowField.add({
+        x: entry.x + Math.cos(entry.ry) * 1.56,
+        y: entry.y + 5.94,
+        z: entry.z - Math.sin(entry.ry) * 1.56 + offsetX,
+        scaleX: 3.0,
+        color: 0xffb668,
+        brightness: 0.38,
+      });
+      this.streetGlowIndices.push(glowIndex);
     });
     this.streetlightCount = entries.length;
     this.buildStreetPools(entries);
@@ -2463,12 +2484,18 @@ export class World {
     this.root.add(mesh);
     const nx = Math.sin(ry);
     const nz = Math.cos(ry);
-    const sprite = makeGlowSprite(color, [width * 1.6, height * 1.4], 0.26 * glow);
-    sprite.position.set(x + nx * 0.75, y, z + nz * 0.75);
-    this.root.add(sprite);
+    const glowIndex = this.glowField.add({
+      x: x + nx * 0.75,
+      y,
+      z: z + nz * 0.75,
+      scaleX: width * 1.6,
+      scaleY: height * 1.4,
+      color,
+      brightness: 0.26 * glow,
+    });
     this.neonSigns.push({
       material: mat,
-      glowMaterial: sprite.material,
+      glowIndex,
       phase: this.rng.range(0, Math.PI * 2),
       flicker,
       baseGlow: 0.26 * glow,
@@ -2496,13 +2523,17 @@ export class World {
     );
     bracket.position.set(x, y + 3.0, bracketZ);
     this.root.add(bracket);
-    const glow = makeGlowSprite(color, [5.4, 8.4], 0.34);
-    glow.position.set(x, y, z);
-    this.root.add(glow);
+    const glowIndex = this.glowField.add({
+      x, y, z,
+      scaleX: 5.4,
+      scaleY: 8.4,
+      color,
+      brightness: 0.34,
+    });
     for (const [material, sign] of [[eastMaterial, east], [westMaterial, west]]) {
       this.neonSigns.push({
         material,
-        glowMaterial: glow.material,
+        glowIndex,
         phase: this.rng.range(0, Math.PI * 2),
         flicker: 0.18,
         baseGlow: 0.34,
@@ -2547,15 +2578,20 @@ export class World {
       this.root.add(mesh);
       this.neonSigns.push({
         material: mat,
-        glowMaterial: null,
         phase: this.rng.range(0, 6.28),
         flicker: 0.08,
         baseGlow: 0,
       });
     }
-    const halo = makeGlowSprite(glow, [span * 1.2, 7.5], 0.32);
-    halo.position.set(x, signY, z);
-    this.root.add(halo);
+    this.glowField.add({
+      x,
+      y: signY,
+      z,
+      scaleX: span * 1.2,
+      scaleY: 7.5,
+      color: glow,
+      brightness: 0.32,
+    });
   }
 
   buildPylonSign({ x, z, baseY, height, title, sub, color, accent, width }) {
@@ -2571,12 +2607,18 @@ export class World {
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, 2.6), mat);
     mesh.position.set(x, baseY + height - 0.4, z + 0.1);
     this.root.add(mesh);
-    const halo = makeGlowSprite(color, [width * 1.2, 5], 0.28);
-    halo.position.set(x, baseY + height - 0.4, z + 0.4);
-    this.root.add(halo);
+    const glowIndex = this.glowField.add({
+      x,
+      y: baseY + height - 0.4,
+      z: z + 0.4,
+      scaleX: width * 1.2,
+      scaleY: 5,
+      color,
+      brightness: 0.28,
+    });
     this.neonSigns.push({
       material: mat,
-      glowMaterial: halo.material,
+      glowIndex,
       phase: this.rng.range(0, 6.28),
       flicker: 0.1,
       baseGlow: 0.28,
@@ -2608,12 +2650,18 @@ export class World {
       post.castShadow = true;
       this.root.add(post);
     }
-    const halo = makeGlowSprite(color, [width * 1.4, height * 1.5], 0.18);
-    halo.position.set(x + Math.sin(ry) * 0.9, y, z + Math.cos(ry) * 0.9);
-    this.root.add(halo);
+    const glowIndex = this.glowField.add({
+      x: x + Math.sin(ry) * 0.9,
+      y,
+      z: z + Math.cos(ry) * 0.9,
+      scaleX: width * 1.4,
+      scaleY: height * 1.5,
+      color,
+      brightness: 0.18,
+    });
     this.neonSigns.push({
       material: mat,
-      glowMaterial: halo.material,
+      glowIndex,
       phase: this.rng.range(0, 6.28),
       flicker: 0.03,
       baseGlow: 0.18,
@@ -2894,11 +2942,16 @@ export class World {
       const brightness = 0.84 + pulse * 0.16 * (1 - sign.flicker) + drop * 0.15;
       const level = this.neonLevel ?? 1;
       sign.material.color.setScalar(brightness * level);
-      if (sign.glowMaterial) sign.glowMaterial.opacity = sign.baseGlow * (0.72 + pulse * 0.28) * drop * (0.3 + 0.7 * level);
+      if (sign.glowIndex !== undefined) {
+        this.glowField.setBrightness(
+          sign.glowIndex,
+          sign.baseGlow * (0.72 + pulse * 0.28) * drop * (0.3 + 0.7 * level),
+        );
+      }
     }
     for (const beacon of this.beacons) {
       const pulse = Math.max(0, Math.sin(elapsed * beacon.speed + beacon.phase));
-      beacon.sprite.material.opacity = 0.12 + pulse * 0.78;
+      this.glowField.setBrightness(beacon.glowIndex, 0.12 + pulse * 0.78);
     }
     for (const cloud of this.clouds) {
       cloud.sprite.position.x = cloud.baseX + Math.sin(elapsed * 0.018 * cloud.speed + cloud.phase) * 18;
@@ -2918,5 +2971,6 @@ export class World {
       marker.ring.material.opacity = 0.4 + Math.sin(elapsed * 2.1) * 0.2;
       marker.glow.material.opacity = 0.34 + Math.sin(elapsed * 2.1 + 1.1) * 0.14;
     }
+    this.glowField.update(camera);
   }
 }

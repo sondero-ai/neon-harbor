@@ -7,7 +7,7 @@
 import * as THREE from '../vendor/three.module.js';
 import { POLICE, ROADS_X, ROADS_Z, WORLD } from './config.js';
 import { makeRng } from './random.js';
-import { makeGlowSprite } from './geo.js';
+import { makeGlowSprite, mergeGeometries } from './geo.js';
 
 const clamp = THREE.MathUtils.clamp;
 const damp = THREE.MathUtils.damp;
@@ -358,8 +358,17 @@ class AirUnit {
     const red = new THREE.MeshBasicMaterial({ color: 0xff3526, toneMapped: false });
     const blue = new THREE.MeshBasicMaterial({ color: 0x3d63ff, toneMapped: false });
 
+    // Static boxwork is merged per material, so the whole airframe costs four
+    // draws instead of one per box; the rotors and glow sprites stay separate.
+    const staticParts = new Map([[navy, []], [dark, []], [trim, []], [gold, []]]);
     const box = (width, height, depth, material, x, y, z, parent = this.group) => {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+      const geometry = new THREE.BoxGeometry(width, height, depth);
+      if (parent === this.group && staticParts.has(material)) {
+        geometry.translate(x, y, z);
+        staticParts.get(material).push(geometry);
+        return null;
+      }
+      const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(x, y, z);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -412,12 +421,16 @@ class AirUnit {
     this.rotor = new THREE.Group();
     this.rotor.position.set(0, 1.02, 0);
     this.group.add(this.rotor);
+    const bladeParts = [];
     for (let i = 0; i < 4; i += 1) {
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.035, 5.7), dark);
-      blade.rotation.y = (i * Math.PI) / 4;
-      blade.position.y = i % 2 === 0 ? 0.02 : -0.02;
-      this.rotor.add(blade);
+      const geometry = new THREE.BoxGeometry(0.16, 0.035, 5.7);
+      geometry.rotateY((i * Math.PI) / 4);
+      geometry.translate(0, i % 2 === 0 ? 0.02 : -0.02, 0);
+      bladeParts.push({ geometry });
     }
+    const rotorBlades = new THREE.Mesh(mergeGeometries(bladeParts), dark);
+    rotorBlades.castShadow = true;
+    this.rotor.add(rotorBlades);
     const blur = new THREE.Mesh(
       new THREE.CircleGeometry(2.85, 32),
       new THREE.MeshBasicMaterial({
@@ -437,11 +450,15 @@ class AirUnit {
     this.tailRotor = new THREE.Group();
     this.tailRotor.position.set(0.22, 0.56, -4.22);
     this.group.add(this.tailRotor);
+    const tailParts = [];
     for (let i = 0; i < 2; i += 1) {
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.5, 0.11), dark);
-      blade.rotation.x = (i * Math.PI) / 2;
-      this.tailRotor.add(blade);
+      const geometry = new THREE.BoxGeometry(0.04, 1.5, 0.11);
+      geometry.rotateX((i * Math.PI) / 2);
+      tailParts.push({ geometry });
     }
+    const tailBlades = new THREE.Mesh(mergeGeometries(tailParts), dark);
+    tailBlades.castShadow = true;
+    this.tailRotor.add(tailBlades);
 
     // The light bar and the searchlight housing under the nose.
     box(0.22, 0.08, 0.22, red, -0.24, -0.6, 0.55);
@@ -456,6 +473,13 @@ class AirUnit {
     housing.rotation.x = Math.PI / 2;
     housing.position.set(0, -0.52, 1.16);
     this.group.add(housing);
+    for (const [material, parts] of staticParts) {
+      if (parts.length === 0) continue;
+      const mesh = new THREE.Mesh(mergeGeometries(parts.map((geometry) => ({ geometry }))), material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.group.add(mesh);
+    }
     this.lens = makeGlowSprite(0xfff1c4, 1.8, 0.95);
     this.lens.position.set(0, -0.7, 1.36);
     this.group.add(this.lens);
