@@ -2840,6 +2840,127 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 22: seats, sitting and the contextual E layer',
+    shot: 'street',
+    body: function seatsAndSitting() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const world = neon?.debug?.world;
+      const player = neon?.debug?.player;
+      const vehicles = neon?.debug?.vehicles;
+      const interactions = neon?.debug?.interactions;
+      const seats = world?.seats;
+      const missing = [];
+      if (!neon) missing.push('window.__neon');
+      if (!Array.isArray(seats)) missing.push('world.seats');
+      if (!player || typeof player.sitAt !== 'function' || typeof player.stand !== 'function') missing.push('player.sitAt/stand');
+      if (!interactions || typeof interactions.update !== 'function') missing.push('interactions.update');
+      if (!vehicles || typeof vehicles.spawn !== 'function') missing.push('vehicles.spawn');
+      check('test 22: seat hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      const kinds = new Set(seats.map((seat) => seat.kind));
+      check('test 22: the registry has a plaza seat', kinds.has('plaza'), JSON.stringify([...kinds]));
+      check('test 22: the registry has a pier seat', kinds.has('pier'), JSON.stringify([...kinds]));
+      check('test 22: the registry has a beach seat', kinds.has('beach'), JSON.stringify([...kinds]));
+
+      const key = (type, code) => window.dispatchEvent(new KeyboardEvent(type, {
+        code,
+        key: code.replace('Key', '').toLowerCase(),
+        bubbles: true,
+        cancelable: true,
+      }));
+
+      const seat = seats.find((entry) => entry.kind === 'plaza' && !entry.occupant);
+      check('test 22: a free plaza seat exists', Boolean(seat), 'no free plaza seat');
+      if (!seat) return results;
+
+      player.teleport(seat.x, seat.z, seat.yaw, seat.yaw + Math.PI);
+      neon.advance(1 / 60);
+      check(
+        'test 22: standing beside a free seat prompts SIT',
+        interactions.prompt?.action === 'sit',
+        JSON.stringify(interactions.prompt),
+      );
+
+      key('keydown', 'KeyE');
+      neon.advance(1 / 60);
+      key('keyup', 'KeyE');
+      check(
+        'test 22: E seats the player',
+        player.sitting === true && player.seat === seat && seat.occupant === 'player',
+        JSON.stringify({ sitting: player.sitting, occupant: seat.occupant }),
+      );
+
+      const beforeX = player.position.x;
+      const beforeZ = player.position.z;
+      key('keydown', 'KeyW');
+      neon.advance(0.5);
+      key('keyup', 'KeyW');
+      check(
+        'test 22: a movement key for half a second does not move a seated player',
+        player.position.x === beforeX && player.position.z === beforeZ && player.sitting === true,
+        JSON.stringify({ x: player.position.x, z: player.position.z, beforeX, beforeZ, sitting: player.sitting }),
+      );
+
+      key('keydown', 'KeyE');
+      neon.advance(1 / 60);
+      key('keyup', 'KeyE');
+      check(
+        'test 22: E again stands and frees the seat',
+        player.sitting === false && player.seat === null && seat.occupant === null,
+        JSON.stringify({ sitting: player.sitting, occupant: seat.occupant }),
+      );
+
+      player.teleport(seat.x + 1.2, seat.z, seat.yaw, seat.yaw + Math.PI);
+      neon.advance(1 / 60);
+      check(
+        'test 22: the prompt reads SIT while standing beside it',
+        interactions.prompt?.action === 'sit' && interactions.prompt?.label === 'SIT',
+        JSON.stringify(interactions.prompt),
+      );
+
+      // Squeeze: park a sedan against a known building wall with Rae in the
+      // gap. The straight push cannot work, so the push-out must slide her
+      // clear of the car without putting her inside the wall.
+      const building = world.buildings[0];
+      check('test 22: a building wall is available for the squeeze test', Boolean(building), 'no buildings');
+      if (building) {
+        const wallZ = building.z0;
+        const midX = (building.x0 + building.x1) / 2;
+        const car = vehicles.spawn('sedan', { x: midX, z: wallZ, yaw: Math.PI / 2 });
+        // Place its near edge 8 cm from the wall once the body width is known.
+        const halfWidth = car.halfWidth;
+        car.setPose(midX, wallZ - halfWidth - 0.08, Math.PI / 2);
+        player.teleport(midX, wallZ - 0.3, Math.PI / 2, Math.PI * 1.5);
+        player.velocity.set(0, 0, 0);
+        check(
+          'test 22: the squeeze start overlaps the car',
+          car.overlapCircle(player.position.x, player.position.z, 0.46).penetration > 0,
+          JSON.stringify(car.overlapCircle(player.position.x, player.position.z, 0.46)),
+        );
+        player.resolveVehicleContacts();
+        const overlap = car.overlapCircle(player.position.x, player.position.z, 0.46);
+        check(
+          'test 22: the push-out leaves the player outside the car body',
+          overlap.penetration === 0,
+          JSON.stringify({ overlap, x: player.position.x, z: player.position.z }),
+        );
+        check(
+          'test 22: the push-out never leaves the player inside the wall',
+          world.collides(player.position.x, player.position.z, 0.46) === false,
+          JSON.stringify({ x: player.position.x, z: player.position.z }),
+        );
+        vehicles.remove(car);
+      }
+      return results;
+    },
+  },
 ];
 
 async function main() {

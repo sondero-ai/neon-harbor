@@ -110,6 +110,10 @@ export class World {
     scene.add(this.skyRoot);
 
     this.colliders = [];
+    // Sittable anchors shared by the plaza, the beach, the pier and (later)
+    // the mall. Each seat is { x, z, y, yaw, kind, occupant }; occupant is
+    // 'player' or a crowd pedestrian, and a free seat has occupant null.
+    this.seats = [];
     this.buildings = [];
     this.neonSigns = [];
     this.beacons = [];
@@ -1693,6 +1697,15 @@ export class World {
       addBox(this.roofParts, 1.8, 0.16, 0.6, bx, WORLD.sidewalkHeight + 0.55, bz, 0x5b454a, { ry: -angle });
       addBox(this.roofParts, 0.16, 0.45, 0.5, bx - Math.cos(angle) * 0.6, WORLD.sidewalkHeight + 0.3, bz - Math.sin(angle) * 0.6, 0x3b2e35, { ry: -angle });
       addBox(this.roofParts, 0.16, 0.45, 0.5, bx + Math.cos(angle) * 0.6, WORLD.sidewalkHeight + 0.3, bz + Math.sin(angle) * 0.6, 0x3b2e35, { ry: -angle });
+      // Sit facing outward, away from the fountain.
+      this.seats.push({
+        x: bx,
+        z: bz,
+        y: WORLD.sidewalkHeight,
+        yaw: Math.atan2(Math.cos(angle), Math.sin(angle)),
+        kind: 'plaza',
+        occupant: null,
+      });
     }
 
     this.colliders.push({
@@ -1729,6 +1742,14 @@ export class World {
       addPart(parts, new THREE.ConeGeometry(2.45, 0.85, 12), x, y + 2.95, z, color);
       addBox(parts, 1.5, 0.04, 0.85, x + rng.range(-1.6, 1.6), y + 0.05, z + rng.range(-1.5, 1.5), rng.pick([0xe9d8b5, 0xea8d7d, 0x6fd3c7]), { ry: rng.range(-0.8, 0.8) });
       addBox(parts, 0.85, 0.16, 0.85, x + 1.7, y + 0.15, z - 0.7, 0xd7c0a2, { ry: rng.range(-0.5, 0.5) });
+      // A wooden lounger under each umbrella, facing the water. Its low seat
+      // is the beach's sittable anchor.
+      const lx = x - 2.5;
+      const lz = z + 0.4;
+      addBox(parts, 1.9, 0.14, 0.72, lx, y + 0.2, lz, 0x8a6248);
+      addBox(parts, 0.16, 0.58, 0.72, lx + 0.92, y + 0.46, lz, 0x9b7154, { rz: 0.34 });
+      addBox(parts, 0.5, 0.04, 0.5, lx + 0.25, y + 0.29, lz, rng.pick([0xff6f61, 0x3fe0cf, 0xffc95c]), { ry: 0.12 });
+      this.seats.push({ x: lx, z: lz, y, yaw: -Math.PI / 2, kind: 'beach', occupant: null });
     }
 
     // Lifeguard tower, looking north along the beach.
@@ -1929,6 +1950,9 @@ export class World {
       addBox(propParts, 0.14, 0.5, 0.5, x - 0.8, DECK.deckY + 0.27, z, 0x3f2b22);
       addBox(propParts, 0.14, 0.5, 0.5, x + 0.8, DECK.deckY + 0.27, z, 0x3f2b22);
       pierCollider(x, z, 2.2, 0.62, 0.8);
+      // The anchor sits on the deck in front of the bench, clear of its
+      // collider, facing out across the planks.
+      this.seats.push({ x, z: z + 0.9, y: DECK.deckY, yaw: 0, kind: 'pier', occupant: null });
     }
     for (let i = 0; i < 4; i += 1) {
       const x = DECK.minX + 34 + i * 27;

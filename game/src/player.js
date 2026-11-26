@@ -50,6 +50,11 @@ export class Player {
     this.driving = null;
     this.nearVehicle = null;
     this.exitCooldown = 0;
+    // Sitting on a seat in the plaza, on the pier, on a beach lounger or in
+    // the mall. A seated player keeps the camera, cannot move or fire, and
+    // releases the seat when standing.
+    this.sitting = false;
+    this.seat = null;
     // A car hit pushes Rae out of the bodywork, knocks her down for 0.9 s and
     // shares one cooldown so a single impact never lands twice.
     this.knockdown = 0;
@@ -90,6 +95,7 @@ export class Player {
   }
 
   resetToSpawn() {
+    this.clearSeat();
     this.driving = null;
     this.nearVehicle = null;
     this.knockdown = 0;
@@ -109,6 +115,7 @@ export class Player {
   }
 
   loadFromSave(save) {
+    this.clearSeat();
     this.driving = null;
     this.nearVehicle = null;
     this.knockdown = 0;
@@ -260,6 +267,25 @@ export class Player {
       this.aiming = false;
       this.humanoid.aiming = false;
       this.updateDriving(dt, input, mouse);
+      return;
+    }
+
+    // Seated: the camera still orbits, but there is no movement, fire or
+    // vehicle entry. E (through Interactions) or Space stands up.
+    if (this.sitting) {
+      this.aiming = false;
+      this.humanoid.aiming = false;
+      if (mouse.x !== 0) this.cameraYaw -= mouse.x * CAMERA.sensitivity;
+      if (mouse.y !== 0) this.cameraPitch = clamp(this.cameraPitch + mouse.y * CAMERA.sensitivity, CAMERA.minPitch, CAMERA.maxPitch);
+      if (mouse.wheel !== 0) {
+        this.cameraDistance = clamp(this.cameraDistance + mouse.wheel * 0.0035, CAMERA.minDistance, CAMERA.maxDistance);
+      }
+      if (!this.inputBlocked && input.wasPressed('Space')) this.stand();
+      this.velocity.set(0, 0, 0);
+      this.speed = 0;
+      this.nearVehicle = null;
+      this.applyTransform();
+      this.humanoid.update(dt, 0, false);
       return;
     }
 
@@ -504,6 +530,12 @@ export class Player {
       this.gun.visible = false;
       return;
     }
+    if (this.sitting) {
+      this.aiming = false;
+      this.humanoid.aiming = false;
+      this.gun.visible = false;
+      return;
+    }
     this.fireCooldown = Math.max(0, this.fireCooldown - dt);
     this.meleeSwing = Math.max(0, this.meleeSwing - dt);
     this.hitMarker = Math.max(0, this.hitMarker - dt * 5.5);
@@ -716,6 +748,7 @@ export class Player {
   }
 
   revive(x = PLAYER.spawn.x, z = PLAYER.spawn.z, facing = PLAYER.spawnFacing, cameraYaw = facing + Math.PI) {
+    this.clearSeat();
     this.dead = false;
     this.health = PLAYER.health;
     this.armor = PLAYER.armor;
@@ -731,20 +764,59 @@ export class Player {
     this.teleport(x, z, facing, cameraYaw);
   }
 
-  handleVehicleInput(input) {
-    if (this.knockdown > 0 || this.dead) return;
-    if (input.wasPressed('KeyF', 'KeyE')) {
-      if (this.driving) {
-        this.exitVehicle();
-      } else if (this.vehicles && this.exitCooldown <= 0) {
-        const car = this.vehicles.nearestEnterable(this.position, 2.25);
-        if (car) this.enterVehicle(car);
-      }
+  clearSeat() {
+    if (this.seat && this.seat.occupant === 'player') this.seat.occupant = null;
+    this.seat = null;
+    this.sitting = false;
+    if (this.humanoid) this.humanoid.seated = false;
+  }
+
+  /** Snap onto a free seat and face the way the seat does. */
+  sitAt(seat) {
+    if (!seat || this.driving || this.dead) return false;
+    if (seat.occupant && seat.occupant !== 'player') return false;
+    this.clearSeat();
+    this.sitting = true;
+    this.seat = seat;
+    seat.occupant = 'player';
+    this.position.set(seat.x, this.world.groundHeightAt(seat.x, seat.z), seat.z);
+    this.velocity.set(0, 0, 0);
+    this.speed = 0;
+    this.grounded = true;
+    this.knockdown = 0;
+    this.facing = seat.yaw;
+    this.cameraYaw = seat.yaw + Math.PI;
+    this.cameraPitch = CAMERA.pitch;
+    this.humanoid.seated = true;
+    this.nearVehicle = null;
+    this.applyTransform();
+    this.snapCamera();
+    return true;
+  }
+
+  stand() {
+    if (!this.sitting) return;
+    this.clearSeat();
+    this.velocity.set(0, 0, 0);
+    this.speed = 0;
+    this.applyTransform();
+  }
+
+  handleVehicleInput(input, { allowE = true } = {}) {
+    if (this.knockdown > 0 || this.dead || this.sitting) return;
+    const use = input.wasPressed('KeyF') || (allowE && input.wasPressed('KeyE'));
+    if (!use) return;
+    if (this.driving) {
+      this.exitVehicle();
+    } else if (this.vehicles && this.exitCooldown <= 0) {
+      const car = this.vehicles.nearestEnterable(this.position, 2.25);
+      if (car) this.enterVehicle(car);
     }
   }
 
   enterVehicle(car) {
     if (!car || this.driving) return;
+    this.clearSeat();
     this.carjacked = false;
     if (car.type === 'police' && this.police) this.police.reportCarTheft(car);
     // An AI civilian driver bails out at the door; a cruiser's crew does not.
@@ -853,7 +925,7 @@ export class Player {
   // ------------------------------------------------------------ vehicle hits
 
   /** Push Rae's centre out of the car body along the shortest exit. */
-  pushOutOfVehicle(hit) {
+  pushOutOfVehicle(hit, car = null) {
     if (!hit || hit.penetration <= 0) return;
     const amount = hit.penetration + 0.02;
     const nextX = this.position.x + hit.nx * amount;
@@ -866,6 +938,28 @@ export class Player {
     // A wall behind the car: keep whichever single axis is free.
     if (!this.world.collides(nextX, this.position.z, PLAYER.radius)) this.position.x = nextX;
     else if (!this.world.collides(this.position.x, nextZ, PLAYER.radius)) this.position.z = nextZ;
+    if (!car || car.overlapCircle(this.position.x, this.position.z, PLAYER.radius).penetration <= 0) return;
+
+    // Squeezed into a gap narrower than Rae between the car and a wall: the
+    // straight push cannot work, so slide around the body. Sample outward from
+    // the current point and take the nearest spot clear of the wall, the car
+    // and every other parked body. This is the only case that may move her
+    // along the car, and it never lands inside the wall.
+    const startX = this.position.x;
+    const startZ = this.position.z;
+    for (let radius = 0.4; radius <= 5.2; radius += 0.25) {
+      for (let step = 0; step < 24; step += 1) {
+        const angle = (step / 24) * Math.PI * 2;
+        const x = startX + Math.cos(angle) * radius;
+        const z = startZ + Math.sin(angle) * radius;
+        if (this.world.collides(x, z, PLAYER.radius)) continue;
+        if (car.overlapCircle(x, z, PLAYER.radius).penetration > 0) continue;
+        if (this.vehicles && this.vehicles.blocksPoint(x, z, PLAYER.radius, car)) continue;
+        this.position.x = x;
+        this.position.z = z;
+        return;
+      }
+    }
   }
 
   /**
@@ -885,7 +979,7 @@ export class Player {
       const closing = speed > 2.5 && this.vehicleHitCooldown <= 0;
       const hit = car.overlapCircle(this.position.x, this.position.z, PLAYER.radius + (closing ? 0.3 : 0));
       if (hit.penetration <= 0) continue;
-      this.pushOutOfVehicle(hit);
+      this.pushOutOfVehicle(hit, car);
       if (!closing) continue;
       if (this.hitByVehicle(car, Math.min(30, 8 + speed * 0.8))) break;
     }
@@ -899,7 +993,7 @@ export class Player {
     let nx = hit.nx;
     let nz = hit.nz;
     if (hit.penetration > 0) {
-      this.pushOutOfVehicle(hit);
+      this.pushOutOfVehicle(hit, car);
     } else {
       // A close police ram can land before the boxes touch: shove along the
       // centre line so the player still clears the car.
@@ -1089,6 +1183,7 @@ export class Player {
   }
 
   teleport(x, z, facing = this.facing, cameraYaw = facing + Math.PI) {
+    this.clearSeat();
     this.position.set(x, this.world.groundHeightAt(x, z), z);
     this.velocity.set(0, 0, 0);
     this.facing = facing;

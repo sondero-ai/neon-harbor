@@ -24,6 +24,7 @@ import { TrafficSignals } from './traffic-signals.js';
 import { World } from './world.js';
 import { Player } from './player.js';
 import { Vehicles } from './vehicles.js';
+import { Interactions } from './interactions.js';
 import { Traffic } from './traffic.js';
 import { Input } from './input.js';
 import { Hud } from './hud.js';
@@ -134,6 +135,11 @@ class Game {
     this.player = new Player(this.scene, this.world, this.vehicles);
     this.player.effects = this.effects;
     this.player.audio = this.audio;
+    this.interactions = new Interactions({
+      player: this.player,
+      world: this.world,
+      vehicles: this.vehicles,
+    });
     this.traffic = new Traffic(this.scene, this.world, this.vehicles, this.player);
     this.player.traffic = this.traffic;
     this.police = new Police(this.scene, this.world, this.vehicles, this.player, this.traffic, this.effects, this.audio, {
@@ -928,6 +934,7 @@ class Game {
       vehicles: blips,
       density: this.traffic.density,
       vehiclePrompt,
+      contextPrompt: this.interactions.prompt,
       police,
       weapons: this.player.combatState,
       down: this.down,
@@ -1206,7 +1213,8 @@ class Game {
         this.updateLookHint();
       } else {
         const wasDriving = this.player.driving;
-        this.player.handleVehicleInput(input);
+        const consumedE = this.interactions.update(dt, input);
+        this.player.handleVehicleInput(input, { allowE: !consumedE });
         let carjacked = false;
         if (wasDriving !== this.player.driving && this.player.driving) {
           this.effects.registerVehicle(this.player.driving);
@@ -1374,6 +1382,7 @@ try {
       player: game.player,
       camera: game.camera,
       pickups: game.pickups,
+      interactions: game.interactions,
       police: game.police,
       missions: game.missions,
       world: game.world,

@@ -2164,10 +2164,21 @@ export class Hud {
   }
 
   drawPrompt(ctx, state) {
-    const prompt = state.vehiclePrompt;
+    const context = state.contextPrompt;
+    const vehicle = state.vehiclePrompt;
+    const prompt = context ?? vehicle;
     if (!prompt) return;
-    const action = prompt.action === 'exit' ? 'EXIT VEHICLE' : `ENTER ${prompt.name.toUpperCase()}`;
-    const width = Math.max(250, Math.min(390, 126 + action.length * 7.2));
+    // A contextual action wins over the vehicle prompt, matching the input
+    // precedence in interactions.js: seat > register > car > valet > entry.
+    const isContext = Boolean(context);
+    let action;
+    if (isContext) {
+      const verb = prompt.action === 'stand' ? 'STAND' : prompt.action === 'sit' ? 'SIT' : prompt.label;
+      action = verb;
+    } else {
+      action = prompt.action === 'exit' ? 'EXIT VEHICLE' : `ENTER ${prompt.name.toUpperCase()}`;
+    }
+    const width = Math.max(250, Math.min(390, 126 + action.length * 7.2 + (isContext && prompt.detail ? 92 : 0)));
     const height = 36;
     const x = (this.width - width) / 2;
     const y = 582;
@@ -2175,14 +2186,22 @@ export class Hud {
       cut: 9,
       fill: 'rgba(9,6,16,0.82)',
       stroke: 'rgba(247,232,210,0.2)',
-      accent: prompt.action === 'exit' ? TEAL : GOLD,
+      accent: isContext ? TEAL : prompt.action === 'exit' ? TEAL : GOLD,
     });
     chamferPath(ctx, x + 10, y + 8, 50, 20, 5);
     ctx.fillStyle = 'rgba(247,232,210,0.92)';
     ctx.fill();
-    label(ctx, 'F / E', x + 35, y + 22, { size: 10, color: '#140f1c', spacing: '0.4px', align: 'center', weight: 800 });
+    label(ctx, isContext ? 'E' : 'F / E', x + 35, y + 22, { size: 10, color: '#140f1c', spacing: '0.4px', align: 'center', weight: 800 });
     label(ctx, action, x + 72, y + 23, { size: 11, color: CREAM, spacing: '0.9px', weight: 800 });
-    if (prompt.action === 'enter') {
+    if (isContext && prompt.detail) {
+      label(ctx, String(prompt.detail).toUpperCase(), x + width - 12, y + 23, {
+        size: 10,
+        color: 'rgba(63,224,207,0.7)',
+        spacing: '0.8px',
+        align: 'right',
+        weight: 700,
+      });
+    } else if (prompt.action === 'enter') {
       label(ctx, prompt.distance ? `${Math.round(prompt.distance)} M` : 'NEARBY', x + width - 12, y + 23, {
         size: 10,
         color: 'rgba(247,232,210,0.5)',
