@@ -229,7 +229,7 @@ applyPlayerHit(target, damage) {
   ped.health -= damage * (target.headshot ? 1.75 : 1);
   if (this.player) {
     this.player.hitMarker = 1;
-    if (this.player.effects) this.player.effects.impact(target.point, null, 'metal');
+    if (this.player.effects && target.point) this.player.effects.impact(target.point, null, 'metal');
     if (this.player.audio) this.player.audio.impact(0.9);
   }
   if (ped.health > 0) return;
@@ -266,11 +266,16 @@ if (ped.fleeTimer > 0) {
   const dz = ped.z - ped.fleeFromZ;
   const distance = Math.hypot(dx, dz) || 1;
   ped.target = { x: ped.x + (dx / distance) * 12, z: ped.z + (dz / distance) * 12 };
-  const moving = this.walkToward(ped, ped.speed * 1.6, dt);
+  this.walkToward(ped, ped.speed * 1.6, dt);
   ped.phase += dt * 7;
   ped.motion = damp(ped.motion, 1, 8, dt);
   ped.y = damp(ped.y, this.world.groundHeightAt(ped.x, ped.z), 15, dt);
-  if (ped.fleeTimer <= 0) this.setNextCorner(ped);
+  if (ped.fleeTimer <= 0) {
+    if (ped.fleeResumeTarget) {
+      ped.target = { ...ped.fleeResumeTarget };
+      ped.fleeResumeTarget = null;
+    }
+  }
   continue;
 }
 ```
@@ -370,8 +375,8 @@ Add test 2 to `tools/test-npc-loot.mjs` (same `?shot=street` page):
    `pk.update(31, p);` → `__neon.loot.count` is 0 with `p` still 40 m away.
 6. `for (let i = 0; i < 20; i += 1) pk.spawnDeathLoot(p.position.x + 30 + i, p.position.z, { smgOwned: false });`
    → no item has `kind === 'smg'`.
-7. `pk.spawnDrop({ x: -210, z: 20, kind: 'cash', amount: 25 });` → the new item's
-   `y` equals `__neon.debug.world.groundHeightAt(-210, 20)` (pier test).
+7. `pk.spawnDrop({ x: -210, z: 70, kind: 'cash', amount: 25 });` → the new item's
+   `y` equals `__neon.debug.world.groundHeightAt(-210, 70)` (pier test).
 
 - [x] **Step 2: Run the tool to verify it fails**
 

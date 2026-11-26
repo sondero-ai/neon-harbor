@@ -321,6 +321,8 @@ async function main() {
     }
     const gifBytes = statSync(gifPath).size;
     if (gifBytes > MAX_GIF_BYTES) {
+      // A failed run must not leave an oversized overview.gif in the tree.
+      try { rmSync(gifPath, { force: true }); } catch { /* ignore */ }
       throw new Error(
         `overview.gif is ${(gifBytes / 1024 / 1024).toFixed(2)} MiB, over the ${(MAX_GIF_BYTES / 1024 / 1024).toFixed(1)} MiB limit after the final 560x315 attempt`,
       );

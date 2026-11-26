@@ -1091,7 +1091,9 @@ export class Missions {
     enemy.health -= amount;
     enemy.hitFlash = 0.22;
     this.player.hitMarker = 1;
-    if (this.effects) {
+    // QA hits (and any future point-less target) still kill and loot; only the
+    // cosmetic impact needs a world point.
+    if (this.effects && target.point) {
       this.effects.impact(target.point, null, 'metal');
       this.effects.flash(target.point.x, target.point.y, target.point.z, { color: 0xffb36e, scale: 0.55, life: 0.09, grow: 1.4 });
     }
@@ -1105,7 +1107,7 @@ export class Missions {
     enemy.deadTimer = 0;
     enemy.los = false;
     this.onHumanDeath?.(enemy.x, enemy.z, enemy.boss ? { cashMin: 150, cashMax: 150 } : { cashMin: 40, cashMax: 120 });
-    if (this.effects) {
+    if (this.effects && point) {
       this.effects.flash(point.x, point.y, point.z, { color: 0xff8d5e, scale: 1.7, life: 0.2, grow: 2.6 });
       this.effects.spark(point.x, point.y, point.z, null, 0xffb064, 8, 4.2);
     }
@@ -1306,6 +1308,25 @@ export class Missions {
       this.active.caseCarry.removeFromParent();
       this.active.caseCarry = null;
     }
+  }
+
+  // ---------------------------------------------------------------- debug staging
+
+  // QA-only: place one enemy without starting a mission, so the E2E tool can
+  // pin mission-enemy and boss drops. Nothing in the game calls this.
+  spawnStagedEnemy(x, z, { boss = false, health = null, name = null } = {}) {
+    const spec = {
+      x,
+      z,
+      boss,
+      name: name ?? (boss ? 'Staged Boss' : 'Staged Crew'),
+      health: health ?? (boss ? 280 : 105),
+      damage: boss ? 13 : 7,
+      speed: boss ? 2.2 : 2.7,
+    };
+    const enemy = new Thug(this.scene, this.world, this.materials, spec, this.enemies.length);
+    this.enemies.push(enemy);
+    return enemy;
   }
 
   // ---------------------------------------------------------------- deterministic shots
