@@ -540,6 +540,9 @@ export class Hud {
       ctx.font = '700 9px "Bahnschrift", "Segoe UI", sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(mall.label, toX((bounds.minX + bounds.maxX) / 2), toY((bounds.minZ + bounds.maxZ) / 2) + 3);
+      ctx.fillStyle = 'rgba(63,224,207,0.9)';
+      ctx.font = '700 8px "Bahnschrift", "Segoe UI", sans-serif';
+      ctx.fillText('PARKING', toX((bounds.minX + bounds.maxX) / 2), toY(bounds.minZ - 8) + 3);
     }
 
     // The waterline and a faint scan of city blocks over the whole map.

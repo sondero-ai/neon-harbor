@@ -26,6 +26,7 @@ import { Player } from './player.js';
 import { Vehicles } from './vehicles.js';
 import { Interactions } from './interactions.js';
 import { Traffic } from './traffic.js';
+import { ParkingLot } from './parking.js';
 import { Input } from './input.js';
 import { Hud } from './hud.js';
 import { SaveStore } from './save.js';
@@ -147,6 +148,11 @@ class Game {
     });
     this.player.police = this.police;
     this.traffic.police = this.police;
+    this.parking = new ParkingLot(this.world, this.vehicles, this.traffic, this.player, this.world.mall);
+    this.parking.onToast = (toast) => {
+      if (!this.hud.suppressToasts) this.hud.toast = toast;
+    };
+    this.interactions.parking = this.parking;
     this.pickups = new Pickups(this.scene, this.world, this.effects, {
       audio: this.audio,
       onPickup: (message) => {
@@ -515,6 +521,7 @@ class Game {
     this.traffic.reset({ spawnBeach });
     this.spawnOpeningCars();
     this.traffic.seedAmbient(this.player, { spawnBeach });
+    this.parking?.reset(this.environment.minutes);
   }
 
   spawnOpeningCars() {
@@ -918,6 +925,9 @@ class Game {
       mall: this.world.mall
         ? { label: this.world.mall.label, bounds: this.world.mall.bounds }
         : null,
+      parking: this.parking
+        ? { occupied: this.parking.occupied, slots: this.parking.slots.length, valet: Boolean(this.parking.valet) }
+        : null,
       missionCard: this.shot?.missionCard ?? this.missions.hudCard,
       missionActive: Boolean(this.missions.active),
       missionFailed: Boolean(this.missions.failure),
@@ -1239,6 +1249,7 @@ class Game {
         if (input.wasPressed('Equal')) this.changeVolume(0.08);
         this.player.update(dt, input);
         this.traffic.update(dt, this.simTime);
+        this.parking.update(dt, this.environment.minutes);
         this.police.update(dt, this.simTime);
         this.player.wanted = this.police.wanted;
         this.vehicles.update(dt, this.simTime);
@@ -1387,6 +1398,7 @@ try {
       camera: game.camera,
       pickups: game.pickups,
       interactions: game.interactions,
+      parking: game.parking,
       police: game.police,
       missions: game.missions,
       world: game.world,
@@ -1512,6 +1524,18 @@ try {
         freeSeats: mall.seats.filter((seat) => !seat.occupant).length,
         doors: mall.doors.map((door) => door.name),
         register: mall.register,
+      };
+    },
+    get parking() {
+      const lot = game.parking;
+      if (!lot) return null;
+      return {
+        slots: lot.slots.length,
+        occupied: lot.occupied,
+        stolen: lot.slots.filter((slot) => slot.stolen).length,
+        valet: lot.valet ? { type: lot.valet.type, color: lot.valet.color } : null,
+        zone: lot.valetZone,
+        podium: lot.podium,
       };
     },
     get story() {

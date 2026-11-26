@@ -3080,6 +3080,150 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 24: the parking lot, theft and valet',
+    shot: 'street',
+    body: function parkingLot() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const world = neon?.debug?.world;
+      const player = neon?.debug?.player;
+      const vehicles = neon?.debug?.vehicles;
+      const parking = neon?.debug?.parking;
+      const env = neon?.debug?.environment;
+      const interactions = neon?.debug?.interactions;
+      const missing = [];
+      if (!neon) missing.push('window.__neon');
+      if (!world) missing.push('world');
+      if (!player) missing.push('player');
+      if (!vehicles || typeof vehicles.closestTo !== 'function') missing.push('vehicles.closestTo');
+      if (!parking || !Array.isArray(parking.slots)) missing.push('parking.slots');
+      if (!env || typeof env.setClock !== 'function') missing.push('environment.setClock');
+      if (!interactions) missing.push('interactions');
+      if (!neon || !neon.parking) missing.push('__neon.parking');
+      check('test 24: parking hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (!parking || !world || !player || !vehicles) return results;
+
+      check('test 24: the lot has 26 stalls', parking.slots.length === 26, `slots=${parking.slots.length}`);
+      const outside = parking.slots.filter((slot) => slot.x < 38 || slot.x > 70 || slot.z < -16 || slot.z > 0);
+      check('test 24: every stall is inside the lot bounds', outside.length === 0, JSON.stringify(outside.map((slot) => ({ x: slot.x, z: slot.z }))));
+
+      const settle = (minutes) => {
+        env.setClock(minutes);
+        for (let i = 0; i < 320; i += 1) parking.update(0.2, minutes);
+        return parking.occupied;
+      };
+      const night = settle(22 * 60);
+      check(
+        'test 24: night occupancy is 20% within one stall',
+        Math.abs(night - Math.round(26 * 0.2)) <= 1,
+        `occupied=${night} target=${Math.round(26 * 0.2)}`,
+      );
+      const dusk = settle(18 * 60);
+      check(
+        'test 24: dusk occupancy is 90% within one stall',
+        Math.abs(dusk - Math.round(26 * 0.9)) <= 1,
+        `occupied=${dusk} target=${Math.round(26 * 0.9)}`,
+      );
+      const day = settle(12 * 60);
+      check(
+        'test 24: day occupancy is 65% within one stall',
+        Math.abs(day - Math.round(26 * 0.65)) <= 1,
+        `occupied=${day} target=${Math.round(26 * 0.65)}`,
+      );
+
+      const key = (type, code) => window.dispatchEvent(new KeyboardEvent(type, {
+        code,
+        key: code.replace('Key', '').toLowerCase(),
+        bubbles: true,
+        cancelable: true,
+      }));
+
+      const slot = parking.slots.find((entry) => entry.static && entry.occupied && !entry.stolen);
+      check('test 24: an occupied static stall exists for the theft', Boolean(slot), 'no static occupied slot');
+      if (slot) {
+        check(
+          'test 24: an occupied stall has a solid collider',
+          Boolean(slot.collider) && world.collides(slot.x, slot.z, 0.4) === true,
+          JSON.stringify({ collider: Boolean(slot.collider) }),
+        );
+        const aisleZ = slot.row === 'A' ? 1.9 : -1.9;
+        player.teleport(slot.x, slot.z + aisleZ, slot.row === 'A' ? Math.PI : 0, slot.row === 'A' ? 0 : Math.PI);
+        neon.advance(1 / 60);
+        check(
+          'test 24: standing beside a parked car prompts STEAL',
+          interactions.prompt?.action === 'steal',
+          JSON.stringify(interactions.prompt),
+        );
+        key('keydown', 'KeyE');
+        neon.advance(1 / 60);
+        key('keyup', 'KeyE');
+        check(
+          'test 24: E steals the static car into a real Vehicle',
+          slot.occupied === false && slot.stolen === true && Boolean(slot.vehicle)
+            && slot.vehicle.driver === 'player' && player.driving === slot.vehicle,
+          JSON.stringify({ occupied: slot.occupied, stolen: slot.stolen, vehicle: Boolean(slot.vehicle), driving: Boolean(player.driving) }),
+        );
+        check(
+          'test 24: stealing removes the stall collider',
+          slot.collider === null && world.collides(slot.x, slot.z, 0.4) === false,
+          JSON.stringify({ collider: slot.collider, collides: world.collides(slot.x, slot.z, 0.4) }),
+        );
+      }
+
+      const car = player.driving;
+      check('test 24: the stolen car is drivable', Boolean(car), 'player is not driving');
+      if (!car) return results;
+
+      const zone = parking.valetZone;
+      car.setPose((zone.minX + zone.maxX) / 2, (zone.minZ + zone.maxZ) / 2, Math.PI / 2);
+      player.syncFromVehicle();
+      const storedType = car.type;
+      key('keydown', 'KeyE');
+      neon.advance(1 / 60);
+      key('keyup', 'KeyE');
+      check(
+        'test 24: E in the valet zone parks the car instead of only exiting it',
+        Boolean(parking.valet) && player.driving === null && player.sitting === false && car.removed === true,
+        JSON.stringify({ valet: Boolean(parking.valet), driving: Boolean(player.driving), removed: car.removed }),
+      );
+      check(
+        'test 24: the valet stores the car type and colour',
+        parking.valet?.type === storedType && Number.isFinite(parking.valet?.color),
+        JSON.stringify(parking.valet),
+      );
+      neon.advance(1 / 60);
+      check(
+        'test 24: the prompt leaves VALET once the car is parked',
+        interactions.prompt?.action !== 'valet',
+        JSON.stringify(interactions.prompt),
+      );
+
+      player.teleport(parking.podium.x - 1.0, parking.podium.z, 0, Math.PI);
+      neon.advance(1 / 60);
+      check(
+        'test 24: the podium prompts RETRIEVE',
+        interactions.prompt?.action === 'retrieve',
+        JSON.stringify(interactions.prompt),
+      );
+      key('keydown', 'KeyE');
+      neon.advance(1 / 60);
+      key('keyup', 'KeyE');
+      const returned = vehicles.closestTo(parking.entrance.x, parking.entrance.z, 8);
+      check(
+        'test 24: retrieveValet puts the car back at the entrance',
+        Boolean(returned) && returned.type === storedType && returned.driver === null
+          && Math.hypot(returned.position.x - parking.entrance.x, returned.position.z - parking.entrance.z) < 2.0,
+        JSON.stringify(returned ? { type: returned.type, x: returned.position.x, z: returned.position.z } : null),
+      );
+      check('test 24: the valet slot is clear after the return', parking.valet === null);
+      return results;
+    },
+  },
 ];
 
 async function main() {
