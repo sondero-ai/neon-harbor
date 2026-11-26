@@ -17,7 +17,6 @@ import {
   START_OBJECTIVE,
   districtAt,
   radioStationIndex,
-  streetAt,
 } from './config.js';
 import { CLOCK_MINUTES_PER_SECOND, Environment, SHOT_CLOCK, parseTimeParam } from './environment.js';
 import { TrafficSignals } from './traffic-signals.js';
@@ -41,28 +40,10 @@ import { Pickups } from './pickups.js';
 import { Missions, MISSION_COUNT, missionName } from './missions.js';
 import { Activities } from './activities.js';
 import { LOW_FUEL } from './fuel.js';
+import { crewState, hudState, respectState } from './main-hud-state.js';
+import { DEFAULT_TITLE_VIEW, STEP, byId, formatCash, setHidden } from './main-shared.js';
 
-const STEP = 1 / 60;
 const MAX_STEPS = 5;
-
-const DEFAULT_TITLE_VIEW = {
-  position: [132, 64, 156],
-  target: [-210, 2, 42],
-  drift: [6.0, 1.4, 4.0],
-  speed: 0.03,
-};
-
-function byId(id) {
-  return document.getElementById(id);
-}
-
-function formatCash(value) {
-  return `$ ${Math.max(0, Math.round(value)).toLocaleString('en-US')}`;
-}
-
-function setHidden(element, hidden) {
-  if (element) element.hidden = hidden;
-}
 
 class Game {
   constructor() {
@@ -257,6 +238,15 @@ class Game {
     window.requestAnimationFrame(this.frame);
     window.__neonReady = true;
   }
+
+  // ---------------------------------------------------------------- modules
+  // The extracted modules take the Game instance; these thin wrappers keep the
+  // class surface and every call site exactly as they were.
+
+  // HUD reads (main-hud-state.js)
+  respectState() { return respectState(this); }
+  crewState() { return crewState(this); }
+  hudState() { return hudState(this); }
 
   // ---------------------------------------------------------------- setup
 
@@ -871,131 +861,6 @@ class Game {
     SaveStore.saveSettings(this.settings);
     this.applyQualityVisuals(true);
     this.refreshQualityLabel();
-  }
-
-  // Respect is a readout of the run, not a second progression system: cash
-  // earned and story chapters cleared move it up the Strip's ladder.
-  respectState() {
-    const value = Math.min(250, Math.floor(this.player.cash / 20) + this.missions.index * 30);
-    const tiers = [
-      [200, 'HARBOR LEGEND'],
-      [140, 'SOLANO CREW'],
-      [85, 'HARBOR HEAVY'],
-      [45, 'STRIP RUNNER'],
-      [0, 'NEW BLOOD'],
-    ];
-    const rank = tiers.find(([floor]) => value >= floor)?.[1] ?? 'NEW BLOOD';
-    return { rank, value, max: 250 };
-  }
-
-  crewState() {
-    const driving = this.player.driving;
-    const wanted = this.police.wanted;
-    const active = Boolean(this.missions.active);
-    const failed = Boolean(this.missions.failure);
-    return [
-      {
-        name: 'MIRA SOL',
-        role: 'DRIVER',
-        status: failed ? 'STANDING BY' : active ? (driving ? 'ON COMMS' : 'EN ROUTE') : 'READY',
-      },
-      {
-        name: 'ODIN',
-        role: 'MECHANIC',
-        status: driving && driving.condition < 0.82 ? 'EN ROUTE' : 'IN THE BAY',
-      },
-      {
-        name: 'KIKI',
-        role: 'LOOKOUT',
-        status: wanted > 0 ? (this.police.status === 'search' ? 'BLACKOUT' : 'EYES ON') : 'ON THE CORNER',
-      },
-    ];
-  }
-
-  hudState() {
-    const player = this.player;
-    const driving = player.driving;
-    const blips = [];
-    for (const vehicle of this.vehicles.list) {
-      const dx = vehicle.position.x - player.position.x;
-      const dz = vehicle.position.z - player.position.z;
-      if (dx * dx + dz * dz > 9600) continue;
-      blips.push({
-        x: vehicle.position.x,
-        z: vehicle.position.z,
-        yaw: vehicle.yaw,
-        kind: vehicle.type,
-        parked: !vehicle.driver,
-        player: vehicle === driving,
-      });
-    }
-    let vehiclePrompt = null;
-    if (driving) {
-      vehiclePrompt = { action: 'exit', name: driving.name };
-    } else if (player.nearVehicle) {
-      vehiclePrompt = {
-        action: 'enter',
-        name: player.nearVehicle.name,
-        distance: player.nearVehicle.distanceToBox(player.position.x, player.position.z) + 0.4,
-      };
-    }
-    const police = this.police.hudState;
-    const radio = this.radio.state;
-    return {
-      player,
-      objective: this.objective,
-      radio: {
-        ...radio,
-        wheel: this.radioWheel.open
-          ? { open: true, station: this.radioWheel.station, track: this.radioWheel.track }
-          : { open: false },
-      },
-      clock: this.environment.clock,
-      day: this.environment.day,
-      period: this.environment.period,
-      district: districtAt(player.position.x, player.position.z),
-      street: streetAt(player.position.x, player.position.z),
-      mall: this.world.mall
-        ? { label: this.world.mall.label, bounds: this.world.mall.bounds }
-        : null,
-      parking: this.parking
-        ? { occupied: this.parking.occupied, slots: this.parking.slots.length, valet: Boolean(this.parking.valet) }
-        : null,
-      missionCard: this.shot?.missionCard ?? this.missions.hudCard,
-      missionActive: Boolean(this.missions.active),
-      missionFailed: Boolean(this.missions.failure),
-      respect: this.respectState(),
-      crew: this.crewState(),
-      vehicle: driving
-        ? {
-            name: driving.name,
-            className: driving.className,
-            tune: driving.tune,
-            speedKmh: driving.speedKmh,
-            gear: driving.gear,
-            engineRpm: driving.engineRpm,
-            condition: driving.condition,
-            fuel: driving.fuel,
-          }
-        : null,
-      vehicles: blips,
-      density: this.traffic.density,
-      vehiclePrompt,
-      contextPrompt: this.interactions.prompt,
-      police,
-      weapons: this.player.combatState,
-      down: this.down,
-      subtitle: this.missions.subtitle,
-      challenge: this.activities.challenge,
-      fail: this.missions.failure,
-      missionEnemies: this.missions.enemies.filter((enemy) => !enemy.dead && !enemy.removed).map((enemy) => ({ x: enemy.x, z: enemy.z })),
-      effects: {
-        hurt: this.effects.hurtLevel,
-        lowHealth: player.health < 32,
-        flash: player.damageFlash,
-      },
-      pickup: this.pickups.hint,
-    };
   }
 
   // ---------------------------------------------------------------- title camera
