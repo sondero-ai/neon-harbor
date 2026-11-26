@@ -370,10 +370,11 @@ class Thug {
       const step = this.speed * dt;
       const nextX = this.x + (dx / distance) * step;
       const nextZ = this.z + (dz / distance) * step;
-      const ground = this.world.groundHeightAt(nextX, nextZ);
-      if (!this.world.collides(nextX, nextZ, 0.36) && Math.abs(ground - this.y) < 0.55) {
-        this.x = nextX;
-        this.z = nextZ;
+      const resolved = this.world.resolveCircle(nextX, nextZ, 0.36);
+      const ground = this.world.groundHeightAt(resolved.x, resolved.z);
+      if (Math.abs(ground - this.y) < 0.55) {
+        this.x = resolved.x;
+        this.z = resolved.z;
         this.y = ground;
         moving = true;
       }

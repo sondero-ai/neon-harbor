@@ -972,8 +972,34 @@ export class Traffic {
       return false;
     }
     const step = Math.min(distance, speed * dt);
-    ped.x += (dx / distance) * step;
-    ped.z += (dz / distance) * step;
+    const stepX = (dx / distance) * step;
+    const stepZ = (dz / distance) * step;
+    const radius = 0.36;
+    const wantX = ped.x + stepX;
+    const wantZ = ped.z + stepZ;
+
+    // Slide along a wall rather than walking through it: the full step first,
+    // then one axis at a time, then stop and let the caller pick a new target.
+    const full = this.world.resolveCircle(wantX, wantZ, radius);
+    let movedX = 0;
+    let movedZ = 0;
+    if (Math.hypot(full.x - wantX, full.z - wantZ) < 0.01) {
+      movedX = full.x - ped.x;
+      movedZ = full.z - ped.z;
+    } else {
+      const slideX = this.world.resolveCircle(wantX, ped.z, radius);
+      if (Math.abs(slideX.x - wantX) < 0.01 && Math.abs(slideX.z - ped.z) < 0.01) {
+        movedX = slideX.x - ped.x;
+      } else {
+        const slideZ = this.world.resolveCircle(ped.x, wantZ, radius);
+        if (Math.abs(slideZ.z - wantZ) < 0.01 && Math.abs(slideZ.x - ped.x) < 0.01) {
+          movedZ = slideZ.z - ped.z;
+        }
+      }
+    }
+    if (Math.abs(movedX) < 0.0005 && Math.abs(movedZ) < 0.0005) return false;
+    ped.x += movedX;
+    ped.z += movedZ;
     const desiredYaw = Math.atan2(dx, dz);
     const delta = Math.atan2(Math.sin(desiredYaw - ped.yaw), Math.cos(desiredYaw - ped.yaw));
     ped.yaw += delta * (1 - Math.exp(-9 * dt));

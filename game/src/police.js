@@ -288,8 +288,19 @@ class Officer {
       const step = speed * dt;
       const nx = this.x + (dx / Math.max(0.001, distance)) * step;
       const nz = this.z + (dz / Math.max(0.001, distance)) * step;
-      if (!this.world.collides(nx, this.z, 0.38)) this.x = nx;
-      if (!this.world.collides(this.x, nz, 0.38)) this.z = nz;
+      const full = this.world.resolveCircle(nx, nz, 0.38);
+      if (Math.hypot(full.x - nx, full.z - nz) < 0.01) {
+        this.x = full.x;
+        this.z = full.z;
+      } else {
+        const slideX = this.world.resolveCircle(nx, this.z, 0.38);
+        if (Math.abs(slideX.x - nx) < 0.01 && Math.abs(slideX.z - this.z) < 0.01) {
+          this.x = slideX.x;
+        } else {
+          const slideZ = this.world.resolveCircle(this.x, nz, 0.38);
+          if (Math.abs(slideZ.z - nz) < 0.01 && Math.abs(slideZ.x - this.x) < 0.01) this.z = slideZ.z;
+        }
+      }
     } else if (!police.down && distance < 12) {
       // Hold the perimeter but keep shuffling so they are not statues.
       this.phase += dt * 3.2;

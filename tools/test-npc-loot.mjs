@@ -1284,6 +1284,118 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 12: pedestrian wall collision',
+    shot: 'street',
+    body: function pedestrianWalls() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const traffic = neon && neon.debug && neon.debug.traffic;
+      const world = neon && neon.debug && neon.debug.world;
+      const player = neon && neon.debug && neon.debug.player;
+      const missing = [];
+      if (!traffic || typeof traffic.walkToward !== 'function') missing.push('traffic.walkToward');
+      if (!world || typeof world.resolveCircle !== 'function') missing.push('world.resolveCircle');
+      if (!world || !Array.isArray(world.colliders)) missing.push('world.colliders');
+      if (!player) missing.push('__neon.debug.player');
+      check('test 12: collision hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      const overlaps = (x, z, radius) => world.colliders.some((box) => (
+        x > box.minX - radius && x < box.maxX + radius
+        && z > box.minZ - radius && z < box.maxZ + radius
+      ));
+      const buildings = world.colliders.filter((box) => (
+        box.kind === 'building' && box.maxX - box.minX > 15 && box.maxZ - box.minZ > 15
+        && box.minX > -145 && box.maxX < 195 && box.minZ > -145 && box.maxZ < 195
+      ));
+      check(
+        'test 12: the core exposes building colliders to test against',
+        buildings.length > 10,
+        `buildings=${buildings.length}`,
+      );
+      if (buildings.length === 0) return results;
+
+      const building = buildings.reduce((best, box) => {
+        const cx = (box.minX + box.maxX) / 2;
+        const cz = (box.minZ + box.maxZ) / 2;
+        const distance = Math.hypot(cx - player.position.x, cz - player.position.z);
+        return !best || distance < best.distance ? { box, distance } : best;
+      }, null).box;
+      const midZ = (building.minZ + building.maxZ) / 2;
+      const wallPed = traffic.spawnPed({
+        x: building.minX - 2.2,
+        z: midZ,
+        yaw: Math.PI / 2,
+        mode: 'idle',
+      });
+      check('test 12: a test pedestrian stages beside a building', Boolean(wallPed), 'spawnPed returned null');
+      if (!wallPed) return results;
+
+      wallPed.target = { x: building.maxX + 2.2, z: midZ };
+      let everInside = false;
+      for (let i = 0; i < 600; i += 1) {
+        traffic.walkToward(wallPed, 3, 1 / 60);
+        if (overlaps(wallPed.x, wallPed.z, 0.3)) {
+          everInside = true;
+          break;
+        }
+      }
+      check(
+        'test 12: a target straight through a building never puts the walker inside it',
+        everInside === false,
+        `ped=(${wallPed.x.toFixed(2)}, ${wallPed.z.toFixed(2)}) box=(${building.minX}, ${building.minZ})`,
+      );
+      check(
+        'test 12: the blocked walker stops at the wall face',
+        wallPed.x <= building.minX - 0.28,
+        `x=${wallPed.x.toFixed(2)} face=${building.minX}`,
+      );
+
+      const openPed = traffic.spawnPed({ x: -67, z: 18.1, yaw: 0, mode: 'idle' });
+      check('test 12: a reachable-target pedestrian stages', Boolean(openPed), 'spawnPed returned null');
+      if (openPed) {
+        openPed.target = { x: -61, z: 18.1 };
+        for (let i = 0; i < 300; i += 1) traffic.walkToward(openPed, 2, 1 / 60);
+        check(
+          'test 12: a reachable target is still reached',
+          Math.hypot(openPed.x - -61, openPed.z - 18.1) < 0.3,
+          `distance=${Math.hypot(openPed.x - -61, openPed.z - 18.1).toFixed(2)}`,
+        );
+        check(
+          'test 12: the reachable walk stays out of every collider',
+          overlaps(openPed.x, openPed.z, 0.3) === false,
+          `ped=(${openPed.x.toFixed(2)}, ${openPed.z.toFixed(2)})`,
+        );
+      }
+
+      const slidingPed = traffic.spawnPed({ x: -67, z: 18.1, yaw: 0, mode: 'idle' });
+      if (slidingPed) slidingPed.target = { x: -63, z: 18.1 };
+      const startX = slidingPed ? slidingPed.x : 0;
+      if (slidingPed) {
+        for (let i = 0; i < 240; i += 1) traffic.walkToward(slidingPed, 2, 1 / 60);
+      }
+      check(
+        'test 12: the wall slide keeps forward progress along the face',
+        Boolean(slidingPed) && slidingPed.x - startX > 1.5,
+        `moved=${slidingPed ? (slidingPed.x - startX).toFixed(2) : 'n/a'}`,
+      );
+
+      for (let i = 0; i < 120; i += 1) traffic.update(0.5, i * 0.5);
+      const live = traffic.peds.filter((ped) => ped.active && !ped.dead);
+      const stuck = live.filter((ped) => overlaps(ped.x, ped.z, 0.26));
+      check(
+        'test 12: after 60 simulated seconds no live pedestrian is inside a wall',
+        stuck.length === 0,
+        `stuck=${stuck.length}/${live.length} first=${stuck[0] ? `(${stuck[0].x.toFixed(2)}, ${stuck[0].z.toFixed(2)})` : ''}`,
+      );
+      return results;
+    },
+  },
 ];
 
 async function main() {
