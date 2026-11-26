@@ -578,7 +578,7 @@ export class Hud {
     this.drawObjective(ctx, state);
     this.drawChallenge(ctx, state);
     this.drawDialogue(ctx, state);
-    this.drawPoliceRoster(ctx, state.police);
+    this.drawPoliceRoster(ctx, state);
     this.drawWeaponStrip(ctx, state);
     this.drawVehicleCard(ctx, state);
     this.drawPrompt(ctx, state);
@@ -1391,12 +1391,31 @@ export class Hud {
     });
   }
 
-  drawPoliceRoster(ctx, police) {
-    if (!police) return;
-    const x = 1000;
-    const y = 188;
+  // The right-hand HUD column hugs the window's right edge, like the state card
+  // above it, so the panels never drift inward over the road on wide screens.
+  // Its height follows the roster so a quiet patrol is a compact card, while a
+  // five-unit pursuit lands on the same stack the 1280x720 shots were framed for.
+  rightColumn(state) {
     const width = 252;
-    const height = 186;
+    const x = this.width - width - 28;
+    const roster = (state.police?.roster ?? []).slice(0, 5);
+    const rows = Math.max(1, roster.length);
+    const rosterY = 188;
+    const rosterHeight = 90 + (rows - 1) * 24;
+    const weaponsY = rosterY + rosterHeight + 10;
+    const weaponsHeight = 142;
+    const vehicleY = weaponsY + weaponsHeight + 10;
+    const vehicleHeight = 166;
+    return { x, width, roster, rosterY, rosterHeight, weaponsY, weaponsHeight, vehicleY, vehicleHeight };
+  }
+
+  drawPoliceRoster(ctx, state) {
+    const police = state.police;
+    if (!police) return;
+    const column = this.rightColumn(state);
+    const { x, width, roster } = column;
+    const y = column.rosterY;
+    const height = column.rosterHeight;
     const wanted = police.wanted ?? 0;
     const accent = wanted > 0 ? CORAL : 'rgba(63,224,207,0.65)';
     drawPanel(ctx, x, y, width, height, {
@@ -1426,7 +1445,6 @@ export class Hud {
     ctx.lineTo(x + width - 14, y + 28);
     ctx.stroke();
 
-    const roster = (police.roster ?? []).slice(0, 5);
     roster.forEach((entry, index) => {
       const rowY = y + 45 + index * 24;
       const color = roleColor(entry.role);
@@ -1457,7 +1475,7 @@ export class Hud {
       });
     });
     if (roster.length === 0) {
-      label(ctx, 'NO UNITS IN THE AREA', x + 14, y + 50, {
+      label(ctx, 'NO UNITS IN THE AREA', x + 14, y + 45, {
         size: 10.5,
         color: 'rgba(247,232,210,0.5)',
         spacing: '0.8px',
@@ -1469,11 +1487,11 @@ export class Hud {
         ctx,
         `+${police.extra.count} more unit${police.extra.count === 1 ? '' : 's'} · ${police.extra.hint}`,
         x + 14,
-        y + 170,
+        y + height - 16,
         { size: 10, color: 'rgba(247,232,210,0.55)', spacing: '0.4px', weight: 700 },
       );
     } else if (wanted === 0) {
-      label(ctx, 'PATROL SWEEP · NO ACTIVE BOLO', x + 14, y + 170, {
+      label(ctx, 'PATROL SWEEP · NO ACTIVE BOLO', x + 14, y + height - 16, {
         size: 10,
         color: 'rgba(63,224,207,0.6)',
         spacing: '0.4px',
@@ -1619,10 +1637,10 @@ export class Hud {
   drawWeaponStrip(ctx, state) {
     const weapons = state.weapons;
     if (!weapons || weapons.dead) return;
-    const x = 1000;
-    const y = 384;
-    const width = 252;
-    const height = 142;
+    const column = this.rightColumn(state);
+    const { x, width } = column;
+    const y = column.weaponsY;
+    const height = column.weaponsHeight;
     drawPanel(ctx, x, y, width, height, {
       cut: 10,
       fill: 'rgba(9,6,16,0.84)',
@@ -1809,10 +1827,10 @@ export class Hud {
   drawVehicleCard(ctx, state) {
     const player = state.player;
     const car = state.vehicle;
-    const x = 1000;
-    const y = 536;
-    const width = 252;
-    const height = 160;
+    const column = this.rightColumn(state);
+    const { x, width } = column;
+    const y = column.vehicleY;
+    const height = column.vehicleHeight;
     drawPanel(ctx, x, y, width, height, { cut: 11, accent: TEAL });
     const speed = car ? car.speedKmh : player.speedKmh;
     const gear = car ? car.gear : '—';
