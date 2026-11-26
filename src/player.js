@@ -74,6 +74,7 @@ export class Player {
     this.audio = null;
     this.police = null;
     this.missions = null;
+    this.traffic = null;
     this.buildWeapons();
 
     this.resetToSpawn();
@@ -517,14 +518,18 @@ export class Player {
     const maxDistance = worldHit ? worldHit.distance : spec.range;
     const policeTarget = this.police ? this.police.traceShot(origin, direction, maxDistance) : null;
     const missionTarget = this.missions ? this.missions.traceShot(origin, direction, maxDistance) : null;
+    const pedTarget = this.traffic ? this.traffic.traceShot(origin, direction, maxDistance) : null;
     let target = policeTarget;
     if (missionTarget && (!target || missionTarget.distance < target.distance)) target = missionTarget;
+    if (pedTarget && (!target || pedTarget.distance < target.distance)) target = pedTarget;
     const endpoint = new THREE.Vector3();
     if (target) {
       endpoint.copy(target.point);
       this.hitMarker = 1;
       if (target.enemy && this.missions) {
         this.missions.applyPlayerHit(target, spec.damage, { weapon: this.weaponKey });
+      } else if (target.type === 'ped' && this.traffic) {
+        this.traffic.applyPlayerHit(target, spec.damage);
       } else if (this.police) {
         this.police.applyPlayerHit(target, spec.damage, { weapon: this.weaponKey });
       }

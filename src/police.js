@@ -623,6 +623,7 @@ export class Police {
     this.effects = effects;
     this.audio = audio;
     this.onDown = options.onDown ?? null;
+    this.onHumanDeath = null;
     this.rng = makeRng(0x9c0ffee);
     this.time = 0;
     this.wanted = 0;
@@ -742,11 +743,14 @@ export class Police {
         officer.dead = true;
         officer.deadTimer = 6;
         this.addWanted(2, 'Officer Down');
-        if (this.effects) this.effects.impact(target.point, null, 'metal');
+        this.onHumanDeath?.(officer.x, officer.z);
+        // QA hits (and any future point-less target) still kill and loot; only
+        // the cosmetic impact needs a world point.
+        if (this.effects && target.point) this.effects.impact(target.point, null, 'metal');
         if (this.audio) this.audio.impact(1.2);
       } else {
         this.addWanted(1);
-        if (this.effects) this.effects.impact(target.point, null, 'metal');
+        if (this.effects && target.point) this.effects.impact(target.point, null, 'metal');
       }
       return;
     }

@@ -4,10 +4,12 @@
 // the collection radius is generous and the HUD announces what was taken.
 
 import * as THREE from '../vendor/three.module.js';
-import { PICKUPS, WEAPONS } from './config.js';
+import { PICKUPS } from './config.js';
 import { makeGlowSprite } from './geo.js';
+import { rollDrop } from './loot.js';
 
 const COLORS = {
+  cash: 0xffc95c,
   pistol: 0xffc95c,
   smg: 0x3fe0cf,
   health: 0x7dff9f,
@@ -67,6 +69,16 @@ function buildIcon(kind, materials) {
     group.add(vest, collar, plate);
     return group;
   }
+  if (kind === 'cash') {
+    const group = new THREE.Group();
+    for (let i = 0; i < 3; i += 1) {
+      const bill = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.045, 0.16), materials.gold);
+      bill.position.set(0, i * 0.05, 0);
+      bill.rotation.y = (i - 1) * 0.18;
+      group.add(bill);
+    }
+    return group;
+  }
   const isSmg = kind === 'smg';
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(isSmg ? 0.12 : 0.1, isSmg ? 0.14 : 0.12, isSmg ? 0.62 : 0.46),
@@ -102,6 +114,9 @@ export class Pickups {
       health: new THREE.MeshStandardMaterial({ color: 0x5cff8a, roughness: 0.5, emissive: 0x12602b }),
       blue: new THREE.MeshStandardMaterial({ color: 0x637fd8, roughness: 0.45, metalness: 0.25, emissive: 0x112355 }),
     };
+    // The icon meshes borrow these; only per-item ring, bill and glow
+    // resources may be disposed when a one-shot drop is released.
+    this.sharedMaterials = new Set(Object.values(this.materials));
     for (const spot of PICKUPS) this.addItem(spot);
   }
 
@@ -120,7 +135,7 @@ export class Pickups {
     glow.position.y = 1.0;
     group.add(glow);
     this.scene.add(group);
-    this.items.push({
+    const item = {
       ...spec,
       group,
       icon: bob,
@@ -129,22 +144,57 @@ export class Pickups {
       callback: null,
       collected: false,
       respawn: 0,
-    });
+      oneShot: spec.oneShot === true,
+      expire: spec.expire ?? 0,
+      age: 0,
+      amount: spec.amount,
+      removed: false,
+    };
+    this.items.push(item);
+    return item;
   }
 
   reset() {
-    for (const item of this.items) {
+    // One-shot drops are transient: a reset purges them instead of carrying
+    // them into the next session.
+    for (let i = this.items.length - 1; i >= 0; i -= 1) {
+      const item = this.items[i];
+      if (item.oneShot) {
+        this.release(item);
+        continue;
+      }
       item.collected = false;
       item.respawn = 0;
       item.group.visible = true;
     }
   }
 
+  // Detach a one-shot drop and free everything it owns: its per-item
+  // geometries (ring, icon boxes) and per-item materials (ring, glow). The
+  // shared icon materials and the cached glow texture are never touched.
+  release(item) {
+    if (item.removed) return;
+    item.removed = true;
+    item.group.removeFromParent();
+    item.group.traverse((node) => {
+      // Meshes are ring and icon geometry, which this item owns. A Sprite's
+      // geometry is shared by every sprite in the engine; skip it.
+      if (node.isMesh && node.geometry) node.geometry.dispose();
+      const material = node.material;
+      if (!material) return;
+      for (const entry of Array.isArray(material) ? material : [material]) {
+        if (!this.sharedMaterials.has(entry)) entry.dispose();
+      }
+    });
+    const index = this.items.indexOf(item);
+    if (index >= 0) this.items.splice(index, 1);
+  }
+
   get hint() {
     let nearest = null;
     let nearestDistance = 9;
     for (const item of this.items) {
-      if (item.collected) continue;
+      if (item.collected || item.removed) continue;
       const distance = Math.hypot(item.x - this.playerX, item.z - this.playerZ);
       if (distance < nearestDistance) {
         nearest = item;
@@ -158,8 +208,25 @@ export class Pickups {
     this.time += dt;
     this.playerX = player.position.x;
     this.playerZ = player.position.z;
-    for (const item of this.items) {
+    // Backwards so a drop released mid-loop (collected or expired) can be
+    // spliced out of this.items without skipping the next entry.
+    for (let i = this.items.length - 1; i >= 0; i -= 1) {
+      const item = this.items[i];
+      if (item.removed) continue;
+      // One-shot drops age out whether or not the player ever reaches them.
+      if (item.oneShot) {
+        item.age += dt;
+        if (item.expire > 0 && item.age >= item.expire) {
+          this.release(item);
+          continue;
+        }
+      }
       if (item.collected) {
+        // A one-shot drop is spent for good; it never starts a respawn timer.
+        if (item.oneShot) {
+          this.release(item);
+          continue;
+        }
         item.respawn -= dt;
         if (item.respawn <= 0) {
           item.collected = false;
@@ -180,7 +247,7 @@ export class Pickups {
 
   collect(item, player) {
     item.collected = true;
-    item.respawn = RESPAWN;
+    item.respawn = item.oneShot ? 0 : RESPAWN;
     item.group.visible = false;
     let message = item.label;
     if (item.kind === 'health') {
@@ -189,13 +256,16 @@ export class Pickups {
     } else if (item.kind === 'armor') {
       const gained = player.addArmor(45);
       message = `${item.label} · +${Math.round(gained)} ARMOR`;
+    } else if (item.kind === 'cash') {
+      player.cash += item.amount ?? 0;
+      message = `CASH · +$${item.amount ?? 0}`;
     } else if (item.kind === 'smg') {
       const first = !player.weapons.smg.owned;
-      player.grantWeapon('smg', 96);
-      message = first ? 'KESTREL SMG · 32 / 96' : `KESTREL SMG · +${WEAPONS.smg.mag} AMMO`;
+      player.grantWeapon('smg', item.amount ?? 96);
+      message = first ? 'KESTREL SMG · 32 / 96' : `KESTREL SMG · +${item.amount ?? 32} AMMO`;
     } else if (item.kind === 'pistol') {
-      player.grantWeapon('pistol', 48);
-      message = 'SOLANO 9 · AMMO +48';
+      player.grantWeapon('pistol', item.amount ?? 48);
+      message = `SOLANO 9 · AMMO +${item.amount ?? 48}`;
     }
     if (this.effects) {
       this.effects.flash(item.x, item.y + 0.95, item.z, { color: COLORS[item.kind], scale: 2.4, life: 0.28, grow: 3.2 });
@@ -203,5 +273,19 @@ export class Pickups {
     }
     if (this.audio) this.audio.pickup();
     if (this.onPickup) this.onPickup(message, item);
+    // A spent one-shot drop is released here; nothing of it stays in the
+    // scene or in this.items, and it can never be collected twice.
+    if (item.oneShot) this.release(item);
+  }
+
+  // A drop that exists for one life only: no respawn, removed at expiry.
+  spawnDrop(spec) {
+    return this.addItem({ ...spec, oneShot: true, expire: spec.expire ?? 30 });
+  }
+
+  spawnDeathLoot(x, z, { smgOwned = false, cashMin = 15, cashMax = 70 } = {}) {
+    const drop = rollDrop(Math.random, { smgOwned, cashMin, cashMax });
+    const label = drop.kind === 'cash' ? 'CASH' : drop.kind === 'smg' ? 'KESTREL SMG' : 'SOLANO 9';
+    return this.spawnDrop({ x, z, ...drop, label });
   }
 }

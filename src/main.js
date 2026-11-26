@@ -123,6 +123,7 @@ class Game {
     this.player.effects = this.effects;
     this.player.audio = this.audio;
     this.traffic = new Traffic(this.scene, this.world, this.vehicles, this.player);
+    this.player.traffic = this.traffic;
     this.police = new Police(this.scene, this.world, this.vehicles, this.player, this.traffic, this.effects, this.audio, {
       onDown: (type) => this.beginDown(type),
     });
@@ -153,6 +154,13 @@ class Game {
       },
     });
     this.player.missions = this.missions;
+    const lootFrom = (x, z, opts = {}) => this.pickups.spawnDeathLoot(x, z, {
+      ...opts,
+      smgOwned: this.player.weapons.smg.owned,
+    });
+    this.traffic.onPedDeath = (ped) => lootFrom(ped.x, ped.z);
+    this.police.onHumanDeath = lootFrom;
+    this.missions.onHumanDeath = lootFrom;
     this.activities = new Activities(this.scene, this.world, this.vehicles, this.player, this.police, this.effects, this.audio, {
       onToast: (toast) => {
         if (!this.hud.suppressToasts) this.hud.toast = toast;
@@ -1114,6 +1122,40 @@ try {
       const density = game.traffic.density;
       return { cars: density.cars, walkers: density.walkers, totalVehicles: game.vehicles.count };
     },
+    get pedestrians() {
+      const peds = game.traffic.peds.filter((ped) => ped.active);
+      return {
+        active: peds.length,
+        alive: peds.filter((ped) => !ped.dead).length,
+        dead: peds.filter((ped) => ped.dead).length,
+        fleeing: peds.filter((ped) => ped.fleeTimer > 0).length,
+        near: peds
+          .map((ped) => ({ ped, d: Math.hypot(ped.x - game.player.position.x, ped.z - game.player.position.z) }))
+          .filter(({ d }) => d < 40)
+          .sort((a, b) => a.d - b.d)
+          .slice(0, 10)
+          .map(({ ped }) => ({ x: Math.round(ped.x * 10) / 10, z: Math.round(ped.z * 10) / 10, health: ped.health, dead: ped.dead })),
+      };
+    },
+    get view() {
+      return { cameraYaw: game.player.cameraYaw, cameraPitch: game.player.cameraPitch };
+    },
+    get loot() {
+      const items = game.pickups.items.filter((item) => item.oneShot && !item.collected && !item.removed);
+      return {
+        count: items.length,
+        items: items.map((item) => ({ kind: item.kind, amount: item.amount, x: item.x, z: item.z })),
+      };
+    },
+    debug: {
+      traffic: game.traffic,
+      player: game.player,
+      camera: game.camera,
+      pickups: game.pickups,
+      police: game.police,
+      missions: game.missions,
+      world: game.world,
+    },
     get police() {
       const hud = game.police.hudState;
       return {
@@ -1132,6 +1174,7 @@ try {
       return {
         health: game.player.health,
         armor: game.player.armor,
+        cash: game.player.cash,
         weapon: game.player.weaponKey,
         ammo: game.player.weaponAmmo.ammo,
         reserve: game.player.weaponAmmo.reserve,

@@ -439,6 +439,7 @@ export class Missions {
     this.onComplete = options.onComplete ?? (() => {});
     this.onStoryComplete = options.onStoryComplete ?? (() => {});
     this.onFail = options.onFail ?? (() => {});
+    this.onHumanDeath = null;
 
     this.index = 0;
     this.storyDone = false;
@@ -1103,6 +1104,7 @@ export class Missions {
     enemy.dead = true;
     enemy.deadTimer = 0;
     enemy.los = false;
+    this.onHumanDeath?.(enemy.x, enemy.z, enemy.boss ? { cashMin: 150, cashMax: 150 } : { cashMin: 40, cashMax: 120 });
     if (this.effects) {
       this.effects.flash(point.x, point.y, point.z, { color: 0xff8d5e, scale: 1.7, life: 0.2, grow: 2.6 });
       this.effects.spark(point.x, point.y, point.z, null, 0xffb064, 8, 4.2);
