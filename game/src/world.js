@@ -46,58 +46,31 @@ import {
   matrixFor,
 } from './world-kit.js';
 
-const ROAD_HALF = WORLD.roadWidth / 2;
-const BLOCK_HALF = WORLD.blockSize / 2;
-const DECK = WORLD.pier;
-const WATER_Y = -0.44;
-const SUN_DIR = new THREE.Vector3(...WORLD.sunDir).normalize();
-const UP = new THREE.Vector3(0, 1, 0);
-const clamp = THREE.MathUtils.clamp;
-const lerp = THREE.MathUtils.lerp;
-const CORE_SET = new Set(CORE_BLOCK_CENTERS);
-
-// The extension blocks are generated after the original core, in a fixed
-// order, so every core tower and sign keeps the exact geometry it had before
-// the city grew. The two new districts are chosen by block centre.
-function districtForBlock(cx, cz) {
-  if (cx >= 216) return 'foundry';
-  if (cz <= -162) return 'oldtown';
-  return null;
-}
-
-const _origin = new THREE.Vector3();
-const _direction = new THREE.Vector3();
-const _hit = new THREE.Vector3();
-
-function segmentHit(origin, direction, maxDistance, box, radius) {
-  let near = 0;
-  let far = maxDistance;
-  for (const axis of ['x', 'y', 'z']) {
-    const min = axis === 'y'
-      ? (box.minY ?? 0)
-      : (axis === 'x' ? box.minX : box.minZ) - radius;
-    const max = axis === 'y'
-      ? (box.maxY ?? 30)
-      : (axis === 'x' ? box.maxX : box.maxZ) + radius;
-    const start = origin[axis];
-    const delta = direction[axis];
-    if (Math.abs(delta) < 1e-6) {
-      if (start < min || start > max) return null;
-      continue;
-    }
-    let first = (min - start) / delta;
-    let second = (max - start) / delta;
-    if (first > second) {
-      const swap = first;
-      first = second;
-      second = swap;
-    }
-    if (first > near) near = first;
-    if (second < far) far = second;
-    if (near > far) return null;
-  }
-  return near > 0.02 ? near : 0.02;
-}
+import {
+  BLOCK_HALF,
+  CORE_SET,
+  DECK,
+  ROAD_HALF,
+  SUN_DIR,
+  UP,
+  WATER_Y,
+  clamp,
+  districtForBlock,
+  lerp,
+} from './world/shared.js';
+import {
+  beachHeight,
+  clipCamera,
+  collides,
+  groundHeightAt,
+  lineBlocked,
+  onBlock,
+  onPierDeck,
+  onRamp,
+  raycast,
+  resolveCircle,
+  vehicleBlocked,
+} from './world/query.js';
 
 export class World {
   constructor(scene, { quality = 'high' } = {}) {
@@ -704,11 +677,6 @@ export class World {
     yellowMesh.receiveShadow = true;
     whiteMesh.receiveShadow = true;
     this.root.add(yellowMesh, whiteMesh);
-  }
-
-  beachHeight(x, z = 0) {
-    const t = clamp((WORLD.cityMinX - x) / (WORLD.cityMinX - WORLD.shorelineX), 0, 1);
-    return -0.45 * t + Math.sin((z + x * 0.6) * 0.09) * 0.01 * t;
   }
 
   buildBeach() {
@@ -2826,193 +2794,47 @@ export class World {
   // ---------------------------------------------------------------- queries
 
   onBlock(x, z) {
-    for (const cx of BLOCK_CENTERS_X) {
-      if (Math.abs(x - cx) > BLOCK_HALF) continue;
-      for (const cz of BLOCK_CENTERS_Z) {
-        if (Math.abs(z - cz) <= BLOCK_HALF) return true;
-      }
-    }
-    return false;
+    return onBlock(this, x, z);
   }
 
   onPierDeck(x, z) {
-    return x >= DECK.minX - 0.2
-      && x <= DECK.maxX + 0.2
-      && Math.abs(z - DECK.z) <= DECK.halfWidth + 0.15;
+    return onPierDeck(this, x, z);
   }
 
   onRamp(x, z) {
-    return x > DECK.maxX - 0.2
-      && x < DECK.rampMaxX + 0.2
-      && Math.abs(z - DECK.z) <= DECK.rampHalfWidth + 0.15;
+    return onRamp(this, x, z);
   }
 
-  /**
-   * Vehicle-only terrain rule. The pier deck and its ramp are pedestrian-only
-   * for every vehicle; AI cars are also kept off the sand, while a player car
-   * may still be driven onto the beach. Vehicles consult this through
-   * `Vehicle.collidesAt`, never through the pedestrian collider list.
-   */
   vehicleBlocked(x, z, isPlayer = false) {
-    if (this.onPierDeck(x, z) || this.onRamp(x, z)) return true;
-    if (this.mall) {
-      const bounds = this.mall.bounds;
-      if (x > bounds.minX && x < bounds.maxX && z > bounds.minZ && z < bounds.maxZ) return true;
-    }
-    if (x < WORLD.cityMinX && !isPlayer) return true;
-    return false;
+    return vehicleBlocked(this, x, z, isPlayer);
   }
 
   groundHeightAt(x, z) {
-    if (this.onPierDeck(x, z)) return DECK.deckY;
-    if (this.onRamp(x, z)) {
-      const t = clamp((DECK.rampMaxX - x) / (DECK.rampMaxX - DECK.rampMinX), 0, 1);
-      return lerp(this.beachHeight(x, z), DECK.deckY, t);
-    }
-    if (x < WORLD.cityMinX) return this.beachHeight(x, z);
-    if (this.onBlock(x, z)) return WORLD.sidewalkHeight;
-    return 0;
+    return groundHeightAt(this, x, z);
+  }
+
+  beachHeight(x, z = 0) {
+    return beachHeight(this, x, z);
   }
 
   collides(x, z, radius = 0.45) {
-    const bounds = WORLD.bounds;
-    if (x < bounds.minX + radius || x > bounds.maxX - radius || z < bounds.minZ + radius || z > bounds.maxZ - radius) {
-      return true;
-    }
-    if (x < WORLD.shorelineX + 0.2 && !this.onPierDeck(x, z) && !this.onRamp(x, z)) return true;
-    for (const box of this.colliders) {
-      if (x > box.minX - radius && x < box.maxX + radius && z > box.minZ - radius && z < box.maxZ + radius) {
-        return true;
-      }
-    }
-    return false;
+    return collides(this, x, z, radius);
   }
 
-  /**
-   * Pushes a circle out of every building/prop collider it overlaps. The
-   * shortest axis wins, and three passes settle the corners where two boxes
-   * touch. Pedestrians use this before every step so nobody walks through a
-   * wall; a moved result is also the collision test for the step.
-   */
   resolveCircle(x, z, radius = 0.4) {
-    const bounds = WORLD.bounds;
-    let px = clamp(x, bounds.minX + radius, bounds.maxX - radius);
-    let pz = clamp(z, bounds.minZ + radius, bounds.maxZ - radius);
-    for (let pass = 0; pass < 3; pass += 1) {
-      let moved = false;
-      for (const box of this.colliders) {
-        if (px <= box.minX - radius || px >= box.maxX + radius) continue;
-        if (pz <= box.minZ - radius || pz >= box.maxZ + radius) continue;
-        const left = px - (box.minX - radius);
-        const right = (box.maxX + radius) - px;
-        const bottom = pz - (box.minZ - radius);
-        const top = (box.maxZ + radius) - pz;
-        const least = Math.min(left, right, bottom, top);
-        if (least === left) px = box.minX - radius;
-        else if (least === right) px = box.maxX + radius;
-        else if (least === bottom) pz = box.minZ - radius;
-        else pz = box.maxZ + radius;
-        moved = true;
-      }
-      if (!moved) break;
-    }
-    return { x: px, z: pz };
+    return resolveCircle(this, x, z, radius);
   }
 
-  /**
-   * Nearest building/prop slab hit along a ray, for hitscan, muzzle checks and
-   * line-of-sight. Ground is treated as a flat plane at road level; the beach
-   * and pier sit close enough that a missed low shot still lands in the dust.
-   */
   raycast(origin, direction, maxDistance = 120) {
-    let best = null;
-    const invX = direction.x !== 0 ? 1 / direction.x : 1e9;
-    const invY = direction.y !== 0 ? 1 / direction.y : 1e9;
-    const invZ = direction.z !== 0 ? 1 / direction.z : 1e9;
-    for (const box of this.colliders) {
-      let tMin = 0;
-      let tMax = maxDistance;
-      let axis = 0;
-      let sign = -1;
-      let hit = true;
-      for (let i = 0; i < 3; i += 1) {
-        const originValue = i === 0 ? origin.x : i === 1 ? origin.y : origin.z;
-        const inverse = i === 0 ? invX : i === 1 ? invY : invZ;
-        const min = i === 0 ? box.minX : i === 1 ? box.minY : box.minZ;
-        const max = i === 0 ? box.maxX : i === 1 ? box.maxY : box.maxZ;
-        if (Math.abs(inverse) > 1e8) {
-          if (originValue < min || originValue > max) { hit = false; break; }
-          continue;
-        }
-        let t1 = (min - originValue) * inverse;
-        let t2 = (max - originValue) * inverse;
-        let nearSign = -1;
-        if (t1 > t2) {
-          const swap = t1;
-          t1 = t2;
-          t2 = swap;
-          nearSign = 1;
-        }
-        if (t1 > tMin) {
-          tMin = t1;
-          axis = i;
-          sign = nearSign;
-        }
-        if (t2 < tMax) tMax = t2;
-        if (tMin > tMax) { hit = false; break; }
-      }
-      if (!hit || tMin <= 0.02 || tMin > maxDistance) continue;
-      if (!best || tMin < best.distance) {
-        best = {
-          distance: tMin,
-          point: new THREE.Vector3(origin.x + direction.x * tMin, origin.y + direction.y * tMin, origin.z + direction.z * tMin),
-          normal: new THREE.Vector3(axis === 0 ? sign : 0, axis === 1 ? sign : 0, axis === 2 ? sign : 0),
-          kind: box.kind ?? 'building',
-        };
-      }
-    }
-    if (direction.y < -0.005 && origin.y > 0.02) {
-      const groundT = (origin.y - 0.02) / -direction.y;
-      if (groundT > 0.02 && groundT < maxDistance && (!best || groundT < best.distance)) {
-        best = {
-          distance: groundT,
-          point: new THREE.Vector3(origin.x + direction.x * groundT, 0.02, origin.z + direction.z * groundT),
-          normal: new THREE.Vector3(0, 1, 0),
-          kind: 'ground',
-        };
-      }
-    }
-    return best;
+    return raycast(this, origin, direction, maxDistance);
   }
 
   lineBlocked(fromX, fromY, fromZ, toX, toY, toZ, padding = 0.8) {
-    _origin.set(fromX, fromY, fromZ);
-    _direction.set(toX - fromX, toY - fromY, toZ - fromZ);
-    const length = _direction.length();
-    if (length < 0.001) return false;
-    _direction.divideScalar(length);
-    const hit = this.raycast(_origin, _direction, length - padding);
-    return Boolean(hit);
+    return lineBlocked(this, fromX, fromY, fromZ, toX, toY, toZ, padding);
   }
 
   clipCamera(from, to, radius, out) {
-    out.copy(to);
-    _origin.copy(from);
-    _direction.copy(to).sub(from);
-    const length = _direction.length();
-    if (length < 1e-4) return out;
-    _direction.divideScalar(length);
-    let nearest = length;
-    for (const box of this.colliders) {
-      const hit = segmentHit(from, _direction, length, box, radius);
-      if (hit !== null && hit < nearest) nearest = hit;
-    }
-    if (nearest < length) {
-      out.copy(from).addScaledVector(_direction, Math.max(0.18, nearest - 0.05));
-    }
-    const floor = this.groundHeightAt(out.x, out.z) + 0.28;
-    if (out.y < floor) out.y = floor;
-    return out;
+    return clipCamera(this, from, to, radius, out);
   }
 
   // ---------------------------------------------------------------- animation
