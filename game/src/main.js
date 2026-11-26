@@ -1133,10 +1133,19 @@ try {
     get view() {
       return { cameraYaw: game.player.cameraYaw, cameraPitch: game.player.cameraPitch };
     },
+    get loot() {
+      const items = game.pickups.items.filter((item) => item.oneShot && !item.collected && !item.removed);
+      return {
+        count: items.length,
+        items: items.map((item) => ({ kind: item.kind, amount: item.amount, x: item.x, z: item.z })),
+      };
+    },
     debug: {
       traffic: game.traffic,
       player: game.player,
       camera: game.camera,
+      pickups: game.pickups,
+      world: game.world,
     },
     get police() {
       const hud = game.police.hudState;
@@ -1156,6 +1165,7 @@ try {
       return {
         health: game.player.health,
         armor: game.player.armor,
+        cash: game.player.cash,
         weapon: game.player.weaponKey,
         ammo: game.player.weaponAmmo.ammo,
         reserve: game.player.weaponAmmo.reserve,

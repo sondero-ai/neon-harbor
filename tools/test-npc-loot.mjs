@@ -221,6 +221,74 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 2: pickups',
+    shot: 'street',
+    body: function pickups() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const player = neon && neon.debug && neon.debug.player;
+      const pickups = neon && neon.debug && neon.debug.pickups;
+      const world = neon && neon.debug && neon.debug.world;
+      const missing = [];
+      if (!neon) missing.push('window.__neon');
+      if (!player || !player.position) missing.push('__neon.debug.player');
+      if (!pickups || typeof pickups.spawnDrop !== 'function') missing.push('__neon.debug.pickups.spawnDrop');
+      if (!pickups || typeof pickups.spawnDeathLoot !== 'function') missing.push('__neon.debug.pickups.spawnDeathLoot');
+      if (!world || typeof world.groundHeightAt !== 'function') missing.push('__neon.debug.world.groundHeightAt');
+      if (!neon || !neon.loot) missing.push('__neon.loot');
+      if (!neon || !neon.combat || typeof neon.combat.cash !== 'number') missing.push('__neon.combat.cash');
+      check('test 2: loot hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      const p = player;
+      const pk = pickups;
+
+      const cashBefore = neon.combat.cash;
+      pk.spawnDrop({ x: p.position.x, z: p.position.z, kind: 'cash', amount: 40 });
+      pk.update(0.016, p);
+      check(
+        'test 2: a cash drop pays out',
+        neon.combat.cash === cashBefore + 40,
+        `cash ${cashBefore} -> ${neon.combat.cash}`,
+      );
+      check('test 2: collected cash leaves no live loot', neon.loot.count === 0, JSON.stringify(neon.loot.items));
+
+      const reserveBefore = neon.combat.reserve;
+      pk.spawnDrop({ x: p.position.x, z: p.position.z, kind: 'pistol', amount: 12 });
+      pk.update(0.016, p);
+      check(
+        'test 2: a pistol drop tops up the reserve',
+        neon.combat.reserve === reserveBefore + 12,
+        `reserve ${reserveBefore} -> ${neon.combat.reserve}`,
+      );
+
+      pk.spawnDrop({ x: p.position.x + 40, z: p.position.z, kind: 'cash', amount: 25, expire: 30 });
+      pk.update(31, p);
+      check('test 2: a drop expires while the player is away', neon.loot.count === 0, JSON.stringify(neon.loot.items));
+
+      for (let i = 0; i < 20; i += 1) pk.spawnDeathLoot(p.position.x + 30 + i, p.position.z, { smgOwned: false });
+      const kinds = neon.loot.items.map((item) => item.kind);
+      check(
+        'test 2: no SMG drop without an owned SMG',
+        kinds.length === 20 && !kinds.includes('smg'),
+        kinds.join(', '),
+      );
+
+      const item = pk.spawnDrop({ x: -210, z: 20, kind: 'cash', amount: 25 });
+      const expected = world.groundHeightAt(-210, 20);
+      check(
+        'test 2: the drop sits on the pier ground',
+        Boolean(item) && item.y === expected,
+        `y=${item && item.y} expected=${expected}`,
+      );
+      return results;
+    },
+  },
 ];
 
 async function main() {

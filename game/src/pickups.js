@@ -4,10 +4,12 @@
 // the collection radius is generous and the HUD announces what was taken.
 
 import * as THREE from '../vendor/three.module.js';
-import { PICKUPS, WEAPONS } from './config.js';
+import { PICKUPS } from './config.js';
 import { makeGlowSprite } from './geo.js';
+import { rollDrop } from './loot.js';
 
 const COLORS = {
+  cash: 0xffc95c,
   pistol: 0xffc95c,
   smg: 0x3fe0cf,
   health: 0x7dff9f,
@@ -67,6 +69,16 @@ function buildIcon(kind, materials) {
     group.add(vest, collar, plate);
     return group;
   }
+  if (kind === 'cash') {
+    const group = new THREE.Group();
+    for (let i = 0; i < 3; i += 1) {
+      const bill = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.045, 0.16), materials.gold);
+      bill.position.set(0, i * 0.05, 0);
+      bill.rotation.y = (i - 1) * 0.18;
+      group.add(bill);
+    }
+    return group;
+  }
   const isSmg = kind === 'smg';
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(isSmg ? 0.12 : 0.1, isSmg ? 0.14 : 0.12, isSmg ? 0.62 : 0.46),
@@ -120,7 +132,7 @@ export class Pickups {
     glow.position.y = 1.0;
     group.add(glow);
     this.scene.add(group);
-    this.items.push({
+    const item = {
       ...spec,
       group,
       icon: bob,
@@ -129,11 +141,21 @@ export class Pickups {
       callback: null,
       collected: false,
       respawn: 0,
-    });
+      oneShot: spec.oneShot === true,
+      expire: spec.expire ?? 0,
+      age: 0,
+      amount: spec.amount,
+      removed: false,
+    };
+    this.items.push(item);
+    return item;
   }
 
   reset() {
     for (const item of this.items) {
+      // One-shot drops belong to this life only: a reset must not revive a
+      // collected drop or extend an expired one.
+      if (item.oneShot) continue;
       item.collected = false;
       item.respawn = 0;
       item.group.visible = true;
@@ -144,7 +166,7 @@ export class Pickups {
     let nearest = null;
     let nearestDistance = 9;
     for (const item of this.items) {
-      if (item.collected) continue;
+      if (item.collected || item.removed) continue;
       const distance = Math.hypot(item.x - this.playerX, item.z - this.playerZ);
       if (distance < nearestDistance) {
         nearest = item;
@@ -159,7 +181,19 @@ export class Pickups {
     this.playerX = player.position.x;
     this.playerZ = player.position.z;
     for (const item of this.items) {
+      if (item.removed) continue;
+      // One-shot drops age out whether or not the player ever reaches them.
+      if (item.oneShot) {
+        item.age += dt;
+        if (item.expire > 0 && item.age >= item.expire) {
+          item.group.removeFromParent();
+          item.removed = true;
+          continue;
+        }
+      }
       if (item.collected) {
+        // A one-shot drop is spent for good; it never starts a respawn timer.
+        if (item.oneShot) continue;
         item.respawn -= dt;
         if (item.respawn <= 0) {
           item.collected = false;
@@ -180,7 +214,7 @@ export class Pickups {
 
   collect(item, player) {
     item.collected = true;
-    item.respawn = RESPAWN;
+    item.respawn = item.oneShot ? 0 : RESPAWN;
     item.group.visible = false;
     let message = item.label;
     if (item.kind === 'health') {
@@ -189,13 +223,16 @@ export class Pickups {
     } else if (item.kind === 'armor') {
       const gained = player.addArmor(45);
       message = `${item.label} · +${Math.round(gained)} ARMOR`;
+    } else if (item.kind === 'cash') {
+      player.cash += item.amount ?? 0;
+      message = `CASH · +$${item.amount ?? 0}`;
     } else if (item.kind === 'smg') {
       const first = !player.weapons.smg.owned;
-      player.grantWeapon('smg', 96);
-      message = first ? 'KESTREL SMG · 32 / 96' : `KESTREL SMG · +${WEAPONS.smg.mag} AMMO`;
+      player.grantWeapon('smg', item.amount ?? 96);
+      message = first ? 'KESTREL SMG · 32 / 96' : `KESTREL SMG · +${item.amount ?? 32} AMMO`;
     } else if (item.kind === 'pistol') {
-      player.grantWeapon('pistol', 48);
-      message = 'SOLANO 9 · AMMO +48';
+      player.grantWeapon('pistol', item.amount ?? 48);
+      message = `SOLANO 9 · AMMO +${item.amount ?? 48}`;
     }
     if (this.effects) {
       this.effects.flash(item.x, item.y + 0.95, item.z, { color: COLORS[item.kind], scale: 2.4, life: 0.28, grow: 3.2 });
@@ -203,5 +240,16 @@ export class Pickups {
     }
     if (this.audio) this.audio.pickup();
     if (this.onPickup) this.onPickup(message, item);
+  }
+
+  // A drop that exists for one life only: no respawn, removed at expiry.
+  spawnDrop(spec) {
+    return this.addItem({ ...spec, oneShot: true, expire: spec.expire ?? 30 });
+  }
+
+  spawnDeathLoot(x, z, { smgOwned = false, cashMin = 15, cashMax = 70 } = {}) {
+    const drop = rollDrop(Math.random, { smgOwned, cashMin, cashMax });
+    const label = drop.kind === 'cash' ? 'CASH' : drop.kind === 'smg' ? 'KESTREL SMG' : 'SOLANO 9';
+    return this.spawnDrop({ x, z, ...drop, label });
   }
 }
