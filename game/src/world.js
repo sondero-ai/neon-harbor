@@ -34,6 +34,7 @@ import {
 } from './geo.js';
 import { GlowField } from './glow-field.js';
 import { buildMall } from './mall.js';
+import { buildGasStation } from './gas-station.js';
 import { makeRng } from './random.js';
 import {
   addBox,
@@ -964,6 +965,12 @@ export class World {
           // The enterable Solano Mall replaces the generic block; its parking
           // lot is built by parking.js once the scene is alive.
           this.mall = buildMall(this);
+          continue;
+        }
+        if (cx === -108 && cz === 0) {
+          // The Solano Fuel station replaces the generic block; its service lane
+          // faces the x = -81 road.
+          this.gasStation = buildGasStation(this);
           continue;
         }
         if (cx === -54 && cz === -108) {

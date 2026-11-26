@@ -3429,6 +3429,37 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 27: the gas station forecourt and service lane',
+    shot: 'street',
+    body: function gasStation() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+      const neon = window.__neon;
+      const world = neon?.debug?.world;
+      const station = neon?.debug?.gasStation;
+      check('test 27: station hooks are exposed', Boolean(world?.gasStation) && Boolean(station), 'station missing');
+      if (!world || !station) return results;
+      check('test 27: the forecourt has two pumps and two slots', station.pumps.length === 2 && station.slots.length === 2,
+        JSON.stringify({ pumps: station.pumps.length, slots: station.slots.length }));
+      check('test 27: a stopped car is within reach of a nozzle',
+        Boolean(station.atPump({ x: -96.5, z: -11 }, 3.5)) && Boolean(station.atPump({ x: -96.5, z: 11 }, 3.5)),
+        'no nozzle within 3.5 m of a slot');
+      check('test 27: the kiosk is solid', world.collides(-120, 0, 0.4) === true);
+      check('test 27: both pump islands are solid', world.collides(-100, -8, 0.4) === true && world.collides(-100, 8, 0.4) === true);
+      check('test 27: the canopy columns are solid', world.collides(-107.5, -9, 0.4) === true && world.collides(-92.5, 9, 0.4) === true);
+      check('test 27: the pump slots are clear for a car',
+        world.collides(-96.5, -11, 0.9) === false && world.collides(-96.5, 11, 0.9) === false);
+      check('test 27: the service lane and both curb cuts are clear',
+        world.collides(-92, -15, 1.2) === false && world.collides(-92, 15, 1.2) === false
+          && world.collides(-88, -18, 1.2) === false && world.collides(-88, 18, 1.2) === false);
+      check('test 27: the forecourt is not vehicle-blocked',
+        world.vehicleBlocked(-100, 0, false) === false && world.vehicleBlocked(-92, -18, false) === false);
+      return results;
+    },
+  },
 ];
 
 async function main() {

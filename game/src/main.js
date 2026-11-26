@@ -157,6 +157,7 @@ class Game {
       if (!this.hud.suppressToasts) this.hud.toast = toast;
     };
     this.interactions.parking = this.parking;
+    this.gasStation = this.world.gasStation;
     this.pickups = new Pickups(this.scene, this.world, this.effects, {
       audio: this.audio,
       onPickup: (message) => {
@@ -1421,6 +1422,7 @@ try {
       pickups: game.pickups,
       interactions: game.interactions,
       parking: game.parking,
+      gasStation: game.gasStation,
       mallLife: game.mallLife,
       robbery: game.robbery,
       police: game.police,
