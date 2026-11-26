@@ -1,2 +1,5 @@
 out/
 .superpowers/
+
+# Raw Suno MP3 downloads; the game ships the processed OGGs in game/audio/radio/
+Suno Audio/
