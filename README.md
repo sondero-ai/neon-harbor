@@ -8,10 +8,12 @@
 
 Neon Harbor is an original third-person open-world crime game for the desktop
 browser. It runs from plain static files with no build step, no package
-install and no network request after the page loads. The setting is a
-neon-night coastal city: six by six blocks of low-rise storefronts and
-downtown towers, a wide beach, a long pier, a working lighthouse, palms,
-streetlights and hand-built neon under a deep indigo sky.
+install and no network request after the page loads. The setting is a coastal
+city with a living clock: nine by nine blocks of low-rise storefronts and
+downtown towers, the brick market lanes of Old Town, the rail yards and
+smokestacks of the Foundry, a wide beach, a long pier, a working lighthouse,
+palms, streetlights and hand-built neon, from dawn through noon to a deep
+indigo night.
 
 You play courier **Rae Solano**, back in the harbor to settle a family debt.
 The build is the whole first chapter: a seeded city, a third-person camera
@@ -76,10 +78,10 @@ same mouse drag looks around. **Enter** confirms the focused menu action.
   moves between high (shadows, full pixel ratio) and low (no shadows, lighter
   pixel ratio) without a reload.
 
-**New Game** starts on Vega Strip beside a parked Riptide, facing the water.
-**Continue** returns to the last pause or save, including the story index,
-cash, health, armor, weapons, ammo, position and any heat that was still on
-you.
+**New Game** starts on Vega Strip at 18:00 on day four, in the last light,
+beside a parked Riptide and facing the water. **Continue** returns to the last
+pause or save, including the story index, cash, health, armor, weapons, ammo,
+position, the time of day and any heat that was still on you.
 
 ## The Solano story
 
@@ -119,27 +121,60 @@ safehouse at `(-71.5, 36.6)` is the save point. Every completed mission, cash
 pickup, delivery, heat run and safehouse visit writes progress through
 `save.js`. Settings (quality, volume, mute) live in their own key; the save
 carries cash, health, armor, wanted stars, mission index, story-complete flag,
-weapons, ammo, camera yaw and position.
+weapons, ammo, camera yaw, position, the minute of day and the day number.
 
 ## The city
 
 The whole harbor is built from one seed in `game/src/config.js`, so every
 tower, window layout and sign lands in the same place on every load. Roads
-form a seven-line grid with lane paint, crossings and raised sidewalks.
-Buildings use eight facade palettes with punched, ribbon and glass window
-patterns, floor bands, lit rooms with blinds and curtains, rooftop tanks and
-antennas, emissive storefronts and neon boards. Landmarks include the Sunset
-Hotel tower, Casa Luna on the beach, Motor Row, the Luna Plaza fountain, the
-radio mast, the Vega Strip arch, Pier 9 and its lighthouse.
+form a ten-line grid — nine blocks each way — with lane paint, crossings and
+raised sidewalks. The original six-by-six core keeps its exact towers,
+storefronts and signs; the extension grows two districts around it. **Old
+Town** to the north is low brick with striped awnings, chimneys and an open
+market square of eight stalls, a bandstand and a pylon sign. **The Foundry**
+to the east is a yard district of wide shallow warehouses, steel rails and
+brick smokestacks with red aircraft lights. Buildings use eight facade
+palettes with punched, ribbon and glass window patterns, floor bands, lit
+rooms with blinds and curtains, rooftop tanks and antennas, emissive
+storefronts and neon boards. Landmarks include the Sunset Hotel tower, Casa
+Luna on the beach, Motor Row, the Luna Plaza fountain, the radio mast, the
+Vega Strip arch, Pier 9 and its lighthouse.
 
-It is 23:41 on the fourth night. A moon and a field of stars sit over the
-harbor, a magenta band of city light pollution hangs on the horizon, and cool
-moonlight plus the warm emissive windows and neon carry the scene. Instanced
-pools under the streetlights and blade signs spill colour onto the pavement.
-The water plane scrolls its surface texture, the foam breathes, a points cloud
-supplies the night glitter, the lighthouse beam turns, and cloud sprites drift
-over the skyline. A typical 1280×720 frame in this build uses roughly 250–450
-draw calls and runs comfortably above 60 fps on a desktop GPU.
+## Times of day
+
+`environment.js` owns one clock and the palette it drives. A New Game starts
+at **18:00 on day four**; the clock runs one in-game minute per two real
+seconds, so a full day takes 48 real minutes and the HUD's `DAY n · HH:MM`
+line advances through it. Continue restores the saved minute and day.
+
+| Period | Clock | What the palette does |
+| --- | --- | --- |
+| Dawn | 05:00–07:00 | rose fog, a low amber sun, windows and lamps half on |
+| Day | 07:00–17:00 | pale blue sky, a high white sun, windows and neon dimmed, no lamp pools or headlight beams |
+| Dusk | 17:00–19:00 | orange horizon, long shadows, windows and signs coming up |
+| Night | 19:00–05:00 | the indigo-to-magenta sky, the moon and stars, full neon, lamp pools and headlights |
+
+Each boundary gets a sixty-minute smoothstep blend. The palette is one blend
+of fog colour and distance, hemisphere and ambient light, sun direction and
+warmth, exposure, sky texture crossfade, star opacity, moon and sun sprites,
+window emission, crown and pier neon, street-lamp colour and pools, car
+headlight brightness, and water tint and sparkle. The night keeps the moon,
+the magenta band of city light pollution on the horizon, cool moonlight plus
+warm emissive windows, instanced pools under the streetlights and blade signs,
+the scrolling water, the turning lighthouse beam and drifting clouds.
+
+A `?shot=` capture pins the clock at **23:41** so the screenshots are
+repeatable; `?time=HH:MM` overrides it for any shot or free-play load. The day
+screenshot in this README is the same blockade pose captured with
+`?time=10:30`.
+
+A typical 1280×720 frame in this build uses about **370 draw calls** at the
+chase shot, with a **4.7 ms** median frame in headless Chrome on the build
+machine; the pre-living-city base measures 433 and 4.9 ms on the same
+harness. Static glows share one instanced billboard field, each car's four
+wheels are one instanced mesh, and the Air 1 airframe is merged per material,
+so the larger city and crowd cost less per frame than the old six-by-six
+build.
 
 ## Traffic and driving
 
@@ -155,14 +190,26 @@ handbrake, ground-following pitch and roll on curbs and the pier ramp,
 building collision, and a pooled skid-mark ribbon. Engine state is exposed per
 vehicle for audio.
 
-`traffic.js` keeps cars in the grid lanes and runs a two-phase signal at every
-intersection. Cars brake for the stop line, keep a following gap to anything in
-their lane, wait for pedestrians in the crosswalk, and recycle in and out of
-view around the player. Pedestrians loop the block sidewalks, stop at corners,
-cross at the painted crosswalks, and gather on the pier and the beach. The
-whole crowd is drawn through instanced meshes, so the street stays fluid with a
-few dozen people on screen. The minimap mirrors the traffic with vehicle blips,
-and the HUD reports the live car and walker counts.
+`traffic.js` keeps up to **18 cars** in the grid lanes and fills the blocks
+with **96 pedestrians**: a 48-walker sidewalk crowd that loops the block
+edges, 22 people on the beach and the pier, and crosswalk pedestrians. Cars
+brake for the stop line, keep a following gap to anything in their lane, wait
+for pedestrians in the crosswalk, and recycle in and out of view around the
+player. The whole crowd is drawn through instanced meshes, so the street stays
+fluid with a full crowd on screen.
+
+Every one of the 100 intersections has a visible signal (`traffic-signals.js`):
+a pole and two heads, one colour-and-axis instanced lamp set each, and a small
+night pool. The lamps and the car rule call the same `signalState()` — green
+for 7.5 s, amber for 1.5 s, red for the other axis — so a driving light and a
+stopping car cannot disagree. The minimap mirrors the traffic with vehicle
+blips and the HUD reports the live car and walker counts.
+
+Pedestrians never walk through a building. `world.resolveCircle()` pushes the
+walker out of the nearest collider and `walkToward()` tries the full step,
+then x-only, then z-only, then stops and lets the block loop pick another
+corner. Foot officers and mission enemies use the same resolve, so a chase
+around a corner slides along the wall instead of clipping through it.
 
 ## Heat and combat
 
@@ -250,7 +297,8 @@ blips, mission enemies in coral and the objective marker, plus the crew panel
 (Mira Sol, Odin and Kiki with live role/status lines) and an NPC dialogue box
 with a drawn portrait, speaker name, role and line. The right rail carries the
 cash card, five wanted stars, `PURSUIT · 6 UNITS` or the search status, the
-`DAY 4 · 23:41` clock, the `STRIP RUNNER · 62/250 RESPECT` meter, the HPD
+`DAY 4 · 18:00` clock with a live `DAWN / DAY / DUSK / NIGHT SHIFT` label,
+the `STRIP RUNNER · 62/250 RESPECT` meter, the HPD
 response roster with named callsigns, roles and distances, the five-slot weapon
 strip (Solano 9, Kestrel SMG, the always-carried street knife at slot 3 with
 `--` ammo and a `STREET KNIFE · CQC` footer, and locked rifle and RPG slots),
@@ -284,7 +332,7 @@ composited and no filters are applied.
 
 | | |
 | --- | --- |
-| ![Night chase on Vega Strip](screenshots/1-cover.jpg)<br>**1-cover.jpg · Night chase** | ![HPD roadblock at four stars](screenshots/2-street.jpg)<br>**2-street.jpg · Roadblock** |
+| ![Night chase on Vega Strip](screenshots/1-cover.jpg)<br>**1-cover.jpg · Night chase** | ![Daylight HPD roadblock](screenshots/2-street.jpg)<br>**2-street.jpg · Daylight roadblock** |
 | ![Pier 9 burning](screenshots/3-mission.jpg)<br>**3-mission.jpg · Pier 9 burning** | ![Title screen over the night skyline](screenshots/4-title.jpg)<br>**4-title.jpg · Title** |
 
 What each shot shows:
@@ -294,9 +342,11 @@ What each shot shows:
   the MART neon, Air 1 and its searchlight overhead, and the full HUD at once:
   CH.2 mission card, six-unit response roster, Sgt. Vale dispatch dialogue,
   crew panel, five-slot weapon strip and the Riptide vehicle card at 78 km/h.
-- `2-street.jpg` — `?shot=blockade`: an HPD roadblock on Vega Strip at four
-  stars, the six-unit roster with RAMMING, SPOTLIGHT, CLOSING IN and ROADBLOCK
-  entries, Sgt. Vale on the radio, and the player caught in Air 1's beam.
+- `2-street.jpg` — `?shot=blockade&time=10:30`: the same roadblock in
+  daylight, proving the living clock: pale blue sky, a high sun, long building
+  shadows, dimmed windows and neon, and the four-star roster with RAMMING,
+  SPOTLIGHT, CLOSING IN and ROADBLOCK entries. The HUD reads
+  `DAY 4 · 10:30 · DAY SHIFT`.
 - `3-mission.jpg` — `?shot=heist`: the Pier 9 docks at night, the lighthouse,
   burning barrels, Aurelio's enforcers and tracers, the CH.5 · LAST EXIT /
   PIER 9 BURNING card, the `CLEAR PIER 9` objective and the Pier 9 minimap.
@@ -306,8 +356,11 @@ What each shot shows:
 Every shot builds the real world, player, police or mission director, weapons,
 effects and HUD, runs a fixed number of simulation steps and then freezes. Shot
 mode forces high quality, suppresses toasts and the fresh-slot title card, and
-does not depend on pointer lock or the wall clock. The other staged poses
-(`street`, `drive`, `mission`, `pier`) remain available for development checks.
+does not depend on pointer lock or the wall clock. `tools/capture.mjs` pins the
+cover, heist and title to the shot clock (23:41) and the roadblock to
+`?time=10:30`, so the four-image contact sheet shows both ends of the living
+clock. The other staged poses (`street`, `drive`, `mission`, `pier`) remain
+available for development checks.
 
 ## Build the entry
 
@@ -361,8 +414,28 @@ the fall state and corpse cleanup, the 14 m panic radius and 6 s flee and
 recovery, loot pickup and its 30-second expiry, reset, the real
 `player.fireWeapon` path and officer death loot, the murder-heat 911 delay and
 its police-witness shortcut, the knife's slot-3 selection, 1.5 m lethal reach
-and silent gunfire-free kill, and the armed witness's draw, first shot and
-45 m give-up.
+and silent gunfire-free kill, the armed witness's draw, first shot and
+45 m give-up, plus three groups added with the living city:
+
+- **crowd density** — the 96/48/22/18 targets, all 22 beach walkers seeded, no
+  two pedestrians sharing a slot, the 48-walker sidewalk fill, and a free slot
+  still available after the fill;
+- **traffic signals** — a signal at every one of the 100 intersections, the
+  green/amber/red rule at seven times, and the visible lamp sets matching the
+  state at green, amber and the switch;
+- **pedestrian collision** — a target straight through a known building, the
+  stop at the wall face, a reachable target still reached, forward progress
+  along a wall, and 60 simulated seconds with no live walker inside a collider.
+
+The suite prints one `ok`/`not ok` line per check and exits non-zero on a
+failure; the last run passed all 128 checks.
+
+```bash
+node --test test/loot.test.mjs     # pure loot table
+node tools/test-npc-loot.mjs       # headless Chrome end-to-end, 128 checks
+MAKEFUN_OUTPUT_DIR=out node main.ts --check   # entry caps, one summary line
+```
+
 Set `CHROME` to a Chrome or Chromium executable if the default lookup misses.
 
 ## Source map
@@ -371,20 +444,28 @@ Set `CHROME` to a Chrome or Chromium executable if the default lookup misses.
   reporter.
 - `game/src/main.js` — boot, fixed-step loop, screen state machine, quality,
   save wiring, vehicle entry/exit, radio state and deterministic shot staging.
-- `game/src/world.js` — city generation, ground/collision/camera queries, beach,
-  pier, lighthouse, ocean, the night sky and moon, lights, signs, light pools
-  and animation.
+- `game/src/world.js` — nine-by-nine city generation, Old Town and the
+  Foundry, the market square, ground/collision/camera queries, beach, pier,
+  lighthouse, ocean, the four sky textures, sun and moon, lights, signs, the
+  merged glow field and animation.
+- `game/src/environment.js` — the 24-hour clock, the dawn/day/dusk/night
+  palettes, the boundary blend, `?time=` parsing and the renderer/scene apply
+  step.
+- `game/src/glow-field.js` — one instanced camera-facing quad mesh for the
+  static glow sprites (aircraft beacons, street lamps, pier bulbs, sign spill),
+  with per-item colour and brightness.
 - `game/src/geo.js` — reusable mesh, facade, sign and billboard factories, and
   the geometry merge.
-- `game/src/vehicles.js` — seven vehicle classes, meshes, arcade physics,
-  lights and pooled skid marks.
-- `game/src/traffic.js` — lane traffic, signals, following, pedestrians,
-  crosswalk crossings, beach/pier crowd, panic and armed witnesses, and shot
-  staging.
+- `game/src/vehicles.js` — seven vehicle classes, meshes, instanced wheels,
+  arcade physics, lights and pooled skid marks.
+- `game/src/traffic.js` — 18 lane cars, the 96-slot crowd, crosswalk crossings,
+  beach/pier crowd, panic and armed witnesses, wall sliding, and shot staging.
+- `game/src/traffic-signals.js` — the shared 18 s signal clock, the merged
+  pole/housing mesh, the six instanced lamp sets and the night pool.
 - `game/src/police.js` — wanted level, pursuit driving, search/decay, cruiser
   and officer combat, civilian murder reports and the 911 call, roadblocks,
-  callsigns, the Air 1 helicopter and its searchlight, the response roster,
-  busted/wasted handshake and chase staging.
+  callsigns, the merged Air 1 airframe and its searchlight, the response
+  roster, busted/wasted handshake and chase staging.
 - `game/src/missions.js` — the five-mission director: markers, dialogue queue,
   mission enemies and bosses, objectives, timers, rewards, failure and retry,
   pier fire, and mission/heist staging.
@@ -407,11 +488,13 @@ Set `CHROME` to a Chrome or Chromium executable if the default lookup misses.
   street-job panels, crosshair, rewards and failure/down/ending screens.
 - `game/src/input.js` — keyboard, mouse, wheel, pointer lock and mouse edges.
 - `game/src/save.js` — guarded localStorage save, story/mission index, weapons,
-  quality, volume and mute settings.
-- `game/src/random.js`, `config.js` — seeded RNG, the night clock, district and
-  street names, tune labels and shared constants.
+  clock minute and day, quality, volume and mute settings.
+- `game/src/random.js`, `config.js` — seeded RNG, the city dimensions and road
+  grid, the clock constants, district and street names, tune labels and shared
+  constants.
 - `game/src/shots.js` — the fixed `start`, `street`, `blockade`, `drive`,
-  `chase`, `mission`, `heist` and `pier` screenshot poses.
+  `chase`, `mission`, `heist` and `pier` screenshot poses, each pinnable to a
+  different `?time=HH:MM`.
 - `game/vendor/` — three.js r180's minified module and core builds behind the
   one-line `three.module.js` shim.
 - `main.ts`, `serve.ts`, `vendor/makefun-game.ts` — entrypoint, development
@@ -421,8 +504,9 @@ Set `CHROME` to a Chrome or Chromium executable if the default lookup misses.
   `docs/media/overview.gif` and `docs/media/combat.jpg`; needs ffmpeg on
   `PATH` or in `FFMPEG`.
 - `tools/test-npc-loot.mjs` — the stdlib-only headless-Chrome E2E for
-  pedestrian death, panic and loot, murder heat, the street knife and armed
-  witnesses across the frozen street and blockade scenes.
+  pedestrian death, panic and loot, murder heat, the street knife, armed
+  witnesses, crowd density, the intersection signals and pedestrian wall
+  collision across the frozen street and blockade scenes.
 
 ## Bounty and license
 

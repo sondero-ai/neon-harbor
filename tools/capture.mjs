@@ -23,7 +23,8 @@ const MAX_BYTES = 262144;
 
 const SHOTS = [
   { shot: 'chase', file: '1-cover.jpg', quality: 87 },
-  { shot: 'blockade', file: '2-street.jpg', quality: 87 },
+  // One daylight frame so the contact sheet shows the living clock.
+  { shot: 'blockade', file: '2-street.jpg', quality: 87, time: '10:30' },
   { shot: 'heist', file: '3-mission.jpg', quality: 87 },
   { shot: 'start', file: '4-title.jpg', quality: 89 },
 ];
@@ -253,7 +254,7 @@ async function main() {
 
     console.log(`Chrome ${chrome}`);
     for (const entry of SHOTS) {
-      const url = `http://127.0.0.1:${serverPort}/?shot=${entry.shot}&capture=${Date.now()}`;
+      const url = `http://127.0.0.1:${serverPort}/?shot=${entry.shot}${entry.time ? `&time=${entry.time}` : ''}&capture=${Date.now()}`;
       await send('Page.navigate', { url });
       const deadline = Date.now() + 30000;
       let ready = false;

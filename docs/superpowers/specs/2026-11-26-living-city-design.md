@@ -49,6 +49,15 @@ stay where they are.
   baseline. Merge static geometry per block as the current world already
   does; do not add a draw call per building.
 
+**Measured 2026-11-26 (correction).** The 272 baseline was stale: the merged
+`night-final` base measures **433 draw calls and a 4.9 ms median** on the same
+headless harness. The finished branch measures **370 draw calls and a 4.7 ms
+median** at the same chase pose — 0.85x the base's calls and 0.96x its frame
+time — so the 1.4x / 1.3x budgets hold with room to spare. Getting under the
+absolute 380 took three batching passes the plan did not anticipate: one
+instanced billboard field for static glows, one instanced mesh for each car's
+four wheels, and a per-material merge of the Air 1 airframe.
+
 ## 2. Crowd density
 
 - `MAX_PEDS` 48 -> **96**; `SIDEWALK_TARGET` 24 -> **48**; `BEACH_TARGET`
