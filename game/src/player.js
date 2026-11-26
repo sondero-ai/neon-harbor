@@ -7,6 +7,18 @@
 import * as THREE from '../vendor/three.module.js';
 import { CAMERA, PLAYER, WEAPONS } from './config.js';
 import { Humanoid } from './humanoid.js';
+import {
+  addArmor,
+  applyDamage,
+  finishReload,
+  fireWeapon,
+  grantWeapon,
+  heal,
+  meleeAttack,
+  selectWeapon,
+  startReload,
+  updateCombat,
+} from './player-combat.js';
 
 const clamp = THREE.MathUtils.clamp;
 const damp = THREE.MathUtils.damp;
@@ -504,252 +516,43 @@ export class Player {
   }
 
   selectWeapon(key) {
-    if (!WEAPONS[key] || !this.weapons[key]?.owned) return;
-    if (key === this.weaponKey) return;
-    this.weaponKey = key;
-    this.reloadTimer = 0;
-    this.syncGunModel();
-    if (this.audio) this.audio.uiClick();
+    return selectWeapon(this, key);
   }
 
   startReload() {
-    const spec = this.weaponSpec;
-    const ammo = this.weaponAmmo;
-    if (!spec || spec.melee || this.reloadTimer > 0 || ammo.ammo >= spec.mag || ammo.reserve <= 0) return;
-    this.reloadTimer = spec.reload;
-    this.reloadTotal = spec.reload;
-    if (this.audio) this.audio.reload();
+    return startReload(this);
   }
 
   finishReload() {
-    const spec = this.weaponSpec;
-    const ammo = this.weaponAmmo;
-    const needed = spec.mag - ammo.ammo;
-    const taken = Math.min(needed, ammo.reserve);
-    ammo.ammo += taken;
-    ammo.reserve -= taken;
+    return finishReload(this);
   }
 
   updateCombat(dt, input, camera) {
-    if (this.dead) {
-      this.gun.visible = false;
-      return;
-    }
-    if (this.sitting) {
-      this.aiming = false;
-      this.humanoid.aiming = false;
-      this.gun.visible = false;
-      return;
-    }
-    this.fireCooldown = Math.max(0, this.fireCooldown - dt);
-    this.meleeSwing = Math.max(0, this.meleeSwing - dt);
-    this.hitMarker = Math.max(0, this.hitMarker - dt * 5.5);
-    this.damageFlash = Math.max(0, this.damageFlash - dt * 2.2);
-    this.recoil = Math.max(0, this.recoil - dt * 0.24);
-    if (this.knifeModel) {
-      const swing = this.meleeSwing > 0 ? 1 - this.meleeSwing / 0.28 : 0;
-      this.knifeModel.rotation.x = -Math.sin(swing * Math.PI) * 1.15;
-      // The arm and hand follow the same swing, a beat behind the blade.
-      this.humanoid.melee = this.meleeSwing > 0 ? swing : 0;
-    }
-
-    if (this.knockdown > 0) {
-      this.aiming = false;
-      this.humanoid.aiming = false;
-      this.gun.visible = false;
-      return;
-    }
-
-    if (input.wasPressed('Digit1')) this.selectWeapon('pistol');
-    if (input.wasPressed('Digit2')) this.selectWeapon('smg');
-    if (input.wasPressed('Digit3')) this.selectWeapon('knife');
-    if (input.wasPressed('KeyR')) this.startReload();
-
-    if (this.reloadTimer > 0) {
-      this.reloadTimer -= dt;
-      if (this.reloadTimer <= 0) {
-        this.reloadTimer = 0;
-        this.finishReload();
-        if (this.audio) this.audio.uiClick();
-      }
-    }
-
-    if (this.driving) {
-      this.gun.visible = false;
-      if (input.wasMousePressed(0) || input.wasPressed('KeyH')) {
-        if (this.audio) this.audio.horn();
-      }
-      return;
-    }
-
-    // The knife stays in hand while selected; the guns only come up when
-    // aiming or just after a shot.
-    this.gun.visible = Boolean(this.weaponSpec.melee) || this.aiming || this.fireCooldown > 0.16;
-    this.gun.rotation.x = damp(this.gun.rotation.x, this.aiming ? Math.PI / 2 : 0, 18, dt);
-    const wantsFire = this.weaponSpec.auto ? input.isMouseDown(0) : input.wasMousePressed(0);
-    if (wantsFire) this.fireWeapon(camera);
+    return updateCombat(this, dt, input, camera);
   }
 
   fireWeapon(camera) {
-    const spec = this.weaponSpec;
-    const ammo = this.weaponAmmo;
-    if (this.reloadTimer > 0 || this.fireCooldown > 0) return;
-    if (spec.melee) {
-      this.meleeAttack(camera);
-      return;
-    }
-    if (ammo.ammo <= 0) {
-      if (this.audio) this.audio.uiClick();
-      this.startReload();
-      return;
-    }
-    ammo.ammo -= 1;
-    this.fireCooldown = 1 / spec.fireRate;
-    this.recoil = Math.min(0.09, this.recoil + spec.kick);
-    this.lastGunfire = this.playSeconds;
-    // Hip fire turns the body with the camera so the tracer starts where the
-    // weapon is actually pointing.
-    this.facing = this.cameraYaw - Math.PI;
-    this.humanoid.setFacing(this.facing);
-
-    const origin = camera.position.clone();
-    const direction = camera.getWorldDirection(new THREE.Vector3());
-    const spread = this.aiming ? spec.spread : spec.spread + spec.movingSpread;
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
-    direction.addScaledVector(right, (Math.random() - 0.5) * spread * 2);
-    direction.addScaledVector(up, (Math.random() - 0.5) * spread * 2);
-    direction.normalize();
-
-    const worldHit = this.world.raycast(origin, direction, spec.range);
-    const maxDistance = worldHit ? worldHit.distance : spec.range;
-    const policeTarget = this.police ? this.police.traceShot(origin, direction, maxDistance) : null;
-    const missionTarget = this.missions ? this.missions.traceShot(origin, direction, maxDistance) : null;
-    const pedTarget = this.traffic ? this.traffic.traceShot(origin, direction, maxDistance) : null;
-    let target = policeTarget;
-    if (missionTarget && (!target || missionTarget.distance < target.distance)) target = missionTarget;
-    if (pedTarget && (!target || pedTarget.distance < target.distance)) target = pedTarget;
-    const endpoint = new THREE.Vector3();
-    if (target) {
-      endpoint.copy(target.point);
-      this.hitMarker = 1;
-      if (target.enemy && this.missions) {
-        this.missions.applyPlayerHit(target, spec.damage, { weapon: this.weaponKey });
-      } else if (target.type === 'ped' && this.traffic) {
-        this.traffic.applyPlayerHit(target, spec.damage);
-      } else if (this.police) {
-        this.police.applyPlayerHit(target, spec.damage, { weapon: this.weaponKey });
-      }
-    } else if (worldHit) {
-      endpoint.copy(worldHit.point);
-      if (this.effects) this.effects.impact(worldHit.point, worldHit.normal, worldHit.kind === 'building' ? 'concrete' : 'concrete');
-    } else {
-      endpoint.copy(origin).addScaledVector(direction, spec.range);
-    }
-
-    const muzzle = new THREE.Vector3(
-      this.position.x + Math.sin(this.facing) * 0.62,
-      this.position.y + 1.36,
-      this.position.z + Math.cos(this.facing) * 0.62,
-    );
-    if (this.effects) {
-      this.effects.muzzle(muzzle.x, muzzle.y, muzzle.z, 0xffd79a);
-      this.effects.tracer(muzzle, endpoint, spec.tracer);
-      this.effects.shake(spec.auto ? 0.09 : 0.16);
-    }
-    if (this.audio) this.audio.gunshot(this.weaponKey);
-    if (this.police) this.police.reportGunfire(this.position.x, this.position.z);
-    if (this.weaponAmmo.ammo <= 0 && this.weaponAmmo.reserve > 0) this.startReload();
+    return fireWeapon(this, camera);
   }
 
-  /** A 2.1 m silent swing. No ammo, no gunshot and no gunfire report. */
   meleeAttack(camera) {
-    const spec = this.weaponSpec;
-    if (!spec.melee || this.fireCooldown > 0) return;
-    this.fireCooldown = 1 / spec.fireRate;
-    this.meleeSwing = 0.28;
-    this.facing = this.cameraYaw - Math.PI;
-    this.humanoid.setFacing(this.facing);
-
-    // The reach is measured from Rae's chest along the chase camera's forward
-    // direction; a camera-origin ray could never touch anything in front of her.
-    const origin = new THREE.Vector3(this.position.x, this.position.y + 1.2, this.position.z);
-    const direction = camera.getWorldDirection(new THREE.Vector3());
-    const worldHit = this.world.raycast(origin, direction, spec.range);
-    const maxDistance = worldHit ? Math.min(spec.range, worldHit.distance) : spec.range;
-    const policeTarget = this.police ? this.police.traceShot(origin, direction, maxDistance) : null;
-    const missionTarget = this.missions ? this.missions.traceShot(origin, direction, maxDistance) : null;
-    const pedTarget = this.traffic ? this.traffic.traceShot(origin, direction, maxDistance) : null;
-    let target = policeTarget;
-    if (missionTarget && (!target || missionTarget.distance < target.distance)) target = missionTarget;
-    if (pedTarget && (!target || pedTarget.distance < target.distance)) target = pedTarget;
-    if (!target) return;
-
-    this.hitMarker = 1;
-    const meleeTarget = { ...target, headshot: false };
-    if (target.enemy && this.missions) {
-      this.missions.applyPlayerHit(meleeTarget, spec.damage, { weapon: 'knife' });
-    } else if (target.type === 'ped' && this.traffic) {
-      this.traffic.applyPlayerHit(meleeTarget, spec.damage);
-    } else if (this.police) {
-      this.police.applyPlayerHit(meleeTarget, spec.damage, { weapon: 'knife' });
-    }
-    if (this.effects) {
-      this.effects.impact(target.point, null, 'metal');
-      this.effects.shake(0.1);
-    }
-    if (this.audio) this.audio.knife();
+    return meleeAttack(this, camera);
   }
 
   applyDamage(amount, fromX = null, fromZ = null) {
-    if (this.dead) return true;
-    let remaining = Math.max(0, amount);
-    if (this.armor > 0) {
-      const absorbed = Math.min(this.armor, remaining * 0.62);
-      this.armor -= absorbed;
-      remaining -= absorbed;
-    }
-    this.health = Math.max(0, this.health - remaining);
-    this.damageFlash = Math.min(1.4, this.damageFlash + 0.55 + amount * 0.012);
-    if (this.effects) {
-      this.effects.hurt(Math.min(0.7, amount * 0.024 + 0.08));
-      this.effects.shake(Math.min(0.55, amount * 0.026));
-    }
-    if (this.audio) this.audio.hurt();
-    if (fromX !== null && fromZ !== null) {
-      this.lastHitAngle = Math.atan2(fromX - this.position.x, fromZ - this.position.z);
-    }
-    if (this.health <= 0) {
-      this.dead = true;
-      this.aiming = false;
-      this.humanoid.aiming = false;
-      this.gun.visible = false;
-    }
-    return this.dead;
+    return applyDamage(this, amount, fromX, fromZ);
   }
 
   heal(amount) {
-    if (this.dead) return 0;
-    const before = this.health;
-    this.health = Math.min(100, this.health + amount);
-    return this.health - before;
+    return heal(this, amount);
   }
 
   addArmor(amount) {
-    if (this.dead) return 0;
-    const before = this.armor;
-    this.armor = Math.min(100, this.armor + amount);
-    return this.armor - before;
+    return addArmor(this, amount);
   }
 
   grantWeapon(key, reserve = 0) {
-    if (!WEAPONS[key]) return;
-    const slot = this.weapons[key];
-    const fresh = !slot.owned;
-    slot.owned = true;
-    slot.reserve = Math.min(999, slot.reserve + reserve);
-    if (fresh) slot.ammo = Math.min(WEAPONS[key].mag, slot.reserve);
-    if (fresh) this.selectWeapon(key);
+    return grantWeapon(this, key, reserve);
   }
 
   revive(x = PLAYER.spawn.x, z = PLAYER.spawn.z, facing = PLAYER.spawnFacing, cameraYaw = facing + Math.PI) {
