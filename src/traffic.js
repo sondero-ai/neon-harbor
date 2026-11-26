@@ -1,228 +1,52 @@
 // The street life: lane-following cars that obey a two-phase grid signal,
 // keep their distance, yield to people, and recycle around the player; plus
 // pedestrians who loop their blocks, cross at the painted crosswalks, and
-// gather at the beach and pier. The whole crowd renders through seven
-// instanced meshes, so thirty-odd people cost seven draw calls.
+// gather at the beach and pier. Car AI lives in traffic-cars.js, the
+// pedestrian simulation in traffic-peds.js and the instanced crowd in
+// traffic-crowd.js; this file owns the shared state, the seeding hooks and
+// the per-frame order.
 
-import * as THREE from '../vendor/three.module.js';
-import { BLOCK_CENTERS_X, BLOCK_CENTERS_Z, ROADS_X, ROADS_Z, WORLD } from './config.js';
-import { TRAFFIC_MIX, pickVehicleColor } from './vehicles.js';
+import { WORLD } from './config.js';
 import { makeRng } from './random.js';
-import { signalState } from './traffic-signals.js';
+import { Crowd, MAX_PEDS } from './traffic-crowd.js';
+import {
+  ejectDriver,
+  removeCar,
+  spawnAmbientCar,
+  spawnLaneCar,
+  updateCars,
+} from './traffic-cars.js';
+import {
+  PANIC_RADIUS,
+  applyPlayerHit,
+  armedPedShoot,
+  arriveCorner,
+  carNear,
+  despawnPed,
+  finishCrossing,
+  nearestBlock,
+  panic,
+  pickBeachTarget,
+  releasePedSeat,
+  sendPedFleeing,
+  setNextCorner,
+  spawnAmbientPed,
+  spawnPed,
+  spawnSidewalkPed,
+  traceShot,
+  tryCross,
+  updateArmedPed,
+  updatePeds,
+  walkToward,
+} from './traffic-peds.js';
 
-const clamp = THREE.MathUtils.clamp;
-const damp = THREE.MathUtils.damp;
+export { LANE_OFFSET } from './traffic-cars.js';
+
 const TAU = Math.PI * 2;
 
-export const LANE_OFFSET = 3.2;
-const STOP_LINE = 12.4;
-const CORNER = 17.4;
-const MAX_PEDS = 168;
 const SIDEWALK_TARGET = 64;
 const BEACH_TARGET = 28;
 const CAR_TARGET = 18;
-const PANIC_RADIUS = 14;
-const PANIC_SECONDS = 6;
-const FLEE_SPEED = 1.6;
-const ARMED_JACKET = 0x6b1e29;
-const ARMED_CHANCE = 0.15;
-const ARMED_DRAW_SECONDS = 0.9;
-const ARMED_FIRE_SECONDS = 1.2;
-const ARMED_RANGE = 30;
-const ARMED_GIVE_UP_RANGE = 45;
-const ARMED_GIVE_UP_SECONDS = 12;
-const ARMED_DAMAGE = 9;
-
-const CORNERS = [
-  [CORNER, CORNER],
-  [-CORNER, CORNER],
-  [-CORNER, -CORNER],
-  [CORNER, -CORNER],
-];
-
-function cornerIndexFor(relativeX, relativeZ) {
-  for (let i = 0; i < CORNERS.length; i += 1) {
-    if (Math.sign(CORNERS[i][0]) === Math.sign(relativeX) && Math.sign(CORNERS[i][1]) === Math.sign(relativeZ)) {
-      return i;
-    }
-  }
-  return 0;
-}
-
-/** The car rule is exactly the lamp rule; amber and red both stop. */
-function signalGreen(axis, elapsed) {
-  return signalState(axis, elapsed) === 'green';
-}
-
-function laneYaw(axis, direction) {
-  if (axis === 'x') return direction > 0 ? Math.PI / 2 : -Math.PI / 2;
-  return direction > 0 ? 0 : Math.PI;
-}
-
-function lanePoint(axis, line, direction, along) {
-  if (axis === 'x') {
-    return { x: along, z: line + direction * LANE_OFFSET, yaw: laneYaw(axis, direction) };
-  }
-  return { x: line - direction * LANE_OFFSET, z: along, yaw: laneYaw(axis, direction) };
-}
-
-// Same ray/sphere test the Harbor PD uses, kept local so the traffic module
-// stays independent of police.js.
-function raySphere(origin, direction, cx, cy, cz, radius) {
-  const ox = origin.x - cx;
-  const oy = origin.y - cy;
-  const oz = origin.z - cz;
-  const b = ox * direction.x + oy * direction.y + oz * direction.z;
-  const c = ox * ox + oy * oy + oz * oz - radius * radius;
-  const discriminant = b * b - c;
-  if (discriminant < 0) return null;
-  const root = Math.sqrt(discriminant);
-  const t = -b - root;
-  if (t < 0.05) {
-    const t2 = -b + root;
-    return t2 > 0.05 ? t2 : null;
-  }
-  return t;
-}
-
-const clothing = [0xd75543, 0x3f8f8f, 0xe4d6b8, 0x6a7f54, 0x8a4f6d, 0x4b5f8c, 0xe0a94f, 0x9c3b42, 0x557a6a, 0xc7a887];
-const pants = [0x252334, 0x3a3340, 0x2d3f4a, 0x51463c, 0x1d222c, 0x5d5548];
-const skins = [0xb87a60, 0x8c5a44, 0xd9a37c, 0x6e4636, 0xc28d6a, 0x9c6c50];
-const hairs = [0x24161c, 0x3b241c, 0x17141a, 0x6b4a2c, 0x8f8272, 0x4a2b33];class Crowd {
-  constructor(scene, capacity = MAX_PEDS) {
-    this.capacity = capacity;
-    this.meshes = {};
-
-    const torsoGeometry = new THREE.BoxGeometry(0.4, 0.54, 0.25);
-    torsoGeometry.translate(0, 0.27, 0);
-    const headGeometry = new THREE.SphereGeometry(0.157, 8, 6);
-    headGeometry.translate(0, 0.16, 0);
-    headGeometry.scale(0.94, 1.03, 0.92);
-    const hairGeometry = new THREE.SphereGeometry(0.165, 8, 5, 0, TAU, 0, Math.PI * 0.58);
-    hairGeometry.translate(0, 0.17, 0);
-    const armGeometry = new THREE.BoxGeometry(0.11, 0.49, 0.12);
-    armGeometry.translate(0, -0.245, 0);
-    const legGeometry = new THREE.BoxGeometry(0.145, 0.78, 0.165);
-    legGeometry.translate(0, -0.39, 0);
-    const hatGeometry = new THREE.CylinderGeometry(0.15, 0.185, 0.1, 8);
-    hatGeometry.translate(0, 0.05, 0);
-    // A shopping bag hangs from the right hand on the walk to the food court.
-    const bagGeometry = new THREE.BoxGeometry(0.22, 0.2, 0.12);
-
-    const makeMaterial = (roughness, metalness = 0.02) => new THREE.MeshStandardMaterial({ roughness, metalness });
-    const materials = {
-      torso: makeMaterial(0.88),
-      head: makeMaterial(0.7),
-      hair: makeMaterial(0.96),
-      arm: makeMaterial(0.9),
-      leg: makeMaterial(0.92),
-      hat: makeMaterial(0.82),
-      bag: makeMaterial(0.8),
-    };
-
-    const parts = {
-      torso: [torsoGeometry, materials.torso],
-      head: [headGeometry, materials.head],
-      hair: [hairGeometry, materials.hair],
-      armLeft: [armGeometry, materials.arm],
-      armRight: [armGeometry, materials.arm],
-      legLeft: [legGeometry, materials.leg],
-      legRight: [legGeometry, materials.leg],
-      hat: [hatGeometry, materials.hat],
-      bag: [bagGeometry, materials.bag],
-    };
-
-    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
-    for (const [name, [geometry, material]] of Object.entries(parts)) {
-      const mesh = new THREE.InstancedMesh(geometry, material, capacity);
-      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      mesh.frustumCulled = false;
-      mesh.castShadow = true;
-      mesh.receiveShadow = false;
-      for (let i = 0; i < capacity; i += 1) {
-        mesh.setMatrixAt(i, zero);
-        mesh.setColorAt(i, new THREE.Color(0xffffff));
-      }
-      mesh.instanceMatrix.needsUpdate = true;
-      mesh.instanceColor.needsUpdate = true;
-      scene.add(mesh);
-      this.meshes[name] = mesh;
-    }
-    this.zero = zero;
-    this._base = new THREE.Matrix4();
-    this._local = new THREE.Matrix4();
-    this._out = new THREE.Matrix4();
-    this._position = new THREE.Vector3();
-    this._scale = new THREE.Vector3();
-    this._quaternion = new THREE.Quaternion();
-    this._euler = new THREE.Euler();
-    this._color = new THREE.Color();
-  }
-
-  setColors(slot, spec) {
-    this.meshes.torso.setColorAt(slot, this._color.setHex(spec.cloth));
-    this.meshes.armLeft.setColorAt(slot, this._color.setHex(spec.cloth).multiplyScalar(0.86));
-    this.meshes.armRight.setColorAt(slot, this._color.setHex(spec.cloth).multiplyScalar(0.86));
-    this.meshes.legLeft.setColorAt(slot, this._color.setHex(spec.pants));
-    this.meshes.legRight.setColorAt(slot, this._color.setHex(spec.pants));
-    this.meshes.head.setColorAt(slot, this._color.setHex(spec.skin));
-    this.meshes.hair.setColorAt(slot, this._color.setHex(spec.hair));
-    this.meshes.hat.setColorAt(slot, this._color.setHex(spec.hatColor));
-    this.meshes.bag.setColorAt(slot, this._color.setHex(spec.bagColor ?? 0x3a2a44));
-    for (const mesh of Object.values(this.meshes)) mesh.instanceColor.needsUpdate = true;
-  }
-
-  hide(slot) {
-    for (const mesh of Object.values(this.meshes)) {
-      mesh.setMatrixAt(slot, this.zero);
-      mesh.instanceMatrix.needsUpdate = true;
-    }
-  }
-
-  write(ped) {
-    if (!ped.active) return;
-    const slot = ped.slot;
-    const seated = Boolean(ped.sitting);
-    const bob = seated ? 0 : Math.abs(Math.sin(ped.phase)) * 0.034 * ped.motion;
-    const scale = ped.scale;
-    const fall = ped.fall ?? 0;
-    this._euler.set(-fall * 1.45, ped.yaw, 0);
-    this._quaternion.setFromEuler(this._euler);
-    this._position.set(ped.x, ped.y + bob + 0.12 * fall, ped.z);
-    this._scale.set(scale, scale, scale);
-    this._base.compose(this._position, this._quaternion, this._scale);
-
-    const swing = seated ? 0 : Math.sin(ped.phase) * 0.6 * ped.motion;
-    const arms = swing * 0.78;
-    // A seated body drops to chair height, thighs forward and hands on the
-    // knees. Standing keeps the original eight-part walk pose.
-    this.writePart('torso', slot, 0, seated ? 0.62 : 0.84, 0, 0.04);
-    this.writePart('head', slot, 0, seated ? 1.08 : 1.36, 0, 0);
-    this.writePart('hair', slot, 0, seated ? 1.09 : 1.37, 0, 0);
-    this.writePart('legLeft', slot, 0.102, seated ? 0.62 : 0.83, 0, seated ? -1.36 : swing);
-    this.writePart('legRight', slot, -0.102, seated ? 0.62 : 0.83, 0, seated ? -1.36 : -swing);
-    this.writePart('armLeft', slot, 0.262, seated ? 1.04 : 1.3, 0, seated ? -0.52 : -arms);
-    this.writePart('armRight', slot, -0.262, seated ? 1.04 : 1.3, 0, seated ? -0.52 : arms);
-    if (ped.hat) {
-      this.writePart('hat', slot, 0, seated ? 1.3 : 1.61, 0, 0);
-    } else {
-      this.meshes.hat.setMatrixAt(slot, this.zero);
-    }
-    if (ped.bag) {
-      this.writePart('bag', slot, -0.32, seated ? 0.7 : 0.82, 0.08, 0);
-    } else {
-      this.meshes.bag.setMatrixAt(slot, this.zero);
-    }
-    for (const mesh of Object.values(this.meshes)) mesh.instanceMatrix.needsUpdate = true;
-  }
-
-  writePart(name, slot, x, y, z, rotationX) {
-    this._local.makeRotationX(rotationX);
-    this._local.setPosition(x, y, z);
-    this._out.multiplyMatrices(this._base, this._local);
-    this.meshes[name].setMatrixAt(slot, this._out);
-  }
-}
 
 export class Traffic {
   constructor(scene, world, vehicles, player) {
@@ -437,816 +261,105 @@ export class Traffic {
   // ---------------------------------------------------------------- cars
 
   spawnLaneCar(type, axis, direction, line, along, cruise = 11, options = {}) {
-    const point = lanePoint(axis, line, direction, along);
-    const car = this.vehicles.spawn(type, {
-      x: point.x,
-      z: point.z,
-      yaw: point.yaw,
-      color: options.color ?? pickVehicleColor(this.rng, type),
-      driver: 'ai',
-      speed: cruise * 0.72,
-    });
-    car.ai = {
-      axis,
-      direction,
-      line,
-      cruise,
-      speedBias: this.rng.range(0.9, 1.08),
-      stuckTime: 0,
-      mode: 'drive',
-    };
-    car.controls.brake = 0;
-    car.fuel = options.fuel ?? 1;
-    this.cars.push(car);
-    return car;
+    return spawnLaneCar(this, type, axis, direction, line, along, cruise, options);
   }
 
   spawnAmbientCar(player, minDistance = 60, maxDistance = 170) {
-    const px = player.position.x;
-    const pz = player.position.z;
-    for (let attempt = 0; attempt < 24; attempt += 1) {
-      const axis = this.rng.chance(0.5) ? 'x' : 'z';
-      // A car on axis 'x' drives along a z road line, and a car on axis 'z'
-      // drives along an x road line. Picking the other list put cars on the
-      // beach at x = -189 and -243, where they queued at phantom signals.
-      const line = this.rng.pick(axis === 'x' ? ROADS_Z : ROADS_X);
-      const direction = this.rng.sign();
-      const along = axis === 'x'
-        ? this.rng.range(WORLD.cityMinX + 18, WORLD.cityMaxX - 18)
-        : this.rng.range(WORLD.cityMinZ + 18, WORLD.cityMaxZ - 18);
-      const point = lanePoint(axis, line, direction, along);
-      const distance = Math.hypot(point.x - px, point.z - pz);
-      if (distance < minDistance || distance > maxDistance) continue;
-      let clear = true;
-      for (const car of this.vehicles.list) {
-        if (car === this.player.driving) continue;
-        if (Math.hypot(car.position.x - point.x, car.position.z - point.z) < 12) {
-          clear = false;
-          break;
-        }
-      }
-      if (!clear) continue;
-      const type = this.rng.pick(TRAFFIC_MIX);
-      const car = this.spawnLaneCar(type, axis, direction, line, along, this.rng.range(10.5, 15));
-      car.fuel = this.rng.chance(0.22) ? this.rng.range(0.1, 0.34) : 1;
-      return car;
-    }
-    return null;
+    return spawnAmbientCar(this, player, minDistance, maxDistance);
   }
 
   removeCar(car) {
-    const index = this.cars.indexOf(car);
-    if (index !== -1) this.cars.splice(index, 1);
-    this.vehicles.remove(car);
-    this.gasStation?.releaseCar(car);
+    return removeCar(this, car);
   }
 
-  /**
-   * Pull the AI driver out at the driver door and send them running for six
-   * seconds. Returns the new pedestrian, or null when the crowd has no slot
-   * or the door is blocked (the caller then skips the toast).
-   */
   ejectDriver(car) {
-    if (!car || car.removed) return null;
-    const cos = Math.cos(car.yaw);
-    const sin = Math.sin(car.yaw);
-    // Driver's door: car-local left, just outside the bodywork, toward the
-    // front of the cabin.
-    const candidates = [
-      [-(car.halfWidth + 0.65), 0.35],
-      [car.halfWidth + 0.65, 0.35],
-      [-(car.halfWidth + 0.65), -0.6],
-    ];
-    let spot = null;
-    for (const [side, forward] of candidates) {
-      const x = car.position.x + cos * side + sin * forward;
-      const z = car.position.z - sin * side + cos * forward;
-      if (this.world.collides(x, z, 0.36)) continue;
-      if (this.vehicles.blocksPoint(x, z, 0.36, car)) continue;
-      spot = { x, z };
-      break;
-    }
-    if (!spot) return null;
-    const ped = this.spawnPed({
-      x: spot.x,
-      z: spot.z,
-      yaw: Math.atan2(car.position.x - spot.x, car.position.z - spot.z),
-      mode: 'idle',
-      armed: false,
-    });
-    if (!ped) return null;
-    // No block route to resume: this is a one-way run away from the car.
-    ped.blockX = 0;
-    ped.blockZ = 0;
-    ped.cornerIndex = 0;
-    ped.crossingAxis = null;
-    ped.nextBlockX = 0;
-    ped.nextBlockZ = 0;
-    ped.fleeResumeTarget = null;
-    ped.pause = 0;
-    ped.motion = 1;
-    ped.fleeTimer = PANIC_SECONDS;
-    ped.fleeFromX = car.position.x;
-    ped.fleeFromZ = car.position.z;
-    const dx = spot.x - car.position.x;
-    const dz = spot.z - car.position.z;
-    const length = Math.hypot(dx, dz) || 1;
-    ped.target = { x: spot.x + (dx / length) * 12, z: spot.z + (dz / length) * 12 };
-    ped.y = this.world.groundHeightAt(spot.x, spot.z);
-    return ped;
+    return ejectDriver(this, car);
   }
 
   updateCars(dt, elapsed, player) {
-    const px = player.position.x;
-    const pz = player.position.z;
-    for (const car of [...this.cars]) {
-      if (car.removed) continue;
-      if (car.driver !== 'ai') {
-        // A player who carjacks a car at a pump must free that pad at once:
-        // its station AI is gone, so the state machine would never release it.
-        this.gasStation?.releaseCar(car);
-        continue;
-      }
-      const ai = car.ai;
-      if (!ai) continue;
-      // Remove a car that is not on its road grid: an ambient spawn from an
-      // older build, or one knocked onto the sand. It would otherwise queue
-      // at a traffic signal that does not exist on the beach.
-      const laneSet = ai.axis === 'x' ? ROADS_Z : ROADS_X;
-      const offGrid = !laneSet.includes(ai.line) || car.position.x < WORLD.cityMinX - 1;
-      const blockedZone = typeof this.world.vehicleBlocked === 'function'
-        && this.world.vehicleBlocked(car.position.x, car.position.z, false);
-      if (offGrid || blockedZone) {
-        this.removeCar(car);
-        continue;
-      }
-      // A car this station owns is driven by the forecourt state machine, not
-      // by the lane rules; a low-fuel car on the adjacent lane may divert in.
-      if (this.gasStation) {
-        if (this.gasStation.owns(car)) {
-          this.gasStation.updateCar(car, dt);
-          continue;
-        }
-        this.gasStation.maybeDivert(car, ai, dt);
-      }
-      const along = ai.axis === 'x' ? car.position.x : car.position.z;
-      const forwardX = Math.sin(car.yaw);
-      const forwardZ = Math.cos(car.yaw);
-      const sideX = Math.cos(car.yaw);
-      const sideZ = -Math.sin(car.yaw);
-
-      let desired = ai.cruise * ai.speedBias;
-
-      // Stop line for the next intersection, and the two-phase city signal.
-      const axisRoads = ai.axis === 'x' ? ROADS_X : ROADS_Z;
-      let nextRoad = null;
-      if (ai.direction > 0) {
-        for (const road of axisRoads) if (road > along + 2.5) { nextRoad = road; break; }
-      } else {
-        for (let i = axisRoads.length - 1; i >= 0; i -= 1) if (axisRoads[i] < along - 2.5) { nextRoad = axisRoads[i]; break; }
-      }
-      if (nextRoad !== null) {
-        const stopDistance = ai.direction > 0 ? nextRoad - STOP_LINE - along : along - (nextRoad + STOP_LINE);
-        if (!signalGreen(ai.axis, elapsed) && stopDistance > -0.4 && stopDistance < 26) {
-          desired = Math.min(desired, Math.max(0, (stopDistance - 0.7) * 0.55));
-        }
-      }
-
-      // Keep a safe gap to anything rolling in the same lane.
-      for (const other of this.vehicles.list) {
-        if (other === car || other.removed) continue;
-        const dx = other.position.x - car.position.x;
-        const dz = other.position.z - car.position.z;
-        const ahead = dx * forwardX + dz * forwardZ;
-        const lateral = dx * sideX + dz * sideZ;
-        if (ahead < -0.5 || ahead > 30 || Math.abs(lateral) > 2.4) continue;
-        const otherSpeed = Math.max(0, other.speed);
-        const gap = ahead - car.halfLength - other.halfLength;
-        const follow = Math.max(0, gap - 3.4) * 0.55 + otherSpeed;
-        if (gap < 6.5) desired = 0;
-        else desired = Math.min(desired, follow);
-      }
-
-      if (!player.driving) {
-        const dx = px - car.position.x;
-        const dz = pz - car.position.z;
-        const ahead = dx * forwardX + dz * forwardZ;
-        const lateral = dx * sideX + dz * sideZ;
-        if (ahead > 0 && ahead < 17 && Math.abs(lateral) < 2.6) {
-          desired = ahead < 10 ? 0 : Math.min(desired, (ahead - 5) * 0.6);
-        }
-      }
-
-      for (const ped of this.peds) {
-        if (!ped.active || ped.mode !== 'cross') continue;
-        const dx = ped.x - car.position.x;
-        const dz = ped.z - car.position.z;
-        if (dx * dx + dz * dz > 400) continue;
-        const ahead = dx * forwardX + dz * forwardZ;
-        const lateral = dx * sideX + dz * sideZ;
-        if (ahead > 0 && ahead < 20 && Math.abs(lateral) < 7.2) {
-          if (ahead < 12) desired = 0;
-          else desired = Math.min(desired, (ahead - 6) * 0.42);
-        }
-      }
-
-      const speed = car.speed;
-      if (speed < desired - 0.35) {
-        car.controls.throttle = clamp((desired - speed) * 0.3, 0.12, 1);
-        car.controls.brake = 0;
-      } else if (speed > desired + 0.5) {
-        car.controls.throttle = 0;
-        car.controls.brake = clamp((speed - desired) * 0.32, 0.15, 1);
-      } else {
-        car.controls.throttle = 0;
-        car.controls.brake = desired < 0.4 ? 0.35 : 0;
-      }
-      const headingError = Math.atan2(
-        Math.sin(laneYaw(ai.axis, ai.direction) - car.yaw),
-        Math.cos(laneYaw(ai.axis, ai.direction) - car.yaw),
-      );
-      car.controls.steer = clamp(headingError * 2.4, -0.3, 0.3);
-      car.controls.handbrake = false;
-
-      if (Math.abs(speed) < 0.4) ai.stuckTime += dt;
-      else ai.stuckTime = 0;
-
-      const minAlong = ai.axis === 'x' ? WORLD.cityMinX : WORLD.cityMinZ;
-      const maxAlong = ai.axis === 'x' ? WORLD.cityMaxX : WORLD.cityMaxZ;
-      const beyondMin = along < minAlong + 2;
-      const beyondMax = along > maxAlong - 2;
-      const farAway = Math.hypot(car.position.x - px, car.position.z - pz) > 250;
-      const stuckTooLong = ai.stuckTime > 16 && Math.hypot(car.position.x - px, car.position.z - pz) > 60;
-      if (beyondMin || beyondMax || farAway || stuckTooLong) this.removeCar(car);
-    }
-
-    this.spawnTimer -= dt;
-    if (this.spawnTimer <= 0) {
-      this.spawnTimer = 0.65;
-      const activeAi = this.cars.filter((car) => car.driver === 'ai').length;
-      if (activeAi < this.carTarget) this.spawnAmbientCar(player, 55, 175);
-    }
+    return updateCars(this, dt, elapsed, player);
   }
 
   // ---------------------------------------------------------------- pedestrians
 
-  spawnPed({ x, z, yaw = 0, mode = 'loop', target = null, anchor = null, phase = null, armed = null, guard = false, bag = false, valet = false }) {
-    let slot = -1;
-    for (let i = 0; i < MAX_PEDS; i += 1) {
-      if (!this.peds.some((ped) => ped.active && ped.slot === i)) {
-        slot = i;
-        break;
-      }
-    }
-    if (slot === -1) return null;
-
-    // Only block-loop walkers carry a pistol; an explicit option from a shot or
-    // a test always wins, and beach and crosswalk pedestrians stay unarmed.
-    // A security guard is always armed, hostile, hatted and in a dark uniform.
-    const isArmed = guard || (armed === null ? mode === 'loop' && this.rng.chance(ARMED_CHANCE) : Boolean(armed));
-    const spec = {
-      cloth: clothing[Math.floor(this.rng() * clothing.length) % clothing.length],
-      pants: pants[Math.floor(this.rng() * pants.length) % pants.length],
-      skin: skins[Math.floor(this.rng() * skins.length) % skins.length],
-      hair: hairs[Math.floor(this.rng() * hairs.length) % hairs.length],
-      hatColor: this.rng.pick([0x2d2a36, 0x7a3e35, 0x3f5a5e, 0xd6c6a4]),
-      bagColor: this.rng.pick([0x3a2a44, 0x24414a, 0x4a332e, 0x2f3a24]),
-    };
-    if (guard) {
-      spec.cloth = 0x252b36;
-      spec.pants = 0x141821;
-      spec.hair = 0x1a161c;
-      spec.hatColor = 0x10141b;
-    } else if (valet) {
-      spec.cloth = 0x2f6f6a;
-      spec.pants = 0x141821;
-      spec.hatColor = 0x1d3d3a;
-    } else if (isArmed) {
-      spec.cloth = ARMED_JACKET;
-    }
-    const ped = {
-      active: true,
-      slot,
-      x,
-      z,
-      y: this.world.groundHeightAt(x, z),
-      yaw,
-      scale: this.rng.range(0.9, 1.07),
-      speed: this.rng.range(1.05, 1.55),
-      phase: phase ?? this.rng.range(0, TAU),
-      motion: 0.6,
-      health: guard ? 78 : 55,
-      dead: false,
-      deadTimer: 0,
-      fall: 0,
-      fleeTimer: 0,
-      fleeFromX: 0,
-      fleeFromZ: 0,
-      fleeResumeTarget: null,
-      armed: isArmed,
-      hostile: guard,
-      hostileDraw: 0,
-      hostileTime: 0,
-      shootTimer: 0,
-      guard: Boolean(guard),
-      valet: Boolean(valet),
-      bag: Boolean(bag),
-      sitting: false,
-      seat: null,
-      mode: guard ? 'guard' : mode,
-      target: target ?? { x, z },
-      anchor: anchor ?? { x, z },
-      pause: 0,
-      blockX: 0,
-      blockZ: 0,
-      cornerIndex: 0,
-      direction: this.rng.chance(0.5) ? 1 : -1,
-      crossingAxis: null,
-      nextBlockX: 0,
-      nextBlockZ: 0,
-      hat: guard ? true : this.rng.chance(0.32),
-    };
-
-    if (mode === 'loop') {
-      const block = this.nearestBlock(x, z);
-      ped.blockX = block.x;
-      ped.blockZ = block.z;
-      ped.cornerIndex = cornerIndexFor(x - block.x, z - block.z);
-      this.setNextCorner(ped);
-    }
-
-    this.peds.push(ped);
-    this.crowd.setColors(slot, spec);
-    this.crowd.write(ped);
-    return ped;
+  spawnPed(options) {
+    return spawnPed(this, options);
   }
 
   spawnSidewalkPed(x, z, cornerIndex = 0) {
-    const block = this.nearestBlock(x, z);
-    const ped = this.spawnPed({ x, z, yaw: this.rng.range(0, TAU), mode: 'loop' });
-    if (!ped) return null;
-    ped.blockX = block.x;
-    ped.blockZ = block.z;
-    ped.cornerIndex = clamp(cornerIndex, 0, 3);
-    ped.direction = this.rng.chance(0.5) ? 1 : -1;
-    this.setNextCorner(ped);
-    return ped;
+    return spawnSidewalkPed(this, x, z, cornerIndex);
   }
 
   nearestBlock(x, z) {
-    let best = { x: BLOCK_CENTERS_X[0], z: BLOCK_CENTERS_Z[0] };
-    let bestDistance = Infinity;
-    for (const cx of BLOCK_CENTERS_X) {
-      for (const cz of BLOCK_CENTERS_Z) {
-        const distance = Math.abs(x - cx) + Math.abs(z - cz);
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          best = { x: cx, z: cz };
-        }
-      }
-    }
-    return best;
+    return nearestBlock(this, x, z);
   }
 
   setNextCorner(ped) {
-    const corner = CORNERS[ped.cornerIndex];
-    ped.target = { x: ped.blockX + corner[0], z: ped.blockZ + corner[1] };
+    return setNextCorner(this, ped);
   }
 
-  /** Stand a seated pedestrian up and free the chair for anyone else. */
   releasePedSeat(ped) {
-    if (ped.seat && ped.seat.occupant === ped) ped.seat.occupant = null;
-    ped.seat = null;
-    ped.sitting = false;
+    return releasePedSeat(this, ped);
   }
 
   despawnPed(ped) {
-    this.releasePedSeat(ped);
-    ped.active = false;
-    this.crowd.hide(ped.slot);
+    return despawnPed(this, ped);
   }
 
-  /** Start every standing pedestrian near (x, z) fleeing for the panic time. */
   panic(x, z, radius = PANIC_RADIUS) {
-    const radiusSq = radius * radius;
-    let count = 0;
-    for (const ped of this.peds) {
-      if (!ped.active || ped.dead) continue;
-      const dx = ped.x - x;
-      const dz = ped.z - z;
-      if (dx * dx + dz * dz >= radiusSq) continue;
-      this.releasePedSeat(ped);
-      if (!ped.fleeResumeTarget) ped.fleeResumeTarget = { x: ped.target.x, z: ped.target.z };
-      ped.fleeTimer = PANIC_SECONDS;
-      ped.fleeFromX = x;
-      ped.fleeFromZ = z;
-      count += 1;
-    }
-    return count;
+    return panic(this, x, z, radius);
   }
 
-  // ---------------------------------------------------------------- combat
-
-  /** Nearest living pedestrian the player's ray can hit, with chest and head spheres. */
   traceShot(origin, direction, maxDistance) {
-    let best = null;
-    for (const ped of this.peds) {
-      if (!ped.active || ped.dead) continue;
-      const chest = raySphere(origin, direction, ped.x, ped.y + 1.12 * ped.scale, ped.z, 0.42);
-      const head = raySphere(origin, direction, ped.x, ped.y + 1.55 * ped.scale, ped.z, 0.22);
-      let distance = null;
-      let headshot = false;
-      if (head !== null && (chest === null || head <= chest)) {
-        distance = head;
-        headshot = true;
-      } else if (chest !== null) {
-        distance = chest;
-      }
-      if (distance === null || distance > maxDistance) continue;
-      if (!best || distance < best.distance) {
-        best = {
-          type: 'ped',
-          ped,
-          headshot,
-          distance,
-          point: new THREE.Vector3(origin.x + direction.x * distance, origin.y + direction.y * distance, origin.z + direction.z * distance),
-        };
-      }
-    }
-    return best;
+    return traceShot(this, origin, direction, maxDistance);
   }
 
   applyPlayerHit(target, damage) {
-    const ped = target?.ped;
-    if (!ped || !ped.active || ped.dead) return;
-    ped.health -= damage * (target.headshot ? 1.75 : 1);
-    if (this.player) {
-      this.player.hitMarker = 1;
-      if (this.player.effects && target.point) this.player.effects.impact(target.point, null, 'metal');
-      if (this.player.audio) this.player.audio.impact(0.9);
-    }
-    if (ped.health > 0) return;
-    ped.dead = true;
-    ped.deadTimer = 8;
-    ped.health = 0;
-    this.releasePedSeat(ped);
-    // A corpse is not fleeing; stop it counting as panicked after death.
-    ped.fleeTimer = 0;
-    let witnesses = 0;
-    for (const other of this.peds) {
-      if (other === ped || !other.active || other.dead) continue;
-      if (Math.hypot(other.x - ped.x, other.z - ped.z) >= PANIC_RADIUS) continue;
-      witnesses += 1;
-      if (!other.fleeResumeTarget) other.fleeResumeTarget = { x: other.target.x, z: other.target.z };
-      if (other.armed) {
-        // An armed witness stops running and reaches for the pistol.
-        other.fleeTimer = 0;
-        if (!other.hostile && other.hostileDraw <= 0) {
-          other.hostileDraw = ARMED_DRAW_SECONDS;
-          other.shootTimer = 0;
-        }
-        continue;
-      }
-      other.fleeTimer = PANIC_SECONDS;
-      other.fleeFromX = ped.x;
-      other.fleeFromZ = ped.z;
-    }
-    this.onPedDeath?.(ped, { witnesses });
+    return applyPlayerHit(this, target, damage);
   }
 
   pickBeachTarget(ped) {
-    const anchorOnPier = this.world.groundHeightAt(ped.anchor.x, ped.anchor.z) > 1;
-    if (anchorOnPier) {
-      // The deck is now full of solid props. Re-roll a target that lands in
-      // the shack, a bench, a barrel, a crate or a railing rather than
-      // steering a walker into it.
-      for (let attempt = 0; attempt < 24; attempt += 1) {
-        const x = clamp(ped.anchor.x + this.rng.range(-7, 7), WORLD.pier.minX + 3, WORLD.pier.maxX - 3);
-        const z = clamp(ped.anchor.z + this.rng.range(-3.5, 3.5), WORLD.pier.z - WORLD.pier.halfWidth + 2, WORLD.pier.z + WORLD.pier.halfWidth - 2);
-        if (this.world.collides(x, z, 0.3)) continue;
-        ped.target = { x, z };
-        return;
-      }
-      ped.target = {
-        x: clamp(ped.anchor.x, WORLD.pier.minX + 3, WORLD.pier.maxX - 3),
-        z: clamp(ped.anchor.z, WORLD.pier.z - WORLD.pier.halfWidth + 2, WORLD.pier.z + WORLD.pier.halfWidth - 2),
-      };
-      return;
-    }
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      const angle = this.rng.range(0, TAU);
-      const radius = this.rng.range(2, 9);
-      const x = ped.anchor.x + Math.cos(angle) * radius;
-      const z = ped.anchor.z + Math.sin(angle) * radius;
-      if (x < WORLD.shorelineX + 2) continue;
-      ped.target = { x, z };
-      return;
-    }
-    ped.target = { ...ped.anchor };
+    return pickBeachTarget(this, ped);
   }
 
   updatePeds(dt, elapsed) {
-    for (const ped of this.peds) {
-      if (!ped.active) continue;
-      if (ped.dead) {
-        ped.deadTimer -= dt;
-        ped.fall = Math.min(1, ped.fall + dt / 0.45);
-        ped.motion = 0;
-        this.releasePedSeat(ped);
-        if (ped.deadTimer <= 0) this.despawnPed(ped);
-        continue;
-      }
-      if (ped.armed && (ped.hostile || ped.hostileDraw > 0)) {
-        this.releasePedSeat(ped);
-        this.updateArmedPed(ped, dt);
-        continue;
-      }
-      if (ped.fleeTimer > 0) {
-        this.releasePedSeat(ped);
-        ped.fleeTimer -= dt;
-        const dx = ped.x - ped.fleeFromX;
-        const dz = ped.z - ped.fleeFromZ;
-        const distance = Math.hypot(dx, dz) || 1;
-        ped.target = { x: ped.x + (dx / distance) * 12, z: ped.z + (dz / distance) * 12 };
-        this.walkToward(ped, ped.speed * FLEE_SPEED, dt);
-        ped.phase += dt * 7;
-        ped.motion = damp(ped.motion, 1, 8, dt);
-        ped.y = damp(ped.y, this.world.groundHeightAt(ped.x, ped.z), 15, dt);
-        if (ped.fleeTimer <= 0) {
-          if (ped.fleeResumeTarget) {
-            ped.target = { ...ped.fleeResumeTarget };
-            ped.fleeResumeTarget = null;
-          }
-        }
-        continue;
-      }
-      const ground = this.world.groundHeightAt(ped.x, ped.z);
-      let moving = false;
-
-      if (ped.pause > 0) {
-        ped.pause -= dt;
-        ped.motion = damp(ped.motion, 0, 9, dt);
-      } else if (ped.mode === 'beach') {
-        moving = this.walkToward(ped, ped.speed * 0.8, dt);
-        if (!moving) {
-          ped.pause = this.rng.range(1.2, 4.5);
-          this.pickBeachTarget(ped);
-        }
-      } else if (ped.mode === 'mall') {
-        moving = this.mallLife ? this.mallLife.updatePed(ped, dt) : false;
-      } else if (ped.mode === 'idle' || ped.mode === 'walk') {
-        moving = this.walkToward(ped, ped.speed, dt);
-        if (!moving) {
-          ped.pause = this.rng.range(0.3, 1.6);
-          if (ped.mode === 'walk') ped.target = { x: ped.x + this.rng.range(-6, 6), z: ped.z };
-        }
-      } else if (ped.mode === 'cross') {
-        let speed = Math.max(1.5, ped.speed * 1.1);
-        if (this.carNear(ped.x, ped.z, 11)) speed = 2.7;
-        moving = this.walkToward(ped, speed, dt);
-        if (!moving) this.finishCrossing(ped);
-      } else {
-        moving = this.walkToward(ped, ped.speed, dt);
-        if (!moving) this.arriveCorner(ped);
-      }
-
-      if (moving) {
-        ped.phase += dt * (ped.mode === 'cross' ? 7.2 : 4.9) * (ped.mode === 'cross' ? 1.15 : 1);
-        ped.motion = damp(ped.motion, 1, 8, dt);
-      }
-      ped.y = damp(ped.y, this.world.groundHeightAt(ped.x, ped.z), 15, dt);
-    }
-
-    this.pedTimer -= dt;
-    if (this.pedTimer <= 0 && this.player) {
-      this.pedTimer = 0.5;
-      const sidewalkCount = this.peds.filter((ped) => ped.active
-        && ped.mode !== 'beach' && ped.mode !== 'mall' && ped.mode !== 'guard').length;
-      if (sidewalkCount < this.sidewalkTarget) {
-        this.spawnAmbientPed(this.player);
-      }
-      for (const ped of this.peds) {
-        // Mall shoppers despawn at their door, and security guards are a
-        // robbery actor rather than ambient sidewalk traffic.
-        if (!ped.active || ped.mode === 'beach' || ped.mode === 'mall' || ped.mode === 'guard') continue;
-        if (Math.hypot(ped.x - this.player.position.x, ped.z - this.player.position.z) > 190) {
-          this.despawnPed(ped);
-        }
-      }
-      if (this.peds.length > MAX_PEDS * 2) this.peds = this.peds.filter((ped) => ped.active);
-    }
+    return updatePeds(this, dt, elapsed);
   }
 
-  // An armed witness plants its feet, faces Rae, and fires after the draw.
   updateArmedPed(ped, dt) {
-    const player = this.player;
-    if (!player || player.dead) {
-      ped.hostile = false;
-      ped.hostileDraw = 0;
-      return;
-    }
-    const dx = player.position.x - ped.x;
-    const dz = player.position.z - ped.z;
-    const distance = Math.hypot(dx, dz);
-    const targetYaw = Math.atan2(dx, dz);
-    ped.yaw += Math.atan2(Math.sin(targetYaw - ped.yaw), Math.cos(targetYaw - ped.yaw)) * (1 - Math.exp(-12 * dt));
-    ped.y = damp(ped.y, this.world.groundHeightAt(ped.x, ped.z), 15, dt);
-    ped.motion = damp(ped.motion, 0.22, 8, dt);
-
-    if (!ped.hostile) {
-      ped.hostileDraw -= dt;
-      if (ped.hostileDraw > 0) return;
-      ped.hostileDraw = 0;
-      ped.hostile = true;
-      ped.hostileTime = 0;
-      ped.shootTimer = 0;
-      if (!this.armedAlertShown) {
-        this.armedAlertShown = true;
-        this.onArmedHostile?.(ped);
-      }
-    }
-
-    ped.hostileTime += dt;
-    if (distance > ARMED_GIVE_UP_RANGE || ped.hostileTime > ARMED_GIVE_UP_SECONDS) {
-      this.sendPedFleeing(ped, player.position.x, player.position.z);
-      return;
-    }
-
-    ped.shootTimer -= dt;
-    if (ped.shootTimer > 0) return;
-    if (distance > ARMED_RANGE) {
-      ped.shootTimer = 0.25;
-      return;
-    }
-    const blocked = this.world.lineBlocked(
-      ped.x,
-      ped.y + 1.3,
-      ped.z,
-      player.position.x,
-      player.position.y + 1.2,
-      player.position.z,
-      0.2,
-    );
-    if (blocked) {
-      ped.shootTimer = 0.25;
-      return;
-    }
-    ped.shootTimer = ARMED_FIRE_SECONDS;
-    this.armedPedShoot(ped);
+    return updateArmedPed(this, ped, dt);
   }
 
   sendPedFleeing(ped, fromX, fromZ) {
-    this.releasePedSeat(ped);
-    ped.hostile = false;
-    ped.hostileDraw = 0;
-    ped.hostileTime = 0;
-    ped.shootTimer = 0;
-    if (!ped.fleeResumeTarget) ped.fleeResumeTarget = { x: ped.target.x, z: ped.target.z };
-    ped.fleeTimer = PANIC_SECONDS;
-    ped.fleeFromX = fromX;
-    ped.fleeFromZ = fromZ;
+    return sendPedFleeing(this, ped, fromX, fromZ);
   }
 
   armedPedShoot(ped) {
-    const player = this.player;
-    if (!player) return;
-    const muzzle = new THREE.Vector3(
-      ped.x + Math.sin(ped.yaw) * 0.42,
-      ped.y + 1.32,
-      ped.z + Math.cos(ped.yaw) * 0.42,
-    );
-    const target = new THREE.Vector3(player.position.x, player.position.y + 1.12, player.position.z);
-    const direction = target.clone().sub(muzzle).normalize();
-    const hit = Math.random() < 0.6;
-    const endpoint = new THREE.Vector3();
-    if (hit) {
-      endpoint.set(player.position.x, player.position.y + 1.05, player.position.z);
-      if (this.police) this.police.damagePlayer(ARMED_DAMAGE, ped.x, ped.z, 'witness');
-      else player.applyDamage(ARMED_DAMAGE, ped.x, ped.z);
-    } else {
-      endpoint.copy(muzzle).addScaledVector(direction, 30);
-      const worldHit = this.world.raycast(muzzle, direction, 30);
-      if (worldHit) endpoint.copy(worldHit.point);
-    }
-    if (player.effects) {
-      player.effects.muzzle(muzzle.x, muzzle.y, muzzle.z, 0xffd59a);
-      player.effects.tracer(muzzle, endpoint, 0xffcf8a);
-    }
-    if (player.audio) player.audio.gunshot('pistol');
+    return armedPedShoot(this, ped);
   }
 
   walkToward(ped, speed, dt) {
-    const dx = ped.target.x - ped.x;
-    const dz = ped.target.z - ped.z;
-    const distance = Math.hypot(dx, dz);
-    if (distance < 0.08) {
-      ped.x = ped.target.x;
-      ped.z = ped.target.z;
-      return false;
-    }
-    const step = Math.min(distance, speed * dt);
-    const stepX = (dx / distance) * step;
-    const stepZ = (dz / distance) * step;
-    const radius = 0.36;
-    const wantX = ped.x + stepX;
-    const wantZ = ped.z + stepZ;
-
-    // Slide along a wall rather than walking through it: the full step first,
-    // then one axis at a time, then stop and let the caller pick a new target.
-    const full = this.world.resolveCircle(wantX, wantZ, radius);
-    let movedX = 0;
-    let movedZ = 0;
-    if (Math.hypot(full.x - wantX, full.z - wantZ) < 0.01) {
-      movedX = full.x - ped.x;
-      movedZ = full.z - ped.z;
-    } else {
-      const slideX = this.world.resolveCircle(wantX, ped.z, radius);
-      if (Math.abs(slideX.x - wantX) < 0.01 && Math.abs(slideX.z - ped.z) < 0.01) {
-        movedX = slideX.x - ped.x;
-      } else {
-        const slideZ = this.world.resolveCircle(ped.x, wantZ, radius);
-        if (Math.abs(slideZ.z - wantZ) < 0.01 && Math.abs(slideZ.x - ped.x) < 0.01) {
-          movedZ = slideZ.z - ped.z;
-        }
-      }
-    }
-    if (Math.abs(movedX) < 0.0005 && Math.abs(movedZ) < 0.0005) return false;
-    ped.x += movedX;
-    ped.z += movedZ;
-    const desiredYaw = Math.atan2(dx, dz);
-    const delta = Math.atan2(Math.sin(desiredYaw - ped.yaw), Math.cos(desiredYaw - ped.yaw));
-    ped.yaw += delta * (1 - Math.exp(-9 * dt));
-    return true;
+    return walkToward(this, ped, speed, dt);
   }
 
   arriveCorner(ped) {
-    const corner = CORNERS[ped.cornerIndex];
-    if (this.rng.chance(0.24) && this.tryCross(ped, corner)) return;
-    if (this.rng.chance(0.2)) ped.pause = this.rng.range(0.4, 1.8);
-    ped.cornerIndex = (ped.cornerIndex + ped.direction + 4) % 4;
-    this.setNextCorner(ped);
+    return arriveCorner(this, ped);
   }
 
   tryCross(ped, corner) {
-    const signX = Math.sign(corner[0]);
-    const signZ = Math.sign(corner[1]);
-    const alongX = this.rng.chance(0.5);
-    if (alongX) {
-      const nextX = ped.blockX + signX * 54;
-      if (!BLOCK_CENTERS_X.includes(nextX)) return false;
-      ped.nextBlockX = nextX;
-      ped.nextBlockZ = ped.blockZ;
-      ped.mode = 'cross';
-      ped.crossingAxis = 'x';
-      ped.target = { x: ped.blockX + signX * (54 - CORNER), z: ped.blockZ + signZ * CORNER };
-      return true;
-    }
-    const nextZ = ped.blockZ + signZ * 54;
-    if (!BLOCK_CENTERS_Z.includes(nextZ)) return false;
-    ped.nextBlockX = ped.blockX;
-    ped.nextBlockZ = nextZ;
-    ped.mode = 'cross';
-    ped.crossingAxis = 'z';
-    ped.target = { x: ped.blockX + signX * CORNER, z: ped.blockZ + signZ * (54 - CORNER) };
-    return true;
+    return tryCross(this, ped, corner);
   }
 
   finishCrossing(ped) {
-    ped.blockX = ped.nextBlockX;
-    ped.blockZ = ped.nextBlockZ;
-    ped.cornerIndex = cornerIndexFor(ped.x - ped.blockX, ped.z - ped.blockZ);
-    ped.mode = 'loop';
-    ped.crossingAxis = null;
-    ped.pause = this.rng.range(0, 0.5);
-    this.setNextCorner(ped);
+    return finishCrossing(this, ped);
   }
 
   carNear(x, z, radius) {
-    const radiusSq = radius * radius;
-    for (const car of this.vehicles.list) {
-      if (!car.driver) continue;
-      const dx = car.position.x - x;
-      const dz = car.position.z - z;
-      if (dx * dx + dz * dz < radiusSq && Math.abs(car.speed) > 2) return true;
-    }
-    return false;
+    return carNear(this, x, z, radius);
   }
 
   spawnAmbientPed(player) {
-    const px = player.position.x;
-    const pz = player.position.z;
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      const blockX = this.rng.pick(BLOCK_CENTERS_X);
-      const blockZ = this.rng.pick(BLOCK_CENTERS_Z);
-      const distance = Math.hypot(blockX - px, blockZ - pz);
-      if (distance < 30 || distance > 145) continue;
-      const corner = CORNERS[this.rng.int(0, 3)];
-      const x = blockX + corner[0];
-      const z = blockZ + corner[1];
-      if (Math.hypot(x - px, z - pz) < 14) continue;
-      this.spawnSidewalkPed(x, z, this.rng.int(0, 3));
-      return;
-    }
+    return spawnAmbientPed(this, player);
   }
 
   // ---------------------------------------------------------------- per frame

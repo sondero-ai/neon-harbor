@@ -3,7 +3,9 @@
 // save are separate modules; this file is the wiring between them and the
 // moment-to-moment decisions: when the pointer is captured, when F/E hands the
 // player to a car, when a pause writes the save, and how a deterministic
-// screenshot becomes a frozen frame.
+// screenshot becomes a frozen frame. The screens, radio controls, HUD reads
+// and shot staging live in main-menu.js, main-radio.js, main-hud-state.js and
+// main-shots.js.
 
 import * as THREE from '../vendor/three.module.js';
 import {
@@ -12,18 +14,15 @@ import {
   NEW_GAME_CLOCK,
   PALETTE,
   PLAYER,
-  QUALITY_PRESETS,
   RADIO,
   START_OBJECTIVE,
-  districtAt,
   radioStationIndex,
-  streetAt,
 } from './config.js';
-import { CLOCK_MINUTES_PER_SECOND, Environment, SHOT_CLOCK, parseTimeParam } from './environment.js';
+import { CLOCK_MINUTES_PER_SECOND, Environment, parseTimeParam } from './environment.js';
 import { TrafficSignals } from './traffic-signals.js';
 import { World } from './world.js';
 import { Player } from './player.js';
-import { Vehicles } from './vehicles.js';
+import { Vehicles } from './vehicle-fleet.js';
 import { Interactions } from './interactions.js';
 import { Traffic } from './traffic.js';
 import { MallLife } from './mall-life.js';
@@ -38,31 +37,56 @@ import { AudioSystem } from './audio.js';
 import { RadioPlayer } from './radio.js';
 import { Police } from './police.js';
 import { Pickups } from './pickups.js';
-import { Missions, MISSION_COUNT, missionName } from './missions.js';
+import { Missions } from './missions.js';
 import { Activities } from './activities.js';
 import { LOW_FUEL } from './fuel.js';
+import { crewState, hudState, respectState } from './main-hud-state.js';
+import {
+  applyQualityVisuals,
+  backFromControls,
+  bindScreens,
+  bindVolumeSliders,
+  bindWindow,
+  enterTitle,
+  menuFocused,
+  pause,
+  refreshQualityLabel,
+  resize,
+  resume,
+  saveAndReturn,
+  setTitleCamera,
+  showControls,
+  syncAudioControls,
+  toggleQuality,
+  updateContinueButton,
+  updateLookHint,
+  updatePauseStats,
+  updateTitleCamera,
+} from './main-menu.js';
+import {
+  applyRadioWheel,
+  changeVolume,
+  closeRadioWheel,
+  cycleStation,
+  cycleTrack,
+  openRadioWheel,
+  pickRadioWheel,
+  radioToast,
+  setVolumeLevel,
+  toggleMute,
+  toggleRadio,
+  updateRadioWheel,
+} from './main-radio.js';
+import { DEFAULT_TITLE_VIEW, STEP, byId, setHidden } from './main-shared.js';
+import {
+  applyShot,
+  applyStageShot,
+  poseArmedPlayer,
+  stageChaseDrama,
+  stageDriveShot,
+} from './main-shots.js';
 
-const STEP = 1 / 60;
 const MAX_STEPS = 5;
-
-const DEFAULT_TITLE_VIEW = {
-  position: [132, 64, 156],
-  target: [-210, 2, 42],
-  drift: [6.0, 1.4, 4.0],
-  speed: 0.03,
-};
-
-function byId(id) {
-  return document.getElementById(id);
-}
-
-function formatCash(value) {
-  return `$ ${Math.max(0, Math.round(value)).toLocaleString('en-US')}`;
-}
-
-function setHidden(element, hidden) {
-  if (element) element.hidden = hidden;
-}
 
 class Game {
   constructor() {
@@ -258,90 +282,59 @@ class Game {
     window.__neonReady = true;
   }
 
+  // ---------------------------------------------------------------- modules
+  // The extracted modules take the Game instance; these thin wrappers keep the
+  // class surface and every call site exactly as they were.
+
+  // HUD reads (main-hud-state.js)
+  respectState() { return respectState(this); }
+  crewState() { return crewState(this); }
+  hudState() { return hudState(this); }
+
+  // Screens, quality and audio panels (main-menu.js)
+  bindScreens() { return bindScreens(this); }
+  bindVolumeSliders() { return bindVolumeSliders(this); }
+  syncAudioControls() { return syncAudioControls(this); }
+  bindWindow() { return bindWindow(this); }
+  applyQualityVisuals(resize = true) { return applyQualityVisuals(this, resize); }
+  refreshQualityLabel() { return refreshQualityLabel(this); }
+  resize() { return resize(this); }
+  menuFocused() { return menuFocused(this); }
+  updateContinueButton() { return updateContinueButton(this); }
+  updatePauseStats() { return updatePauseStats(this); }
+  updateLookHint() { return updateLookHint(this); }
+  enterTitle() { return enterTitle(this); }
+  pause() { return pause(this); }
+  resume() { return resume(this); }
+  showControls(from) { return showControls(this, from); }
+  backFromControls() { return backFromControls(this); }
+  saveAndReturn() { return saveAndReturn(this); }
+  toggleQuality() { return toggleQuality(this); }
+  setTitleCamera() { return setTitleCamera(this); }
+  updateTitleCamera() { return updateTitleCamera(this); }
+
+  // Radio controls and the hold-Tab wheel (main-radio.js)
+  radioToast(state, { off = false } = {}) { return radioToast(this, state, { off }); }
+  toggleRadio() { return toggleRadio(this); }
+  cycleStation(direction) { return cycleStation(this, direction); }
+  cycleTrack(direction) { return cycleTrack(this, direction); }
+  updateRadioWheel(input) { return updateRadioWheel(this, input); }
+  openRadioWheel() { return openRadioWheel(this); }
+  closeRadioWheel() { return closeRadioWheel(this); }
+  applyRadioWheel() { return applyRadioWheel(this); }
+  pickRadioWheel(hit) { return pickRadioWheel(this, hit); }
+  toggleMute() { return toggleMute(this); }
+  setVolumeLevel(value, { toast = false } = {}) { return setVolumeLevel(this, value, { toast }); }
+  changeVolume(delta) { return changeVolume(this, delta); }
+
+  // Deterministic shot staging (main-shots.js)
+  applyShot(shot) { return applyShot(this, shot); }
+  applyStageShot(shot) { return applyStageShot(this, shot); }
+  poseArmedPlayer(shot) { return poseArmedPlayer(this, shot); }
+  stageChaseDrama() { return stageChaseDrama(this); }
+  stageDriveShot(drive) { return stageDriveShot(this, drive); }
+
   // ---------------------------------------------------------------- setup
-
-  bindScreens() {
-    const click = (id, action) => {
-      const element = byId(id);
-      if (!element) return;
-      element.addEventListener('click', (event) => {
-        event.currentTarget.blur();
-        event.preventDefault();
-        this.audio.unlock();
-        this.audio.uiClick();
-        action();
-      });
-    };
-
-    click('btn-new', () => this.startNewGame());
-    click('btn-continue', () => this.startContinue());
-    click('btn-controls', () => this.showControls('title'));
-    click('btn-quality', () => this.toggleQuality());
-    click('btn-resume', () => this.resume());
-    click('btn-pause-controls', () => this.showControls('paused'));
-    click('btn-pause-quality', () => this.toggleQuality());
-    click('btn-save-title', () => this.saveAndReturn());
-    click('btn-controls-back', () => this.backFromControls());
-    click('title-mute', () => this.toggleMute());
-    click('pause-mute', () => this.toggleMute());
-    this.bindVolumeSliders();
-  }
-
-  bindVolumeSliders() {
-    for (const element of [this.ui.titleVolume, this.ui.pauseVolume]) {
-      if (!element) continue;
-      element.addEventListener('input', () => this.setVolumeLevel(Number(element.value) / 100));
-      element.addEventListener('pointerdown', () => this.audio.unlock());
-    }
-    this.syncAudioControls();
-  }
-
-  syncAudioControls() {
-    const percent = Math.round((this.audio?.volume ?? 0.72) * 100);
-    const muted = Boolean(this.audio?.muted);
-    const panels = [
-      [this.ui.titleVolume, this.ui.titleVolumeValue, this.ui.titleMute],
-      [this.ui.pauseVolume, this.ui.pauseVolumeValue, this.ui.pauseMute],
-    ];
-    for (const [slider, label, button] of panels) {
-      if (slider) slider.value = String(percent);
-      if (label) label.textContent = `${percent}%`;
-      if (button) {
-        button.textContent = muted ? 'Muted' : 'Mute';
-        button.setAttribute('aria-pressed', muted ? 'true' : 'false');
-      }
-    }
-  }
-
-  bindWindow() {
-    window.addEventListener('resize', () => this.resize());
-    window.addEventListener('blur', () => {
-      if (this.mode === 'playing' && !this.shot) this.pause();
-    });
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden && this.mode === 'playing' && !this.shot) this.pause();
-    });
-    document.addEventListener('pointerlockchange', () => this.updateLookHint());
-    window.addEventListener('beforeunload', () => {
-      if (this.mode === 'playing' && !this.shot) this.saveProgress();
-    });
-  }
-
-  applyQualityVisuals(resize = true) {
-    const preset = QUALITY_PRESETS[this.quality] ?? QUALITY_PRESETS.high;
-    const ratio = Math.min(window.devicePixelRatio || 1, preset.pixelRatio);
-    this.renderer.setPixelRatio(ratio);
-    this.renderer.shadowMap.enabled = preset.shadows;
-    if (this.world) this.world.setQuality(this.quality);
-    if (this.effects) this.effects.setQuality(this.quality);
-    if (resize) this.resize();
-  }
-
-  refreshQualityLabel() {
-    const text = this.quality === 'high' ? 'High' : 'Low';
-    if (this.ui.qualityNote) this.ui.qualityNote.textContent = text;
-    if (this.ui.pauseQualityNote) this.ui.pauseQualityNote.textContent = text;
-  }
 
   environmentTargets() {
     return {
@@ -368,80 +361,7 @@ class Game {
     return state;
   }
 
-  resize() {
-    const width = Math.max(1, window.innerWidth);
-    const height = Math.max(1, window.innerHeight);
-    this.camera.aspect = width / height;
-    this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height, true);
-    if (this.hud?.visible && this.lastHudState) this.hud.update(0, this.lastHudState);
-  }
-
   // ---------------------------------------------------------------- screens
-
-  menuFocused() {
-    const active = document.activeElement;
-    if (!active || active === document.body || active === this.canvas) return false;
-    return ['BUTTON', 'A', 'INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName);
-  }
-
-  updateContinueButton() {
-    const save = SaveStore.load();
-    const button = byId('btn-continue');
-    if (!button) return;
-    button.disabled = !save;
-    if (this.ui.continueNote) {
-      this.ui.continueNote.textContent = save
-        ? `${formatCash(save.cash)} · ${save.storyDone ? 'Story complete' : `M${Math.min(save.mission + 1, MISSION_COUNT)} · ${missionName(save.mission)}`}`
-        : 'No save yet';
-    }
-  }
-
-  updatePauseStats() {
-    if (this.ui.pauseCash) this.ui.pauseCash.textContent = formatCash(this.player.cash);
-    if (this.ui.pauseDistrict) this.ui.pauseDistrict.textContent = districtAt(this.player.position.x, this.player.position.z);
-    if (this.ui.pauseClock) this.ui.pauseClock.textContent = this.environment.clock;
-    if (this.ui.pauseMission) {
-      this.ui.pauseMission.textContent = this.missions.storyDone
-        ? 'Story complete'
-        : `${this.missions.index + 1}/${MISSION_COUNT} · ${missionName(this.missions.index)}`;
-    }
-  }
-
-  updateLookHint() {
-    if (!this.ui.lookHint) return;
-    this.ui.lookHint.hidden = !(
-      this.mode === 'playing'
-      && !this.input.locked
-      && !this.shotLocked
-      && !this.down
-      && !this.hud?.ending
-      && !this.radioWheel.open
-    );
-  }
-
-  enterTitle() {
-    this.mode = 'title';
-    setHidden(this.ui.title, false);
-    setHidden(this.ui.pause, true);
-    setHidden(this.ui.controls, true);
-    this.player.group.visible = false;
-    this.player.inputBlocked = true;
-    this.player.gun.visible = false;
-    this.hud.setVisible(false);
-    this.input.captureTab = false;
-    this.closeRadioWheel();
-    this.input.allowLock = false;
-    this.input.releaseLock();
-    this.input.consumeMouse();
-    this.audio.setEngine({ on: false, rpm: 0, load: 0, speed: 0 });
-    this.audio.setSiren(0, 0);
-    this.updateLookHint();
-    this.updateContinueButton();
-    this.syncAudioControls();
-    this.world.focusAt(this.titleView.target[0], this.titleView.target[2]);
-    this.setTitleCamera();
-  }
 
   enterPlaying({ lock = true, toast = false } = {}) {
     this.mode = 'playing';
@@ -581,152 +501,6 @@ class Game {
     cruiser.setDriver(null);
   }
 
-  radioToast(state, { off = false } = {}) {
-    if (this.hud.suppressToasts) return;
-    if (off) {
-      this.hud.toast = { title: 'Radio Off', sub: 'PRESS T TO TUNE IN', life: 2.0 };
-      return;
-    }
-    const status = state.offAir ? 'OFF AIR' : state.fallback ? 'SYNTH' : 'ON AIR';
-    this.hud.toast = {
-      title: state.station,
-      sub: `${state.trackNumber}/${state.trackCount} · ${state.track.toUpperCase()} — ${state.artist.toUpperCase()} · ${status}`,
-      life: 2.6,
-    };
-  }
-
-  toggleRadio() {
-    this.audio.unlock();
-    const wasEnabled = this.radio.enabled;
-    const state = this.radio.toggle();
-    this.audio.radioSwitch();
-    this.radioToast(state, { off: wasEnabled });
-  }
-
-  cycleStation(direction) {
-    this.audio.unlock();
-    if (!this.radio.enabled) this.radio.setEnabled(true, { autoplay: false });
-    const moved = this.radio.nextStation(direction);
-    this.audio.radioSwitch();
-    if (!moved) {
-      if (!this.hud.suppressToasts) this.hud.toast = { title: 'All Stations Off Air', sub: 'NO PLAYABLE RADIO', life: 2.0 };
-      return;
-    }
-    this.radioToast(this.radio.state);
-  }
-
-  cycleTrack(direction) {
-    this.audio.unlock();
-    if (!this.radio.enabled) this.radio.setEnabled(true, { autoplay: false });
-    this.radio.nextTrack(direction);
-    this.audio.radioSwitch();
-    this.radioToast(this.radio.state);
-  }
-
-  // ---------------------------------------------------------------- radio wheel
-
-  updateRadioWheel(input) {
-    const canOpen = this.mode === 'playing' && !this.down && !this.hud.ending;
-    const held = canOpen && input.isDown('Tab');
-    if (held && !this.radioWheel.open) this.openRadioWheel();
-    else if (!held && this.radioWheel.open) this.closeRadioWheel();
-    if (this.radioWheel.open) {
-      const wheel = this.radioWheel;
-      const stations = RADIO.stations;
-      const stationCount = stations.length;
-      if (input.wasPressed('ArrowLeft')) wheel.station = (wheel.station + stationCount - 1) % stationCount;
-      if (input.wasPressed('ArrowRight')) wheel.station = (wheel.station + 1) % stationCount;
-      wheel.track = Math.min(wheel.track, stations[wheel.station].tracks.length - 1);
-      const trackCount = stations[wheel.station].tracks.length;
-      if (input.wasPressed('ArrowUp')) wheel.track = (wheel.track + trackCount - 1) % trackCount;
-      if (input.wasPressed('ArrowDown')) wheel.track = (wheel.track + 1) % trackCount;
-      if (input.wasPressed('Enter', 'NumpadEnter')) {
-        this.applyRadioWheel();
-        input.consumePressed('Enter', 'NumpadEnter');
-      }
-    }
-    // Movement axes read this flag, so the wheel can use the arrow keys without
-    // walking Rae around the block.
-    input.radioWheelOpen = this.radioWheel.open;
-  }
-
-  openRadioWheel() {
-    this.audio.unlock();
-    this.radioWheel.open = true;
-    this.radioWheel.station = this.radio.stationIndex;
-    this.radioWheel.track = this.radio.trackIndex;
-    this.radioWheel.lock = this.input.locked;
-    this.input.wheelLockRestore = this.radioWheel.lock;
-    if (this.radioWheel.lock) this.input.releaseLock();
-    this.input.radioWheelOpen = true;
-    this.hud.setWheelInteractive(true);
-    this.updateLookHint();
-    this.audio.uiClick();
-  }
-
-  closeRadioWheel() {
-    if (!this.radioWheel.open) return;
-    this.radioWheel.open = false;
-    this.radioWheel.lock = false;
-    this.input.radioWheelOpen = false;
-    this.input.wheelLockRestore = false;
-    this.hud.setWheelInteractive(false);
-    this.updateLookHint();
-  }
-
-  applyRadioWheel() {
-    this.audio.unlock();
-    const wheel = this.radioWheel;
-    const state = this.radio.setStation(wheel.station, wheel.track);
-    this.audio.radioSwitch();
-    this.radioToast(state);
-  }
-
-  pickRadioWheel(hit) {
-    if (!this.radioWheel.open || !hit) return;
-    this.radioWheel.station = hit.station;
-    this.radioWheel.track = hit.track;
-    this.applyRadioWheel();
-  }
-
-  toggleMute() {
-    this.audio.unlock();
-    const muted = this.audio.toggleMute();
-    this.settings.muted = muted;
-    SaveStore.saveSettings(this.settings);
-    this.syncAudioControls();
-    if (!this.hud.suppressToasts) {
-      const state = this.radio.state;
-      this.hud.toast = {
-        title: muted ? 'Audio Muted' : 'Audio On',
-        sub: muted ? 'PRESS M TO RESTORE' : `${state.station} · ${state.track}`.toUpperCase(),
-        life: 2.0,
-      };
-    }
-  }
-
-  setVolumeLevel(value, { toast = false } = {}) {
-    this.audio.unlock();
-    const volume = Math.max(0, Math.min(1, Number(value) || 0));
-    // Setting a level also lifts an old mute, so the gesture is audible.
-    this.audio.muted = false;
-    this.audio.setVolume(volume);
-    if (this.audio.master && this.audio.ctx) {
-      this.audio.master.gain.setTargetAtTime(this.audio.volume, this.audio.ctx.currentTime, 0.03);
-    }
-    this.settings.volume = this.audio.volume;
-    this.settings.muted = false;
-    SaveStore.saveSettings(this.settings);
-    this.syncAudioControls();
-    if (toast && !this.hud.suppressToasts) {
-      this.hud.toast = { title: `Volume ${Math.round(this.audio.volume * 100)}%`, sub: 'MINUS / EQUALS', life: 1.6 };
-    }
-  }
-
-  changeVolume(delta) {
-    this.setVolumeLevel(this.audio.volume + delta, { toast: true });
-  }
-
   announceVehicle(enteredCar, exitedCar, carjacked = false) {
     if (this.hud.suppressToasts) return;
     if (enteredCar) {
@@ -804,436 +578,6 @@ class Game {
     };
     this.world.focusAt(this.player.position.x, this.player.position.z);
     this.saveProgress();
-  }
-
-  pause() {
-    if (this.mode !== 'playing') return;
-    this.mode = 'paused';
-    this.input.captureTab = false;
-    this.closeRadioWheel();
-    this.audio.setEngine({ on: false, rpm: 0, load: 0, speed: 0 });
-    this.audio.setSiren(0, 0);
-    this.input.allowLock = false;
-    this.input.releaseLock();
-    this.input.consumeMouse();
-    this.updatePauseStats();
-    this.syncAudioControls();
-    this.saveProgress();
-    setHidden(this.ui.pause, false);
-    this.updateLookHint();
-  }
-
-  resume() {
-    if (this.mode !== 'paused') return;
-    this.mode = 'playing';
-    setHidden(this.ui.pause, true);
-    this.input.captureTab = true;
-    this.radio.tick();
-    this.input.allowLock = true;
-    this.input.consumeMouse();
-    this.input.requestLock();
-    this.updateLookHint();
-  }
-
-  showControls(from) {
-    this.controlsReturn = from;
-    this.mode = 'controls';
-    setHidden(this.ui.title, true);
-    setHidden(this.ui.pause, true);
-    setHidden(this.ui.controls, false);
-    this.input.captureTab = false;
-    this.closeRadioWheel();
-    this.input.allowLock = false;
-    this.input.releaseLock();
-    this.updateLookHint();
-  }
-
-  backFromControls() {
-    setHidden(this.ui.controls, true);
-    if (this.controlsReturn === 'paused') {
-      this.mode = 'paused';
-      setHidden(this.ui.pause, false);
-    } else {
-      this.mode = 'title';
-      setHidden(this.ui.title, false);
-    }
-    this.updateLookHint();
-  }
-
-  saveAndReturn() {
-    this.saveProgress();
-    this.enterTitle();
-  }
-
-  toggleQuality() {
-    this.quality = this.quality === 'high' ? 'low' : 'high';
-    this.settings.quality = this.quality;
-    SaveStore.saveSettings(this.settings);
-    this.applyQualityVisuals(true);
-    this.refreshQualityLabel();
-  }
-
-  // Respect is a readout of the run, not a second progression system: cash
-  // earned and story chapters cleared move it up the Strip's ladder.
-  respectState() {
-    const value = Math.min(250, Math.floor(this.player.cash / 20) + this.missions.index * 30);
-    const tiers = [
-      [200, 'HARBOR LEGEND'],
-      [140, 'SOLANO CREW'],
-      [85, 'HARBOR HEAVY'],
-      [45, 'STRIP RUNNER'],
-      [0, 'NEW BLOOD'],
-    ];
-    const rank = tiers.find(([floor]) => value >= floor)?.[1] ?? 'NEW BLOOD';
-    return { rank, value, max: 250 };
-  }
-
-  crewState() {
-    const driving = this.player.driving;
-    const wanted = this.police.wanted;
-    const active = Boolean(this.missions.active);
-    const failed = Boolean(this.missions.failure);
-    return [
-      {
-        name: 'MIRA SOL',
-        role: 'DRIVER',
-        status: failed ? 'STANDING BY' : active ? (driving ? 'ON COMMS' : 'EN ROUTE') : 'READY',
-      },
-      {
-        name: 'ODIN',
-        role: 'MECHANIC',
-        status: driving && driving.condition < 0.82 ? 'EN ROUTE' : 'IN THE BAY',
-      },
-      {
-        name: 'KIKI',
-        role: 'LOOKOUT',
-        status: wanted > 0 ? (this.police.status === 'search' ? 'BLACKOUT' : 'EYES ON') : 'ON THE CORNER',
-      },
-    ];
-  }
-
-  hudState() {
-    const player = this.player;
-    const driving = player.driving;
-    const blips = [];
-    for (const vehicle of this.vehicles.list) {
-      const dx = vehicle.position.x - player.position.x;
-      const dz = vehicle.position.z - player.position.z;
-      if (dx * dx + dz * dz > 9600) continue;
-      blips.push({
-        x: vehicle.position.x,
-        z: vehicle.position.z,
-        yaw: vehicle.yaw,
-        kind: vehicle.type,
-        parked: !vehicle.driver,
-        player: vehicle === driving,
-      });
-    }
-    let vehiclePrompt = null;
-    if (driving) {
-      vehiclePrompt = { action: 'exit', name: driving.name };
-    } else if (player.nearVehicle) {
-      vehiclePrompt = {
-        action: 'enter',
-        name: player.nearVehicle.name,
-        distance: player.nearVehicle.distanceToBox(player.position.x, player.position.z) + 0.4,
-      };
-    }
-    const police = this.police.hudState;
-    const radio = this.radio.state;
-    return {
-      player,
-      objective: this.objective,
-      radio: {
-        ...radio,
-        wheel: this.radioWheel.open
-          ? { open: true, station: this.radioWheel.station, track: this.radioWheel.track }
-          : { open: false },
-      },
-      clock: this.environment.clock,
-      day: this.environment.day,
-      period: this.environment.period,
-      district: districtAt(player.position.x, player.position.z),
-      street: streetAt(player.position.x, player.position.z),
-      mall: this.world.mall
-        ? { label: this.world.mall.label, bounds: this.world.mall.bounds }
-        : null,
-      parking: this.parking
-        ? { occupied: this.parking.occupied, slots: this.parking.slots.length, valet: Boolean(this.parking.valet) }
-        : null,
-      missionCard: this.shot?.missionCard ?? this.missions.hudCard,
-      missionActive: Boolean(this.missions.active),
-      missionFailed: Boolean(this.missions.failure),
-      respect: this.respectState(),
-      crew: this.crewState(),
-      vehicle: driving
-        ? {
-            name: driving.name,
-            className: driving.className,
-            tune: driving.tune,
-            speedKmh: driving.speedKmh,
-            gear: driving.gear,
-            engineRpm: driving.engineRpm,
-            condition: driving.condition,
-            fuel: driving.fuel,
-          }
-        : null,
-      vehicles: blips,
-      density: this.traffic.density,
-      vehiclePrompt,
-      contextPrompt: this.interactions.prompt,
-      police,
-      weapons: this.player.combatState,
-      down: this.down,
-      subtitle: this.missions.subtitle,
-      challenge: this.activities.challenge,
-      fail: this.missions.failure,
-      missionEnemies: this.missions.enemies.filter((enemy) => !enemy.dead && !enemy.removed).map((enemy) => ({ x: enemy.x, z: enemy.z })),
-      effects: {
-        hurt: this.effects.hurtLevel,
-        lowHealth: player.health < 32,
-        flash: player.damageFlash,
-      },
-      pickup: this.pickups.hint,
-    };
-  }
-
-  // ---------------------------------------------------------------- title camera
-
-  setTitleCamera() {
-    this.updateTitleCamera();
-  }
-
-  updateTitleCamera() {
-    const view = this.titleView;
-    const [x, y, z] = view.position;
-    const [dx, dy, dz] = view.drift;
-    const t = this.simTime * view.speed;
-    this.camera.position.set(
-      x + Math.sin(t) * dx,
-      y + Math.sin(t * 0.73 + 1.2) * dy,
-      z + Math.cos(t * 0.86) * dz,
-    );
-    this.camera.lookAt(view.target[0], view.target[1], view.target[2]);
-  }
-
-  // ---------------------------------------------------------------- deterministic shots
-
-  applyShot(shot) {
-    this.shot = shot;
-    // A capture should look the same on a machine that last played on low.
-    if (this.quality !== 'high') {
-      this.quality = 'high';
-      this.applyQualityVisuals(true);
-      this.refreshQualityLabel();
-    }
-    this.simTime = shot.time ?? 0;
-    this.environment.setClock(this.timeOverride ?? SHOT_CLOCK);
-    this.environment.apply(this.environmentTargets(), { force: true });
-    this.hud.suppressToasts = true;
-    this.hud.toast = null;
-    const steps = Math.max(0, shot.prewarm ?? 0);
-
-    if (shot.mode === 'title') {
-      this.titleView = shot.titleCamera ?? DEFAULT_TITLE_VIEW;
-      this.enterTitle();
-      // A screenshot must not change with whatever save the machine happens to
-      // hold, so the title capture always shows the fresh-slot menu.
-      const continueButton = byId('btn-continue');
-      if (continueButton) continueButton.disabled = true;
-      if (this.ui.continueNote) this.ui.continueNote.textContent = 'No save yet';
-      for (let i = 0; i < steps; i += 1) this.tick(STEP);
-    } else {
-      this.down = null;
-      this.police.resetAfterDown();
-      this.pickups.reset();
-      this.missions.prepareShot();
-      this.activities.suspended = true;
-      this.hud.reward = null;
-      this.hud.ending = null;
-      this.enterPlaying({ lock: false, toast: shot.toast === true });
-      this.objective = shot.objective ?? START_OBJECTIVE;
-      if (this.objective.marker) {
-        this.world.setObjectiveMarker(this.objective.marker.x, this.objective.marker.z);
-      }
-      this.player.health = PLAYER.health;
-      this.player.armor = PLAYER.armor;
-      this.player.cash = PLAYER.cash;
-      this.player.wanted = 0;
-      this.player.mission = 0;
-      this.player.playSeconds = 0;
-      this.player.dead = false;
-      this.player.inputBlocked = false;
-      this.player.humanoid.group.rotation.z = 0;
-      this.player.gun.visible = false;
-      if (shot.drive) {
-        this.police.clearUnits();
-        this.vehicles.clear();
-        this.traffic.reset({ spawnBeach: false });
-        this.stageDriveShot(shot.drive);
-        if (shot.chase) this.police.stageChase(shot.chase, this.player.driving);
-        this.player.updateCamera(this.camera, 0, true);
-        for (let i = 0; i < steps; i += 1) this.tick(STEP);
-        if (Number.isFinite(shot.health)) this.player.health = shot.health;
-        if (Number.isFinite(shot.armor)) this.player.armor = shot.armor;
-        this.player.damageFlash = 0;
-        if (shot.chase) this.stageChaseDrama();
-        this.hud.lastHealth = this.player.health;
-        this.hud.lastArmor = this.player.armor;
-        this.hud.healthFlash = 0;
-        this.hud.armorFlash = 0;
-      } else {
-        const pose = shot.player;
-        this.player.teleport(pose.x, pose.z, pose.facing, pose.cameraYaw);
-        this.player.cameraPitch = pose.cameraPitch;
-        this.player.cameraDistance = pose.distance;
-        this.resetCityLife({ spawnBeach: shot.stage !== 'heist' });
-        if (shot.police) this.police.stageChase(shot.police, this.player);
-        this.player.updateCamera(this.camera, 0, true);
-        for (let i = 0; i < steps; i += 1) this.tick(STEP);
-      }
-      if (shot.stage) this.applyStageShot(shot);
-      // These final poses are applied after the simulation steps so the
-      // screenshot is deterministic: the helicopter, dialogue and bodywork
-      // stay exactly where the shot asked for them.
-      if (shot.air) this.police.stageAir(shot.air);
-      if (shot.dialogue) this.missions.subtitle = { ...shot.dialogue, life: 999 };
-      if (shot.station) this.gasStation?.stageShot(shot.station);
-      if (Number.isFinite(shot.health)) this.player.health = shot.health;
-      if (Number.isFinite(shot.armor)) this.player.armor = shot.armor;
-      this.hud.lastHealth = this.player.health;
-      this.hud.lastArmor = this.player.armor;
-      this.hud.healthFlash = 0;
-      this.hud.armorFlash = 0;
-      if (shot.weapons === 'smg') {
-        this.player.weapons.smg.owned = true;
-        this.player.weapons.smg.ammo = 32;
-        this.player.weapons.smg.reserve = 96;
-        this.player.weaponKey = 'smg';
-        this.player.syncGunModel();
-      }
-      if (Number.isFinite(shot.condition) && this.player.driving) {
-        this.player.driving.condition = shot.condition;
-      }
-      if (shot.armed) this.poseArmedPlayer(shot);
-      if (shot.drama) this.stageChaseDrama();
-    }
-
-    this.shotLocked = true;
-    this.lastHudState = this.hudState();
-    if (this.hud.visible) this.hud.update(0, this.lastHudState);
-    this.updateLookHint();
-    this.renderer.render(this.scene, this.camera);
-  }
-
-  applyStageShot(shot) {
-    this.missions.stageShot(shot.stage);
-    this.objective = this.missions.objective;
-    this.world.setObjectiveMarker(this.objective.marker.x, this.objective.marker.z);
-    if (this.world.objectiveMarker) this.world.objectiveMarker.group.visible = false;
-    if (Number.isFinite(shot.health)) this.player.health = shot.health;
-    if (Number.isFinite(shot.armor)) this.player.armor = shot.armor;
-    this.player.aiming = false;
-    this.player.humanoid.aiming = true;
-    this.player.gun.visible = true;
-    this.player.facing = shot.player?.facing ?? this.player.cameraYaw - Math.PI;
-    this.player.humanoid.setFacing(this.player.facing);
-    for (let i = 0; i < 20; i += 1) this.player.humanoid.update(1 / 60, 0, false);
-    this.player.humanoid.aiming = false;
-    if (shot.camera) {
-      const [x, y, z] = shot.camera.position;
-      this.camera.position.set(x, y, z);
-      this.camera.fov = CAMERA.fov;
-      this.camera.updateProjectionMatrix();
-      this.camera.lookAt(shot.camera.target[0], shot.camera.target[1], shot.camera.target[2]);
-    } else {
-      this.player.updateCamera(this.camera, 0, true);
-    }
-    this.effects.update(0.45, this.camera);
-    this.missions.stageShotDrama(shot.stage);
-    this.player.aiming = true;
-    this.player.damageFlash = 0.34;
-    this.hud.lastHealth = this.player.health;
-    this.hud.lastArmor = this.player.armor;
-    this.hud.healthFlash = 0;
-    this.hud.armorFlash = 0;
-  }
-
-  poseArmedPlayer(shot) {
-    const facing = shot.player?.facing ?? this.player.facing;
-    this.player.aiming = true;
-    this.player.humanoid.aiming = true;
-    this.player.gun.visible = true;
-    this.player.facing = facing;
-    this.player.humanoid.setFacing(facing);
-    for (let i = 0; i < 20; i += 1) this.player.humanoid.update(1 / 60, 0, false);
-    this.player.humanoid.aiming = false;
-    this.player.aiming = false;
-    this.player.gun.visible = true;
-    this.player.damageFlash = 0.34;
-    this.hud.lastHealth = this.player.health;
-    this.hud.lastArmor = this.player.armor;
-    this.hud.healthFlash = 0;
-    this.hud.armorFlash = 0;
-  }
-
-  stageChaseDrama() {
-    let best = null;
-    let bestFacing = -Infinity;
-    for (const unit of this.police.units) {
-      if (!unit.car || unit.car.removed) continue;
-      const car = unit.car;
-      const dx = this.player.position.x - car.position.x;
-      const dz = this.player.position.z - car.position.z;
-      const length = Math.hypot(dx, dz) || 1;
-      const facing = (Math.sin(car.yaw) * dx + Math.cos(car.yaw) * dz) / length;
-      if (facing > bestFacing) {
-        bestFacing = facing;
-        best = car;
-      }
-    }
-    if (!best) return;
-    const forwardX = Math.sin(best.yaw);
-    const forwardZ = Math.cos(best.yaw);
-    const muzzle = new THREE.Vector3(
-      best.position.x + forwardX * (best.halfLength + 0.35),
-      best.position.y + 1.08,
-      best.position.z + forwardZ * (best.halfLength + 0.35),
-    );
-    this.effects.smokePuff(best.position.x + forwardX * 1.4, best.position.y + 0.9, best.position.z + forwardZ * 1.4, {
-      scale: 2.2,
-      life: 2.2,
-      color: 0x5c5156,
-      rise: 1.2,
-    });
-    this.effects.update(0.42, null);
-    this.effects.tracer(muzzle, new THREE.Vector3(this.player.position.x, this.player.position.y + 0.9, this.player.position.z), 0xffd08a);
-    this.effects.muzzle(muzzle.x, muzzle.y, muzzle.z, 0xffd79a);
-    this.player.damageFlash = 0.55;
-  }
-
-  stageDriveShot(drive) {
-    const car = this.vehicles.spawn(drive.type ?? 'muscle', {
-      x: drive.x,
-      z: drive.z,
-      yaw: drive.yaw,
-      color: drive.color,
-    });
-    this.player.enterVehicle(car);
-    const speed = drive.speed ?? 18;
-    car.velocity.set(Math.sin(drive.yaw) * speed, 0, Math.cos(drive.yaw) * speed);
-    car.controls.throttle = 0;
-    car.controls.brake = 0;
-    car.controls.steer = 0;
-    car.controls.handbrake = false;
-    this.player.drivePitch = drive.cameraPitch ?? 0.13;
-    this.player.driveOrbitYaw = drive.cameraOrbit ?? 0;
-    this.player.driveLookHold = 0;
-    this.player.syncFromVehicle();
-    this.effects.registerVehicle(car);
-    this.traffic.stageDrive(car);
-    this.world.focusAt(car.position.x, car.position.z);
-    this.player.updateView(this.camera, 0, true);
   }
 
   // ---------------------------------------------------------------- loop

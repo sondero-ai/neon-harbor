@@ -6,38 +6,29 @@
 
 import * as THREE from '../vendor/three.module.js';
 import { makeGlowSprite } from './geo.js';
+import {
+  addBox, buildThugMaterials, distance2, makeFlameTexture, Thug,
+} from './missions-actor.js';
+import {
+  MOTOR_SHOP, PIER_HEIST_CRATES, PIER_HEIST_SPAWNS, SAFEHOUSE, STORY,
+} from './missions-data.js';
+import {
+  poseAim as poseAimModule,
+  prepareShot as prepareShotModule,
+  stageHeistShot as stageHeistShotModule,
+  stageMissionShot as stageMissionShotModule,
+  stageShot as stageShotModule,
+  stageShotDrama as stageShotDramaModule,
+} from './missions-shots.js';
 
 const CORAL = 0xff6f61;
 const GOLD = 0xffc95c;
 const TEAL = 0x3fe0cf;
 
 const TRIGGER_RADIUS = 3.3;
-const SAFEHOUSE = { x: -71.5, z: 36.6 };
-const MOTOR_SHOP = { x: 162, z: 18.2 };
-
-// Pier 9 staging. The deck is pedestrian-only and its props are solid, so the
-// heist crate and enemies stand on the open planks rather than in the shack,
-// the benches or a sampled crate. The E2E suite validates every point against
-// world.colliders.
-const PIER_HEIST_CRATES = [
-  [-185, 70, 1.2], [-193, 75, 1.0], [-201, 62, 1.05], [-209, 77, 0.9],
-  [-218, 64, 1.15], [-226, 75, 1.0], [-236, 63, 0.9], [-242, 77, 1.2],
-  [-249, 66, 1.0], [-255, 74, 0.9],
-];
-const PIER_HEIST_SPAWNS = [
-  { x: -196, z: 66, health: 115 },
-  { x: -199, z: 70, health: 115 },
-  { x: -212, z: 69, health: 120 },
-  { x: -221, z: 65, health: 115 },
-  { x: -228, z: 75, health: 125 },
-  { x: -238, z: 68, health: 120 },
-  { x: -246, z: 73, health: 125 },
-  { x: -254, z: 70, health: 280, boss: true, name: 'Aurelio', damage: 13, speed: 2.2 },
-];
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const pad2 = (value) => String(value).padStart(2, '0');
-const distance2 = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
 
 function raySphere(origin, direction, cx, cy, cz, radius) {
   const ox = origin.x - cx;
@@ -55,111 +46,6 @@ function raySphere(origin, direction, cx, cy, cz, radius) {
   return null;
 }
 
-// The five story beats. Positions are on the street: a marker is where the
-// player meets the job, not a trigger that teleports anyone.
-const STORY = [
-  {
-    key: 'riptide',
-    title: 'The Riptide Job',
-    operation: 'DOCK RUN',
-    start: { x: -72, z: 26.2, facing: -Math.PI / 2 },
-    reward: 1200,
-    idleTitle: 'Meet Mira on the Strip',
-    idleSub: 'A courier job on Vega Strip. Walk into the marker.',
-    intro: [
-      ['MIRA', 'Rae Solano. Back in the harbor and already late.'],
-      ['RAE', 'I am not late. The city moved.'],
-      ['MIRA', 'There is a Vela GT parked at the Sunset Hotel. Bring it to my bay on Motor Row. Do not scratch it.'],
-      ['RAE', 'You are not going to ask how I have been?'],
-      ['MIRA', 'I am asking you to steal a car. That is how I say welcome home.'],
-    ],
-    outro: [
-      ['MIRA', 'Clean. The Solanos still know how to steal.'],
-      ['RAE', 'The Solanos know how to make a mess look intentional.'],
-    ],
-  },
-  {
-    key: 'heat',
-    title: 'Heat Check',
-    operation: 'STRIP HEAT',
-    start: { x: 162, z: 18.2, facing: Math.PI },
-    reward: 1800,
-    idleTitle: 'Find Mira at the Motor Row bay',
-    idleSub: 'The Vela is hot. Mira has a way to cool it.',
-    intro: [
-      ['MIRA', 'That car had a tracker. Harbor PD is already on the lane.'],
-      ['RAE', 'You could have said that before I drove it across the city.'],
-      ['MIRA', 'Then it would not have been a test. Lose them. Get to the safehouse clean.'],
-      ['RAE', 'And if I cannot?'],
-      ['MIRA', 'Then I will need a new courier.'],
-    ],
-    outro: [
-      ['MIRA', 'Stars are out. Maybe you are still good at this.'],
-      ['RAE', 'Tell that to the five cruisers behind me.'],
-    ],
-  },
-  {
-    key: 'delivery',
-    title: 'Special Delivery',
-    operation: 'THE LEDGER RUN',
-    start: { x: SAFEHOUSE.x - 4.9, z: SAFEHOUSE.z, facing: Math.PI },
-    reward: 1500,
-    idleTitle: 'Meet Mira at the safehouse',
-    idleSub: 'She has a case for you. She will not say what is in it.',
-    intro: [
-      ['MIRA', 'Casa Luna. The case behind the bar. Do not open it.'],
-      ['RAE', 'What is in it?'],
-      ['MIRA', 'The reason you came home. Deliver it to Tomas at Luna Plaza. You have a hundred seconds before the bar closes and the back room talks.'],
-      ['RAE', 'A courier run. Like the old days.'],
-      ['MIRA', 'Exactly like the old days. That is the problem.'],
-    ],
-    outro: [
-      ['TOMAS', 'Little cousin. You are carrying my ledger.'],
-      ['RAE', 'Tomas. You look like a man who sold his own family.'],
-      ['TOMAS', 'I look like a man who got paid. Meet me at the fountain.'],
-    ],
-  },
-  {
-    key: 'betrayal',
-    title: 'Family Cut',
-    operation: 'LUNA PLAZA',
-    start: { x: 0, z: 17.6, facing: Math.PI },
-    reward: 2400,
-    idleTitle: 'Meet Tomas at Luna Plaza',
-    idleSub: 'The fountain. Come armed. Tomas did not say why.',
-    intro: [
-      ['TOMAS', 'You brought the case. And a conscience. You always did.'],
-      ['RAE', 'You sold the crew out, Tomas.'],
-      ['TOMAS', 'I sold you. There is a difference. Boys, show her the difference.'],
-      ['RAE', 'You should have brought more boys.'],
-    ],
-    outro: [
-      ['AURELIO', 'You just killed my son, Rae.'],
-      ['RAE', 'He killed the family first. Tell me where the pier is, Aurelio.'],
-      ['AURELIO', 'Pier 9. Come see what your name buys now.'],
-    ],
-  },
-  {
-    key: 'pier',
-    title: 'Pier 9 Burning',
-    operation: 'LAST EXIT',
-    start: { x: -168, z: 70, facing: -Math.PI / 2 },
-    reward: 6000,
-    idleTitle: 'Take the fight to Pier 9',
-    idleSub: 'Aurelio Solano is waiting at the end of the pier. End it.',
-    intro: [
-      ['AURELIO', 'The harbor always collects, Rae. Even from family.'],
-      ['RAE', 'Then collect this.'],
-      ['MIRA', 'Rae, listen to me. The ledger burns tonight. You do not have to be standing next to it when it does.'],
-      ['RAE', 'Yes I do. Keep the engine running.'],
-    ],
-    outro: [
-      ['MIRA', 'The pier is burning. Tell me you are not still on it.'],
-      ['RAE', 'The ledger is ash. The harbor is mine.'],
-    ],
-  },
-];
-
 export const MISSION_COUNT = STORY.length;
 
 export function missionName(index) {
@@ -169,280 +55,6 @@ export function missionName(index) {
 export function missionLabel(index, storyDone = false) {
   if (storyDone || index >= STORY.length) return 'Story complete';
   return `Mission ${index + 1}/${STORY.length} · ${STORY[index].title}`;
-}
-
-function buildThugMaterials() {
-  const jackets = [0x2b2638, 0x3a2928, 0x23342f, 0x352d22, 0x2a2335].map((color) =>
-    new THREE.MeshStandardMaterial({ color, roughness: 0.78, metalness: 0.06 }));
-  return {
-    jackets,
-    pants: new THREE.MeshStandardMaterial({ color: 0x17151f, roughness: 0.9 }),
-    shirt: new THREE.MeshStandardMaterial({ color: 0x463b3c, roughness: 0.86 }),
-    skin: [0x9c6a50, 0xb87a60, 0x8a5a44, 0x6f4838].map((color) =>
-      new THREE.MeshStandardMaterial({ color, roughness: 0.82 })),
-    hair: new THREE.MeshStandardMaterial({ color: 0x19141a, roughness: 0.92 }),
-    accent: new THREE.MeshStandardMaterial({ color: 0xd94b52, roughness: 0.55, emissive: 0x2a0709 }),
-    metal: new THREE.MeshStandardMaterial({ color: 0x5c5966, roughness: 0.36, metalness: 0.7 }),
-    dark: new THREE.MeshStandardMaterial({ color: 0x121016, roughness: 0.6, metalness: 0.2 }),
-    crate: new THREE.MeshStandardMaterial({ color: 0x6a4c36, roughness: 0.92 }),
-    crateEdge: new THREE.MeshStandardMaterial({ color: 0x36251c, roughness: 0.9 }),
-    case: new THREE.MeshStandardMaterial({ color: 0x2a2420, roughness: 0.5, metalness: 0.35 }),
-    caseTrim: new THREE.MeshStandardMaterial({ color: 0xffc95c, roughness: 0.35, metalness: 0.45, emissive: 0x3b2a04 }),
-  };
-}
-
-function makeFlameTexture() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 128;
-  canvas.height = 256;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.beginPath();
-  ctx.moveTo(64, 249);
-  ctx.bezierCurveTo(18, 226, 30, 184, 41, 150);
-  ctx.bezierCurveTo(20, 156, 27, 119, 45, 107);
-  ctx.bezierCurveTo(39, 78, 55, 44, 66, 15);
-  ctx.bezierCurveTo(73, 57, 96, 72, 94, 106);
-  ctx.bezierCurveTo(117, 120, 105, 160, 99, 181);
-  ctx.bezierCurveTo(113, 217, 96, 241, 64, 249);
-  ctx.closePath();
-  const gradient = ctx.createLinearGradient(0, 252, 0, 8);
-  gradient.addColorStop(0, 'rgba(255, 244, 186, 0.98)');
-  gradient.addColorStop(0.38, 'rgba(255, 197, 63, 0.98)');
-  gradient.addColorStop(0.72, 'rgba(255, 92, 18, 0.94)');
-  gradient.addColorStop(1, 'rgba(255, 40, 6, 0.72)');
-  ctx.shadowColor = 'rgba(255, 114, 24, 0.8)';
-  ctx.shadowBlur = 18;
-  ctx.fillStyle = gradient;
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.globalCompositeOperation = 'source-atop';
-  const hot = ctx.createRadialGradient(62, 208, 2, 62, 208, 66);
-  hot.addColorStop(0, 'rgba(255, 255, 232, 0.9)');
-  hot.addColorStop(0.55, 'rgba(255, 236, 150, 0.34)');
-  hot.addColorStop(1, 'rgba(255, 220, 120, 0)');
-  ctx.fillStyle = hot;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  const lick = ctx.createLinearGradient(0, 120, 0, 20);
-  lick.addColorStop(0, 'rgba(255, 100, 18, 0)');
-  lick.addColorStop(1, 'rgba(255, 54, 8, 0.55)');
-  ctx.fillStyle = lick;
-  ctx.fillRect(40, 8, 50, 130);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
-  return texture;
-}
-
-function addBox(parent, width, height, depth, material, x = 0, y = 0, z = 0) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  parent.add(mesh);
-  return mesh;
-}
-
-class Thug {
-  constructor(scene, world, materials, spec, index) {
-    this.scene = scene;
-    this.world = world;
-    this.spec = spec;
-    this.index = index;
-    this.x = spec.x;
-    this.z = spec.z;
-    this.y = world.groundHeightAt(spec.x, spec.z);
-    this.anchorX = spec.x;
-    this.anchorZ = spec.z;
-    this.health = spec.health ?? 105;
-    this.maxHealth = this.health;
-    this.boss = Boolean(spec.boss);
-    this.name = spec.name ?? 'Solano Crew';
-    this.damage = spec.damage ?? (this.boss ? 12 : 7);
-    this.dead = false;
-    this.removed = false;
-    this.deadTimer = 0;
-    this.yaw = spec.yaw ?? 0;
-    this.speed = spec.speed ?? (this.boss ? 2.15 : 2.7);
-    this.phase = Math.random() * Math.PI * 2;
-    this.shootTimer = 0.7 + Math.random() * 1.5;
-    this.losTimer = 0;
-    this.los = false;
-    this.hitFlash = 0;
-    this.aim = 0;
-    this.walk = 0;
-    this.group = new THREE.Group();
-    this.group.name = `solano-enforcer-${index}`;
-    this.group.position.set(this.x, this.y, this.z);
-    scene.add(this.group);
-    this.build(materials);
-    this.setPose(this.yaw);
-    if (spec.dead) {
-      this.dead = true;
-      this.deadTimer = 1.4;
-      this.group.rotation.z = 1.48;
-      this.group.position.y = this.y + 0.2;
-    }
-  }
-
-  build(materials) {
-    const jacket = materials.jackets[this.index % materials.jackets.length];
-    const skin = materials.skin[this.index % materials.skin.length];
-    this.materials = materials;
-    const root = this.group;
-    addBox(root, 0.38, 0.18, 0.24, materials.pants, 0, 0.92, 0);
-    this.torso = new THREE.Group();
-    this.torso.position.y = 0.99;
-    root.add(this.torso);
-    addBox(this.torso, 0.47, 0.55, 0.28, jacket, 0, 0.3, 0);
-    addBox(this.torso, 0.5, 0.13, 0.29, materials.pants, 0, 0.55, 0);
-    addBox(this.torso, 0.16, 0.3, 0.012, materials.shirt, 0, 0.3, 0.15);
-    if (this.boss) {
-      addBox(this.torso, 0.12, 0.46, 0.02, materials.accent, 0.12, 0.31, 0.157);
-    }
-    this.head = new THREE.Group();
-    this.head.position.y = 0.73;
-    this.torso.add(this.head);
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.12, 7), skin);
-    neck.position.y = -0.02;
-    this.head.add(neck);
-    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.165, 12, 9), skin);
-    skull.scale.set(0.93, 1.05, 0.92);
-    skull.position.y = 0.12;
-    skull.castShadow = true;
-    this.head.add(skull);
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.58), materials.hair);
-    cap.position.y = 0.148;
-    cap.castShadow = true;
-    this.head.add(cap);
-    if (this.boss) addBox(this.head, 0.24, 0.035, 0.05, materials.accent, 0, 0.12, 0.155);
-
-    this.arms = {};
-    for (const side of [-1, 1]) {
-      const shoulder = new THREE.Group();
-      shoulder.position.set(side * 0.29, 0.51, 0);
-      this.torso.add(shoulder);
-      addBox(shoulder, 0.13, 0.32, 0.15, jacket, 0, -0.15, 0);
-      const elbow = new THREE.Group();
-      elbow.position.y = -0.31;
-      shoulder.add(elbow);
-      addBox(elbow, 0.115, 0.28, 0.125, materials.shirt, 0, -0.14, 0);
-      this.arms[side === -1 ? 'left' : 'right'] = { shoulder, elbow };
-    }
-    this.gun = new THREE.Group();
-    addBox(this.gun, 0.06, 0.08, 0.34, materials.dark, 0, 0, 0.12);
-    addBox(this.gun, 0.05, 0.13, 0.07, materials.dark, 0, -0.08, -0.02);
-    this.gun.position.set(0, -0.34, 0.04);
-    this.arms.right.elbow.add(this.gun);
-
-    this.legs = {};
-    for (const side of [-1, 1]) {
-      const hip = new THREE.Group();
-      hip.position.set(side * 0.125, 0.9, 0);
-      root.add(hip);
-      addBox(hip, 0.16, 0.42, 0.18, materials.pants, 0, -0.21, 0);
-      const knee = new THREE.Group();
-      knee.position.y = -0.42;
-      hip.add(knee);
-      addBox(knee, 0.14, 0.38, 0.16, materials.pants, 0, -0.19, 0);
-      addBox(knee, 0.17, 0.1, 0.28, materials.dark, 0, -0.41, 0.05);
-      this.legs[side === -1 ? 'left' : 'right'] = { hip, knee };
-    }
-  }
-
-  get chestY() {
-    return this.y + 1.18;
-  }
-
-  get headY() {
-    return this.y + 1.72;
-  }
-
-  setPose(yaw) {
-    this.yaw = yaw;
-    this.group.rotation.y = yaw;
-  }
-
-  update(dt, player, missions) {
-    this.hitFlash = Math.max(0, this.hitFlash - dt);
-    if (this.dead) {
-      this.deadTimer += dt;
-      this.group.rotation.z = Math.min(1.48, this.group.rotation.z + dt * 3.4);
-      this.group.position.y = this.y + Math.min(0.2, this.deadTimer * 0.3);
-      this.gun.visible = false;
-      return;
-    }
-    const dx = player.position.x - this.x;
-    const dz = player.position.z - this.z;
-    const distance = Math.hypot(dx, dz) || 0.001;
-    const playerVisible = distance < 46 && !player.dead;
-    if (playerVisible) {
-      const targetYaw = Math.atan2(dx, dz);
-      this.setPose(targetYaw);
-      this.aim = Math.min(1, this.aim + dt * 7);
-    } else {
-      this.aim = Math.max(0, this.aim - dt * 4);
-    }
-
-    const anchorDistance = distance2(this.x, this.z, this.anchorX, this.anchorZ);
-    let moving = false;
-    if (playerVisible && distance > (this.boss ? 6.5 : 7.2) && distance < 36 && anchorDistance < 24) {
-      const step = this.speed * dt;
-      const nextX = this.x + (dx / distance) * step;
-      const nextZ = this.z + (dz / distance) * step;
-      const resolved = this.world.resolveCircle(nextX, nextZ, 0.36);
-      const ground = this.world.groundHeightAt(resolved.x, resolved.z);
-      if (Math.abs(ground - this.y) < 0.55) {
-        this.x = resolved.x;
-        this.z = resolved.z;
-        this.y = ground;
-        moving = true;
-      }
-    }
-    if (playerVisible && distance < 11) moving = false;
-    this.walk += dt * (moving ? 8.4 : 1.6);
-    const stride = moving ? 0.48 : 0;
-    this.legs.left.hip.rotation.x = Math.sin(this.walk) * stride;
-    this.legs.right.hip.rotation.x = Math.sin(this.walk + Math.PI) * stride;
-    this.legs.left.knee.rotation.x = Math.max(0, Math.sin(this.walk + 0.7)) * stride * 1.2;
-    this.legs.right.knee.rotation.x = Math.max(0, Math.sin(this.walk + Math.PI + 0.7)) * stride * 1.2;
-    this.arms.left.shoulder.rotation.x = -Math.sin(this.walk) * stride * 0.7;
-    this.arms.left.shoulder.rotation.z = 0.08;
-    this.arms.right.shoulder.rotation.x = -1.25 * this.aim + Math.sin(this.walk) * stride * 0.2;
-    this.arms.right.shoulder.rotation.z = -0.08;
-    this.arms.right.elbow.rotation.x = -0.2 - this.aim * 0.2;
-    this.torso.rotation.x = moving ? 0.05 : 0.015;
-    this.group.position.set(this.x, this.y + (moving ? Math.abs(Math.sin(this.walk)) * 0.025 : 0), this.z);
-    this.group.rotation.y = this.yaw;
-
-    this.losTimer -= dt;
-    if (this.losTimer <= 0) {
-      this.losTimer = 0.5;
-      this.los = playerVisible && distance < 39 && !this.world.lineBlocked(
-        this.x, this.y + 1.32, this.z,
-        player.position.x, player.position.y + 1.2, player.position.z,
-        0.2,
-      );
-    }
-    this.shootTimer -= dt;
-    if (!this.staged && this.los && this.shootTimer <= 0 && !player.dead && distance < 38) {
-      this.shootTimer = (this.boss ? 1.25 : 1.7) + Math.random() * 1.1;
-      missions.enemyShoot(this, player);
-    }
-  }
-
-  remove() {
-    this.removed = true;
-    this.scene.remove(this.group);
-  }
-
-  muzzle(out = new THREE.Vector3()) {
-    return out.set(
-      this.x + Math.sin(this.yaw) * 0.62,
-      this.y + 1.34,
-      this.z + Math.cos(this.yaw) * 0.62,
-    );
-  }
 }
 
 export class Missions {
@@ -512,17 +124,7 @@ export class Missions {
   }
 
   prepareShot() {
-    this.suspended = true;
-    this.staged = false;
-    this.clearMissionEntities();
-    this.clearProps();
-    this.clearFire();
-    this.active = null;
-    this.failure = null;
-    this.subtitle = null;
-    this.queue.length = 0;
-    this.storyDone = false;
-    this.index = 0;
+    prepareShotModule(this);
   }
 
   setIdleObjective() {
@@ -1341,160 +943,23 @@ export class Missions {
   // ---------------------------------------------------------------- deterministic shots
 
   stageShot(name) {
-    this.prepareShot();
-    this.staged = true;
-    this.subtitle = null;
-    this.queue.length = 0;
-    if (name === 'mission') this.stageMissionShot();
-    else if (name === 'heist') this.stageHeistShot();
+    stageShotModule(this, name);
   }
 
   stageMissionShot() {
-    this.addCrate(-5.6, 11.3, 1.1);
-    this.addCrate(6.4, 10.8, 1.0);
-    this.addCrate(-8.2, 8.8, 0.85);
-    this.addCrate(8.0, 7.8, 0.95);
-    const spawns = [
-      { x: 0, z: 9.3, health: 205, boss: true, name: 'Tomas', damage: 11, speed: 2.2 },
-      { x: -4.8, z: 9.9, health: 105 },
-      { x: 4.9, z: 9.5, health: 105 },
-      { x: 2.7, z: 12.2, health: 105 },
-      { x: -3.9, z: 15.1, health: 105, dead: true },
-    ];
-    for (const spec of spawns) this.enemies.push(new Thug(this.scene, this.world, this.materials, spec, this.enemies.length));
-    this.enemies[0].setPose(0);
-    this.enemies[0].aim = 1;
-    this.enemies[1].setPose(0.5);
-    this.enemies[2].setPose(-0.5);
-    this.enemies[3].setPose(0.2);
-    this.enemies[4].setPose(-1.2);
-    for (let i = 0; i < 4; i += 1) this.poseAim(this.enemies[i]);
-    this.objective = {
-      title: 'Survive the Ambush',
-      sub: 'Tomas and his crew have the fountain covered.',
-      marker: { x: 0, z: 8.4 },
-      tag: 'MISSION 04 · FAMILY CUT',
-      progress: { label: 'CREW', value: 2, max: 5 },
-    };
-    this.world.setObjectiveMarker(0, 8.4);
-    this.subtitle = {
-      speaker: 'TOMAS',
-      text: 'You brought the case. And a conscience.',
-      life: 999,
-    };
+    stageMissionShotModule(this);
   }
 
   stageHeistShot() {
-    this.addCrate(-236, 62.8, 1.0);
-    this.addCrate(-239, 77.0, 1.1);
-    this.addCrate(-247, 62.4, 0.9);
-    this.addCrate(-252, 77.2, 1.0);
-    this.addFireSpot(-256, 62.8);
-    this.addFireSpot(-258, 76.2);
-    this.addFireSpot(-249, 58.8);
-    this.addFireSpot(-237.2, 77.0);
-    this.addFireSpot(-243.5, 62.2);
-    this.addFireSpot(-234.2, 73.9);
-    this.addFireSpot(-236.4, 65.6);
-    const spawns = [
-      { x: -250, z: 70, health: 280, boss: true, name: 'Aurelio', damage: 13, speed: 2.2 },
-      { x: -237.5, z: 65.6, health: 115 },
-      { x: -238.5, z: 74.8, health: 115 },
-      { x: -243.4, z: 69.4, health: 120 },
-      { x: -243.8, z: 72.7, health: 120 },
-      { x: -247.4, z: 65.3, health: 125 },
-      { x: -246.8, z: 75.4, health: 125 },
-      { x: -231.9, z: 68.4, health: 105, dead: true },
-    ];
-    for (const spec of spawns) this.enemies.push(new Thug(this.scene, this.world, this.materials, spec, this.enemies.length));
-    this.enemies[0].setPose(Math.PI / 2);
-    this.enemies[0].aim = 1;
-    for (let i = 1; i < 7; i += 1) {
-      this.enemies[i].setPose(Math.PI / 2 + (i % 2 === 0 ? 0.3 : -0.3));
-      this.enemies[i].aim = 0.8;
-      this.poseAim(this.enemies[i]);
-    }
-    this.poseAim(this.enemies[0]);
-    this.objective = {
-      title: 'Clear Pier 9',
-      sub: 'Put Aurelio down and get off the deck.',
-      marker: { x: -250, z: 70 },
-      tag: 'MISSION 05 · PIER 9 BURNING',
-      progress: { label: 'ENFORCERS', value: 4, max: 8 },
-    };
-    this.world.setObjectiveMarker(-250, 70);
-    this.subtitle = {
-      speaker: 'AURELIO',
-      text: 'The harbor always collects, Rae. Even from family.',
-      life: 999,
-    };
-    for (const fire of this.fireSpots) {
-      this.effects?.smokePuff(fire.x, this.world.groundHeightAt(fire.x, fire.z) + 1.4, fire.z, {
-        scale: 3.0, life: 3.4, color: 0x40383b, rise: 1.7,
-      });
-    }
+    stageHeistShotModule(this);
   }
 
   poseAim(enemy) {
-    enemy.arms.right.shoulder.rotation.x = -1.25 * enemy.aim;
-    enemy.arms.right.shoulder.rotation.z = -0.08;
-    enemy.arms.right.elbow.rotation.x = -0.2 - enemy.aim * 0.2;
-    enemy.arms.left.shoulder.rotation.x = -0.3;
-    enemy.torso.rotation.x = 0.02;
+    poseAimModule(this, enemy);
   }
 
   stageShotDrama(name) {
-    const player = this.player;
-    const facing = player.facing;
-    const muzzle = new THREE.Vector3(
-      player.position.x + Math.sin(facing) * 0.62,
-      player.position.y + 1.36,
-      player.position.z + Math.cos(facing) * 0.62,
-    );
-    if (name === 'mission') {
-      const boss = this.enemies.find((enemy) => enemy.name === 'Tomas');
-      const flunky = this.enemies[1];
-      if (boss && flunky) {
-        const chest = new THREE.Vector3(flunky.x, flunky.y + 1.2, flunky.z);
-        this.effects?.muzzle(muzzle.x, muzzle.y, muzzle.z, 0xffd79a);
-        this.effects?.flash(muzzle.x, muzzle.y, muzzle.z, { color: 0xffe0a0, scale: 0.9, life: 0.1, grow: 1.8 });
-        this.effects?.tracer(muzzle, chest, 0xffd49a);
-        this.effects?.flash(chest.x, chest.y, chest.z, { color: 0xff9a63, scale: 0.8, life: 0.1, grow: 1.7 });
-        this.effects?.spark(chest.x, chest.y, chest.z, null, 0xffb04a, 12, 4.8);
-        const enemyMuzzle = boss.muzzle();
-        const target = new THREE.Vector3(player.position.x, player.position.y + 1.05, player.position.z);
-        this.effects?.muzzle(enemyMuzzle.x, enemyMuzzle.y, enemyMuzzle.z, 0xffd08a);
-        this.effects?.tracer(enemyMuzzle, target, 0xffbd7a);
-        this.effects?.flash(flunky.x, flunky.y + 1.3, flunky.z, { color: 0xffb066, scale: 1.6, life: 0.18, grow: 2.8 });
-        this.effects?.smokePuff(-5.6, 1.1, 11.3, { scale: 1.8, life: 2.0, color: 0x5a4c4c, rise: 0.9 });
-        player.hitMarker = 0.75;
-      }
-    } else if (name === 'heist') {
-      const boss = this.enemies.find((enemy) => enemy.name === 'Aurelio');
-      if (boss) {
-        const chest = new THREE.Vector3(boss.x, boss.y + 1.2, boss.z);
-        this.effects?.muzzle(muzzle.x, muzzle.y, muzzle.z, 0xffd79a);
-        this.effects?.tracer(muzzle, chest, 0xffd49a);
-        this.effects?.flash(chest.x, chest.y, chest.z, { color: 0xffa063, scale: 0.9, life: 0.1, grow: 1.8 });
-      }
-      const visible = this.enemies.slice(1, 4);
-      for (let i = 0; i < visible.length; i += 1) {
-        const enemy = visible[i];
-        const origin = enemy.muzzle();
-        const target = new THREE.Vector3(player.position.x, player.position.y + 1.02, player.position.z);
-        this.effects?.muzzle(origin.x, origin.y, origin.z, 0xffd08a);
-        this.effects?.tracer(origin, target, 0xffbd7a);
-        if (i === 0) this.effects?.flash(origin.x, origin.y, origin.z, { color: 0xffcf8a, scale: 1.15, life: 0.12, grow: 2.0 });
-      }
-      const ground = this.world.groundHeightAt(-256, 62.8);
-      this.effects?.explosion(-256, ground + 1.4, 62.8);
-      this.effects?.explosion(-238.5, this.world.groundHeightAt(-238.5, 76.9) + 1.0, 76.9);
-      this.effects?.flash(-250, 1.6, 72, { color: 0xff8a4a, scale: 2.4, life: 0.24, grow: 3.2 });
-      this.effects?.spark(-244, 1.8, 70, null, 0xffb05a, 14, 7);
-      this.effects?.smokePuff(-246, 1.4, 70, { scale: 2.6, life: 2.4, color: 0x54484c, rise: 1.2 });
-      this.effects?.smokePuff(-239, 1.2, 76.5, { scale: 2.2, life: 2.2, color: 0x4c4246, rise: 1.1 });
-      player.hitMarker = 0.5;
-    }
+    stageShotDramaModule(this, name);
   }
 }
 
