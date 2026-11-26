@@ -3,7 +3,7 @@
 // sanity-checked: a corrupt save should read as "no save", never take the game
 // down.
 
-import { PLAYER } from './config.js';
+import { CAMERA, PLAYER } from './config.js';
 
 const SAVE_KEY = 'neon-harbor.save.v1';
 const SETTINGS_KEY = 'neon-harbor.settings.v1';
@@ -40,7 +40,7 @@ export const SaveStore = {
         weapons: parsed.weapons && typeof parsed.weapons === 'object' ? parsed.weapons : null,
         savedAt: finite(parsed.savedAt, 0),
         cameraYaw: finite(parsed.cameraYaw, PLAYER.spawnCameraYaw),
-        cameraPitch: clamp(finite(parsed.cameraPitch, 0.17), -0.18, 1.02),
+        cameraPitch: clamp(finite(parsed.cameraPitch, 0.17), CAMERA.minPitch, CAMERA.maxPitch),
         position: {
           x: clamp(finite(position.x, PLAYER.spawn.x), -320, 199),
           y: clamp(finite(position.y, 0), -2, 80),
