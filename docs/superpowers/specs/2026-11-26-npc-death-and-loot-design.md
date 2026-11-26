@@ -18,7 +18,8 @@ shooting a reward, GTA-style.
 - Every human NPC death can drop loot: pedestrians, mission enemies, police
   officers.
 - Loot: 60% cash $15–70, 30% Solano 9 ammo +12, 10% Kestrel SMG crate (rare).
-  Every death drops exactly one item.
+  The SMG crate only enters the table after the SMG unlock; before it, that
+  share folds into pistol ammo. Every death drops exactly one item.
 - Loot is collected by walking over it, announces itself in the HUD, and
   expires after 30 s if ignored.
 - Pedestrians near a death panic and run.

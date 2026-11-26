@@ -187,8 +187,9 @@ const ped = __neon.debug.traffic.spawnPed({
 6. Call `traffic.applyPlayerHit(hit, 34)` twice; assert `ped.dead === true`
    and `__neon.pedestrians.alive` dropped by one.
 7. Assert the corpse is not targetable: the same trace now returns `null`.
-8. Call `traffic.update(0.5, 0)`; assert `ped.fall > 0` and
-   `__neon.pedestrians.fleeing >= 0`.
+8. Before the kill, spawn a bystander 2 m from the victim. After the kill,
+   call `traffic.update(0.5, 0)`; assert `ped.fall > 0` and
+   `__neon.pedestrians.fleeing >= 1`.
 9. Call `traffic.update(9, 0)`; assert the ped is no longer active.
 
 `applyPlayerHit` must accept the trace result directly; the test passes the
@@ -419,7 +420,10 @@ if (item.oneShot) {
 ```
 
 `removed` items are filtered out of the `__neon.loot` getter and skipped
-everywhere (`if (item.removed) continue;` at the top of the loop).
+everywhere (`if (item.removed) continue;` at the top of the loop). In
+`collect`, one-shot items must not schedule a respawn
+(`item.respawn = item.oneShot ? 0 : RESPAWN;`), and the collected branch of
+`update` must `continue` for one-shot items so they never come back.
 
 - [ ] **Step 5: Make `collect` amount-aware**
 
@@ -511,9 +515,12 @@ git commit -m "Let human NPC deaths drop cash and ammunition"
 
 Test 3 (on `?shot=street`):
 
-1. Spawn a pedestrian 3 m ahead of the player.
-2. Set `p.cameraYaw` so that `(-sin(yaw), -cos(yaw))` points at the ped,
-   `p.cameraPitch = -0.27`, `p.fireCooldown = 0`.
+1. Spawn a pedestrian 3 m along the current aim direction
+   (`x = p.position.x - Math.sin(p.cameraYaw) * 3`, same for `z` with cos).
+2. Set `p.cameraYaw = Math.atan2(-(ped.x - p.position.x), -(ped.z - p.position.z))`,
+   `p.cameraPitch = -0.27`, `p.fireCooldown = 0`, then call
+   `p.updateView(__neon.debug.camera, 1 / 60, true)` so the frozen shot's
+   camera matches the new aim.
 3. Call `p.fireWeapon(__neon.debug.camera)`.
 4. Assert the ped's `health` dropped or it is dead; set `p.fireCooldown = 0`
    and call it again; assert `ped.dead === true` and `__neon.loot.count >= 1`.
