@@ -217,7 +217,9 @@ async function main() {
     '--enable-gpu',
     '--ignore-gpu-blocklist',
     '--force-device-scale-factor=1',
-    '--window-size=800,450',
+    // Record at the HUD's 1280x720 design size, then scale the GIF down in
+    // ffmpeg. Capturing at 800x450 made the fixed-width HUD cards collide.
+    '--window-size=1280,720',
     `--remote-debugging-port=${cdpPort}`,
     `--user-data-dir=${profile}`,
     'about:blank',
@@ -284,12 +286,12 @@ async function main() {
     await send('Page.enable');
     await send('Runtime.enable');
     await send('Emulation.setDeviceMetricsOverride', {
-      width: 800,
-      height: 450,
+      width: 1280,
+      height: 720,
       deviceScaleFactor: 1,
       mobile: false,
-      screenWidth: 800,
-      screenHeight: 450,
+      screenWidth: 1280,
+      screenHeight: 720,
     });
 
     // ---------------------------------------------------------------- GIF
@@ -298,7 +300,9 @@ async function main() {
     await send('Input.dispatchKeyEvent', keyEvent('keyDown', 'Enter', 'Enter', 13));
     await send('Input.dispatchKeyEvent', keyEvent('keyUp', 'Enter', 'Enter', 13));
     await waitFor(`window.__neon.mode === 'playing'`, 'playing');
-    await sleep(1200);
+    // Let the 3.2 s district and mission-start toasts clear before recording;
+    // the AIR 1 banner draws over them while they are on screen.
+    await sleep(3400);
     // The pointer-lock hint is a control affordance, not gameplay; hide it so
     // the README loop shows the game, not the prompt.
     await evaluate(`document.body.classList.add('shot'); true`);
