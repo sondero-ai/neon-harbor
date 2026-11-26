@@ -8,6 +8,7 @@ import * as THREE from '../vendor/three.module.js';
 import { BLOCK_CENTERS_X, BLOCK_CENTERS_Z, ROADS_X, ROADS_Z, WORLD } from './config.js';
 import { TRAFFIC_MIX, pickVehicleColor } from './vehicles.js';
 import { makeRng } from './random.js';
+import { signalState } from './traffic-signals.js';
 
 const clamp = THREE.MathUtils.clamp;
 const damp = THREE.MathUtils.damp;
@@ -48,9 +49,9 @@ function cornerIndexFor(relativeX, relativeZ) {
   return 0;
 }
 
+/** The car rule is exactly the lamp rule; amber and red both stop. */
 function signalGreen(axis, elapsed) {
-  const phase = Math.floor(elapsed / 9) % 2;
-  return (phase === 0) === (axis === 'x');
+  return signalState(axis, elapsed) === 'green';
 }
 
 function laneYaw(axis, direction) {

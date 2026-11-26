@@ -19,6 +19,7 @@ import {
   streetAt,
 } from './config.js';
 import { CLOCK_MINUTES_PER_SECOND, Environment, SHOT_CLOCK, parseTimeParam } from './environment.js';
+import { TrafficSignals } from './traffic-signals.js';
 import { World } from './world.js';
 import { Player } from './player.js';
 import { Vehicles } from './vehicles.js';
@@ -116,6 +117,7 @@ class Game {
     this.camera = new THREE.PerspectiveCamera(CAMERA.fov, 16 / 9, CAMERA.near, CAMERA.far);
     this.world = new World(this.scene, { quality: this.quality });
     this.world.setObjectiveMarker(START_OBJECTIVE.marker.x, START_OBJECTIVE.marker.z);
+    this.signals = new TrafficSignals(this.scene);
     this.effects = new Effects(this.scene, { quality: this.quality });
     this.vehicles = new Vehicles(this.scene, this.world);
     this.player = new Player(this.scene, this.world, this.vehicles);
@@ -269,6 +271,7 @@ class Game {
       world: this.world,
       effects: this.effects,
       vehicles: this.vehicles,
+      signals: this.signals,
     };
   }
 
@@ -1062,6 +1065,7 @@ class Game {
         if (!this.shot) this.environment.advance(dt);
         this.environment.apply(this.environmentTargets());
         this.world.focusAt(this.player.position.x, this.player.position.z);
+        this.signals.update(this.simTime);
         const notice = this.police.consumeNotice();
         if (notice && !this.hud.suppressToasts) this.hud.toast = notice;
         if (input.wasPressed('Escape', 'KeyP')) this.pause();
@@ -1186,6 +1190,7 @@ try {
       renderer: game.renderer,
       vehicles: game.vehicles,
       effects: game.effects,
+      signals: game.signals,
     },
     get police() {
       const hud = game.police.hudState;
@@ -1251,6 +1256,19 @@ try {
           exposure: palette.exposure,
           sun: palette.sun,
           moon: palette.moon,
+        },
+      };
+    },
+    get signals() {
+      return {
+        intersections: game.signals.intersections,
+        state: game.signals.state,
+        at: (x, z) => game.signals.at(Number(x), Number(z)),
+        lamps: (axis) => game.signals.lamps(axis === 'z' ? 'z' : 'x'),
+        stateAt: (elapsed) => game.signals.stateAt(Number(elapsed) || 0),
+        setTime: (elapsed) => {
+          game.signals.update(Number(elapsed) || 0, true);
+          return game.signals.state;
         },
       };
     },

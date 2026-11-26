@@ -236,7 +236,7 @@ export class Environment {
    * blended signature has not changed, so a still clock costs nothing and a
    * moving one updates about four times a second rather than every frame.
    */
-  apply({ scene, renderer, world, effects, vehicles } = {}, { force = false } = {}) {
+  apply({ scene, renderer, world, effects, vehicles, signals } = {}, { force = false } = {}) {
     const palette = this.currentPalette();
     const signature = [
       palette.state, palette.skyFrom, palette.skyTo,
@@ -262,6 +262,7 @@ export class Environment {
     if (world) world.applyEnvironment(palette);
     if (effects) effects.applyEnvironment(palette);
     if (vehicles) vehicles.applyEnvironment(palette);
+    if (signals) signals.applyEnvironment(palette);
     return palette;
   }
 }

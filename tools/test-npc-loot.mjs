@@ -1188,6 +1188,102 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 11: traffic signals',
+    shot: 'street',
+    body: function trafficSignals() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const signals = neon && neon.signals;
+      const system = neon && neon.debug && neon.debug.signals;
+      const missing = [];
+      if (!signals) missing.push('__neon.signals');
+      if (!system) missing.push('__neon.debug.signals');
+      check('test 11: signal hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      check(
+        'test 11: one signal stands at every one of the 100 intersections',
+        signals.intersections === 100,
+        `intersections=${signals.intersections}`,
+      );
+      check(
+        'test 11: core and extension intersections both have a signal',
+        Boolean(signals.at(189, 81)) && Boolean(signals.at(-135, -189))
+          && Boolean(signals.at(351, 243)),
+        JSON.stringify({
+          core: signals.at(189, 81),
+          north: signals.at(-135, -189),
+          east: signals.at(351, 243),
+        }),
+      );
+      check(
+        'test 11: a mid-block point has no signal',
+        signals.at(0, 0) === null,
+        JSON.stringify(signals.at(0, 0)),
+      );
+
+      function expected(axis, t) {
+        const own = axis === 'x' ? t % 18 : (t + 9) % 18;
+        return own < 7.5 ? 'green' : own < 9 ? 'amber' : 'red';
+      }
+      let statesMatch = true;
+      const stateRows = [];
+      for (const t of [0, 1, 7.4, 8.2, 9.1, 12, 16.5]) {
+        const state = signals.stateAt(t);
+        const want = { x: expected('x', t), z: expected('z', t) };
+        stateRows.push({ t, state, want });
+        if (state.x !== want.x || state.z !== want.z) statesMatch = false;
+      }
+      check(
+        'test 11: the state function matches the 7.5 s green / 1.5 s amber cycle',
+        statesMatch,
+        JSON.stringify(stateRows),
+      );
+
+      const atGreen = signals.setTime(1);
+      const greenLamps = { x: signals.lamps('x'), z: signals.lamps('z') };
+      const atAmber = signals.setTime(8.2);
+      const amberLamps = { x: signals.lamps('x'), z: signals.lamps('z') };
+      const atRed = signals.setTime(10);
+      const redLamps = { x: signals.lamps('x'), z: signals.lamps('z') };
+      check(
+        'test 11: the lamps show green for one axis and red for the other',
+        atGreen.x === 'green' && atGreen.z === 'red'
+          && greenLamps.x === 'green' && greenLamps.z === 'red',
+        JSON.stringify({ atGreen, greenLamps }),
+      );
+      check(
+        'test 11: the amber window lights amber for the switching axis only',
+        atAmber.x === 'amber' && atAmber.z === 'red'
+          && amberLamps.x === 'amber' && amberLamps.z === 'red',
+        JSON.stringify({ atAmber, amberLamps }),
+      );
+      check(
+        'test 11: the switch flips both axes at once',
+        atRed.x === 'red' && atRed.z === 'green'
+          && redLamps.x === 'red' && redLamps.z === 'green',
+        JSON.stringify({ atRed, redLamps }),
+      );
+      const sets = system.axisMeshes;
+      check(
+        'test 11: each colour and axis renders as one instanced lamp set',
+        ['x', 'z'].every((axis) => ['red', 'amber', 'green'].every(
+          (name) => sets[axis][name].isInstancedMesh && sets[axis][name].count === 200,
+        )),
+        Object.fromEntries(['x', 'z'].map((axis) => [axis, {
+          red: sets[axis].red.count,
+          amber: sets[axis].amber.count,
+          green: sets[axis].green.count,
+        }])),
+      );
+      return results;
+    },
+  },
 ];
 
 async function main() {
