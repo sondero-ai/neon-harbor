@@ -4,6 +4,7 @@
 // player.js supplies the numbers, main.js decides when the HUD is on screen.
 
 import { BLOCK_CENTERS_X, BLOCK_CENTERS_Z, PALETTE, RADIO, ROADS_X, ROADS_Z, WORLD } from './config.js';
+import { LOW_FUEL, fuelPct } from './fuel.js';
 
 const DISPLAY = '"Bahnschrift SemiCondensed", "Bahnschrift", "Arial Narrow", sans-serif';
 const UI = '"Bahnschrift", "Segoe UI", sans-serif';
@@ -1961,6 +1962,18 @@ export class Hud {
     ctx.fillText(gear, x + 33, y + 79);
     ctx.restore();
     label(ctx, 'GEAR', x + 33, y + 104, { size: 10, color: 'rgba(247,232,210,0.44)', spacing: '0.8px', align: 'center', weight: 700 });
+
+    if (car) {
+      const fuel = Math.max(0, Math.min(1, car.fuel ?? 1));
+      const fuelColor = fuel >= 0.3 ? TEAL : fuel >= LOW_FUEL ? GOLD : CORAL;
+      label(ctx, `${fuelPct(fuel)}% FUEL`, x + 66, y + 70, {
+        size: 9.5, color: fuelColor, spacing: '0.6px', weight: 800,
+      });
+      ctx.fillStyle = 'rgba(247,232,210,0.1)';
+      ctx.fillRect(x + 66, y + 76, 84, 5);
+      ctx.fillStyle = fuelColor;
+      ctx.fillRect(x + 66, y + 76, 84 * fuel, 5);
+    }
 
     ctx.save();
     ctx.textAlign = 'right';

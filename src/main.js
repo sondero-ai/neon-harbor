@@ -40,6 +40,7 @@ import { Police } from './police.js';
 import { Pickups } from './pickups.js';
 import { Missions, MISSION_COUNT, missionName } from './missions.js';
 import { Activities } from './activities.js';
+import { LOW_FUEL } from './fuel.js';
 
 const STEP = 1 / 60;
 const MAX_STEPS = 5;
@@ -157,6 +158,16 @@ class Game {
       if (!this.hud.suppressToasts) this.hud.toast = toast;
     };
     this.interactions.parking = this.parking;
+    this.gasStation = this.world.gasStation;
+    if (this.gasStation) {
+      this.gasStation.onToast = (toast) => {
+        if (!this.hud.suppressToasts) this.hud.toast = toast;
+      };
+      this.gasStation.traffic = this.traffic;
+      this.gasStation.vehicles = this.vehicles;
+    }
+    this.interactions.gasStation = this.gasStation;
+    this.traffic.gasStation = this.gasStation;
     this.pickups = new Pickups(this.scene, this.world, this.effects, {
       audio: this.audio,
       onPickup: (message) => {
@@ -540,6 +551,8 @@ class Game {
     this.mallLife?.reset();
     this.robbery?.reset();
     this.parking?.reset(this.environment.minutes);
+    this.gasStation?.reset();
+    this.lowFuelWarned = false;
   }
 
   spawnOpeningCars() {
@@ -548,6 +561,7 @@ class Game {
       z: 21.2,
       yaw: -Math.PI / 2,
       color: 0x8c2f2f,
+      fuel: 0.62,
     });
     muscle.setDriver(null);
     const sedan = this.vehicles.spawn('sedan', {
@@ -555,6 +569,7 @@ class Game {
       z: 32.7,
       yaw: Math.PI / 2,
       color: 0xd9c9ad,
+      fuel: 0.88,
     });
     sedan.setDriver(null);
     const cruiser = this.vehicles.spawn('police', {
@@ -960,6 +975,7 @@ class Game {
             gear: driving.gear,
             engineRpm: driving.engineRpm,
             condition: driving.condition,
+            fuel: driving.fuel,
           }
         : null,
       vehicles: blips,
@@ -1082,6 +1098,7 @@ class Game {
       // stay exactly where the shot asked for them.
       if (shot.air) this.police.stageAir(shot.air);
       if (shot.dialogue) this.missions.subtitle = { ...shot.dialogue, life: 999 };
+      if (shot.station) this.gasStation?.stageShot(shot.station);
       if (Number.isFinite(shot.health)) this.player.health = shot.health;
       if (Number.isFinite(shot.armor)) this.player.armor = shot.armor;
       this.hud.lastHealth = this.player.health;
@@ -1266,6 +1283,13 @@ class Game {
         if (input.wasPressed('Minus')) this.changeVolume(-0.08);
         if (input.wasPressed('Equal')) this.changeVolume(0.08);
         this.player.update(dt, input);
+        const tank = this.player.driving;
+        if (!tank) this.lowFuelWarned = false;
+        else if (tank.fuel > 0.35) this.lowFuelWarned = false;
+        else if (tank.fuel < LOW_FUEL && !this.lowFuelWarned) {
+          this.lowFuelWarned = true;
+          if (!this.hud.suppressToasts) this.hud.toast = { title: 'LOW FUEL', sub: 'FIND A SOLANO FUEL STATION', life: 3 };
+        }
         this.mallLife.update(dt, this.environment.minutes);
         this.traffic.update(dt, this.simTime);
         this.parking.update(dt, this.environment.minutes);
@@ -1419,6 +1443,7 @@ try {
       pickups: game.pickups,
       interactions: game.interactions,
       parking: game.parking,
+      gasStation: game.gasStation,
       mallLife: game.mallLife,
       robbery: game.robbery,
       police: game.police,
@@ -1472,6 +1497,9 @@ try {
     },
     get hudRadio() {
       return game.lastHudState?.radio ?? game.hudState().radio;
+    },
+    get state() {
+      return game.lastHudState;
     },
     get audio() {
       return {

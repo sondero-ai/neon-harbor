@@ -311,6 +311,21 @@ export const SHOTS = {
     objective: START_OBJECTIVE,
     toast: false,
   },
+  // The Solano Fuel forecourt from the south crosswalk: the pump car and the
+  // low-fuel car approaching up the service lane are both in frame.
+  station: {
+    name: 'station',
+    mode: 'playing',
+    time: 2.7,
+    prewarm: 70,
+    player: {
+      x: -85.8, z: -22, facing: -0.9, cameraYaw: 2.24,
+      cameraPitch: 0.2, distance: 8,
+    },
+    objective: START_OBJECTIVE,
+    toast: false,
+    station: { pump: 0, approach: 'pickup' },
+  },
 };
 
 export function readShot(search = window.location.search) {

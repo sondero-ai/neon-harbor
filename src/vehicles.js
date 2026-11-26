@@ -7,6 +7,7 @@
 import * as THREE from '../vendor/three.module.js';
 import { WORLD } from './config.js';
 import { canvasTexture, makeGlowSprite, mergeGeometries } from './geo.js';
+import { drainFuel } from './fuel.js';
 import { SkidMarks } from './effects.js';
 
 const clamp = THREE.MathUtils.clamp;
@@ -473,7 +474,7 @@ const _wheelAxisY = new THREE.Vector3(0, 1, 0);
 const _wheelAxisX = new THREE.Vector3(1, 0, 0);
 
 export class Vehicle {
-  constructor(type, { x = 0, z = 0, yaw = 0, color = null } = {}) {
+  constructor(type, { x = 0, z = 0, yaw = 0, color = null, fuel = 1 } = {}) {
     const spec = VEHICLE_TYPES[type] ?? VEHICLE_TYPES.sedan;
     const shape = geometryFor(type);
     this.type = type;
@@ -486,6 +487,9 @@ export class Vehicle {
     // Bodywork condition is presentation state only: it records hard impacts
     // for the HUD's condition bar and never feeds back into the physics.
     this.condition = 1;
+    // The tank is session state like condition: 0..1, burned by distance.
+    // A dry tank turns the throttle into nothing but the car still steers.
+    this.fuel = Math.max(0, Math.min(1, fuel));
     this.driver = null;
     this.controls = { throttle: 0, brake: 1, steer: 0, handbrake: true };
     this.velocity = new THREE.Vector3();
@@ -795,7 +799,7 @@ export class Vehicle {
     let forwardSpeed = this.velocity.x * forwardX + this.velocity.z * forwardZ;
     let lateralSpeed = this.velocity.x * sideX + this.velocity.z * sideZ;
 
-    const throttle = clamp(controls.throttle, -1, 1);
+    const throttle = this.fuel <= 0 ? 0 : clamp(controls.throttle, -1, 1);
     const brake = clamp(controls.brake, 0, 1);
 
     if (throttle > 0) {
@@ -852,6 +856,8 @@ export class Vehicle {
     const dz = this.velocity.z * dt;
     const distance = Math.hypot(dx, dz);
     const substeps = clamp(Math.ceil(distance / 0.72), 1, 7);
+    const startX = this.position.x;
+    const startZ = this.position.z;
     const stepX = dx / substeps;
     const stepZ = dz / substeps;
     for (let i = 0; i < substeps; i += 1) {
@@ -874,6 +880,7 @@ export class Vehicle {
       }
       break;
     }
+    this.fuel = drainFuel(this.fuel, Math.hypot(this.position.x - startX, this.position.z - startZ));
 
     if (this.position.x < WORLD.bounds.minX + 1 || this.position.x > WORLD.bounds.maxX - 1
       || this.position.z < WORLD.bounds.minZ + 1 || this.position.z > WORLD.bounds.maxZ - 1) {

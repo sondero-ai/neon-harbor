@@ -232,6 +232,7 @@ export class Traffic {
     this.player = player;
     this.police = null;
     this.mallLife = null;
+    this.gasStation = null;
     this.onPedDeath = null;
     this.onArmedHostile = null;
     this.armedAlertShown = false;
@@ -452,8 +453,10 @@ export class Traffic {
       cruise,
       speedBias: this.rng.range(0.9, 1.08),
       stuckTime: 0,
+      mode: 'drive',
     };
     car.controls.brake = 0;
+    car.fuel = options.fuel ?? 1;
     this.cars.push(car);
     return car;
   }
@@ -484,7 +487,9 @@ export class Traffic {
       }
       if (!clear) continue;
       const type = this.rng.pick(TRAFFIC_MIX);
-      return this.spawnLaneCar(type, axis, direction, line, along, this.rng.range(10.5, 15));
+      const car = this.spawnLaneCar(type, axis, direction, line, along, this.rng.range(10.5, 15));
+      car.fuel = this.rng.chance(0.22) ? this.rng.range(0.1, 0.34) : 1;
+      return car;
     }
     return null;
   }
@@ -493,6 +498,7 @@ export class Traffic {
     const index = this.cars.indexOf(car);
     if (index !== -1) this.cars.splice(index, 1);
     this.vehicles.remove(car);
+    this.gasStation?.releaseCar(car);
   }
 
   /**
@@ -555,7 +561,12 @@ export class Traffic {
     const pz = player.position.z;
     for (const car of [...this.cars]) {
       if (car.removed) continue;
-      if (car.driver !== 'ai') continue;
+      if (car.driver !== 'ai') {
+        // A player who carjacks a car at a pump must free that pad at once:
+        // its station AI is gone, so the state machine would never release it.
+        this.gasStation?.releaseCar(car);
+        continue;
+      }
       const ai = car.ai;
       if (!ai) continue;
       // Remove a car that is not on its road grid: an ambient spawn from an
@@ -568,6 +579,15 @@ export class Traffic {
       if (offGrid || blockedZone) {
         this.removeCar(car);
         continue;
+      }
+      // A car this station owns is driven by the forecourt state machine, not
+      // by the lane rules; a low-fuel car on the adjacent lane may divert in.
+      if (this.gasStation) {
+        if (this.gasStation.owns(car)) {
+          this.gasStation.updateCar(car, dt);
+          continue;
+        }
+        this.gasStation.maybeDivert(car, ai, dt);
       }
       const along = ai.axis === 'x' ? car.position.x : car.position.z;
       const forwardX = Math.sin(car.yaw);
