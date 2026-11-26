@@ -134,7 +134,7 @@ line:
 The latest run:
 
 ```text
-check PASS: game 64/993 entries, 33.85 MiB/48.00 MiB; screenshots 4/4, largest 185.6 KiB/256.0 KiB; dossier 1.01 MiB/1.50 MiB, text 160.0 KiB/160.0 KiB
+check PASS: game 97/993 entries, 33.86 MiB/48.00 MiB; screenshots 4/4, largest 185.6 KiB/256.0 KiB; dossier 1.01 MiB/1.50 MiB, text 159.9 KiB/160.0 KiB
 ```
 
 The dossier lists the game's source, then `game/index.html` and the module

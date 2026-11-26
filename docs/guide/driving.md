@@ -144,17 +144,19 @@ damage hit above about 2.5 m/s, and knocks her down for 0.9 s behind a shared
 
 ## Where this lives
 
-- `game/src/vehicles.js` — the seven classes, meshes, instanced wheels,
-  arcade physics, lights, skid marks, the fuel tank and `overlapCircle`.
+- `game/src/vehicles.js` plus `vehicle-geometry.js` and `vehicle-fleet.js` —
+  the seven classes, meshes, instanced wheels, arcade physics, lights, skid
+  marks, the fuel tank and `overlapCircle`.
 - `game/src/fuel.js` — the tank constants, distance drain, HUD percent and the
   service quote.
 - `game/src/gas-station.js` — the Solano Fuel forecourt, pump slots, player
   service and the NPC pull-in/pump/pull-out state machine.
-- `game/src/traffic.js` — lane AI, following gaps, stop lines, recycling,
-  ambient spawns, low-fuel flagging, `ejectDriver` and off-grid cleanup.
+- `game/src/traffic.js` plus `traffic-cars.js` — lane AI, following gaps, stop
+  lines, recycling, ambient spawns, low-fuel flagging, `ejectDriver` and
+  off-grid cleanup.
 - `game/src/traffic-signals.js` — the shared signal clock and lamp sets.
-- `game/src/player.js` — enter/exit, driving input, vehicle contacts and
-  knockdown.
+- `game/src/player.js` plus `player-controls.js` — enter/exit, driving input,
+  vehicle contacts and knockdown.
 - `game/src/parking.js` — the 26 stalls, static instancing, occupancy, theft
   and valet storage.
 - `game/src/interactions.js` — the contextual steal/valet/retrieve/SERVICE

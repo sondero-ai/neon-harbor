@@ -42,9 +42,11 @@ against the prompt pack, the OGG headers and the 36 MB audio budget, and that
 
 The harness serves `game/`, launches headless Chrome, drives the frozen
 `?shot=` scenes (`street`, `blockade`, `pier`, `mall-interior` and `station`)
-through `window.__neon`, and prints one `ok`/`not ok` line per check. The last
-run printed `PASS: all checks passed` with 379 `ok` lines. The twenty-eight
-groups are:
+through `window.__neon`, and prints one `ok`/`not ok` line per check. The
+twenty-eight groups live in `tools/e2e/groups/` (seven modules); the runner in
+`tools/test-npc-loot.mjs` only serves the pages, evaluates each group and
+reports. The last run printed `PASS: all checks passed` with 379 `ok` lines.
+The twenty-eight groups are:
 
 1. **pedestrians** — chest hitbox, damage and death, the fall state, corpse
    cleanup, the 14 m panic radius and 6 s flee/recovery, loot pickup and the
@@ -146,7 +148,7 @@ settings.
 The last run printed:
 
 ```text
-check PASS: game 64/993 entries, 33.85 MiB/48.00 MiB; screenshots 4/4, largest 185.6 KiB/256.0 KiB; dossier 1.01 MiB/1.50 MiB, text 160.0 KiB/160.0 KiB
+check PASS: game 97/993 entries, 33.86 MiB/48.00 MiB; screenshots 4/4, largest 185.6 KiB/256.0 KiB; dossier 1.01 MiB/1.50 MiB, text 159.9 KiB/160.0 KiB
 ```
 
 The caps are 993 game entries, 48 MiB of game files, 3–4 screenshots at

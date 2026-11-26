@@ -89,6 +89,7 @@ station's track list against the credits.
 - `game/src/config.js` — the `RADIO` station and track data.
 - `game/src/audio.js` — the three procedural beds used as fallbacks.
 - `game/src/hud.js` — the radio card and the hold-Tab wheel.
-- `game/src/main.js` — the radio keys, wheel focus and save wiring.
+- `game/src/main-radio.js` — the radio keys and wheel focus; `main.js` keeps
+  the save wiring.
 - `test/radio.test.mjs` — the station order, track data, file checks, budget
   and credits.

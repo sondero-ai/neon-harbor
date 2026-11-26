@@ -111,7 +111,8 @@ forces high quality for reproducible screenshots.
 
 ## Where this lives
 
-- `game/src/hud.js` — every card, panel, overlay, toast, wheel, the
+- `game/src/hud.js` plus `game/src/hud/` (`draw-utils`, `panels`, `cards`,
+  `minimap`, `prompts`) — every card, panel, overlay, toast, wheel, the
   mall/parking minimap footprint and the mission-ending screen.
 - `game/src/interactions.js` — the contextual **E** prompt and its priority.
 - `game/src/mall.js`, `parking.js`, `robbery.js` — the mall, lot and robbery

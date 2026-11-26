@@ -172,16 +172,18 @@ it again. Loot, corpses and drops reset with the scene.
 
 ## Where this lives
 
-- `game/src/player.js` — hitscan guns, knife swing, vehicle contacts and
-  knockdown, camera shake and damage.
+- `game/src/player.js` plus `player-combat.js` — hitscan guns, knife swing,
+  vehicle contacts and knockdown, camera shake and damage.
 - `game/src/humanoid.js` — the melee arm pose layered over walk and aim.
-- `game/src/police.js` — wanted level, pursuit, roadblocks, Air 1, murder
-  reports, 911 and the wasted/busted handshake.
-- `game/src/traffic.js` — pedestrian hitboxes, panic, armed witnesses,
-  seating and death.
+- `game/src/police.js` plus `police-units.js` and `police-air.js` — wanted
+  level, pursuit, roadblocks, Air 1, murder reports, 911 and the
+  wasted/busted handshake.
+- `game/src/traffic.js` plus `traffic-peds.js` — pedestrian hitboxes, panic,
+  armed witnesses, seating and death.
 - `game/src/robbery.js` — the mall register, alarm, security guards and cash
   drop.
-- `game/src/missions.js` — mission crew hitboxes, bosses and mission deaths.
+- `game/src/missions.js` plus `missions-actor.js` — mission crew hitboxes,
+  bosses and mission deaths.
 - `game/src/loot.js`, `game/src/pickups.js` — the drop table and the glowing
   walk-over rings.
 - `game/src/effects.js` — sparks, tracers, explosions, shake and hurt.

@@ -195,9 +195,9 @@ currently report 215–400 draw calls each.
 
 - `game/src/config.js` — the seed, road lines, block centres, world bounds,
   beach and pier geometry, clock constants.
-- `game/src/world.js` — city generation, districts, ground/collision/camera
-  queries, beach, pier, lighthouse, ocean, sky textures, sun and moon,
-  lights, signs, the merged glow field and animation.
+- `game/src/world.js` — the `World` class and construction order, with the
+  builders in `game/src/world/` (`query`, `sky`, `ground`, `city`,
+  `landmarks`, `pier`, `props`, `shared`).
 - `game/src/world-kit.js` — the shared geometry/material helpers.
 - `game/src/mall.js` — the mall shell, shops, food court, doors, register and
   the 24 seats.
@@ -211,7 +211,8 @@ currently report 215–400 draw calls each.
 - `game/src/interactions.js` — the contextual **E** layer.
 - `game/src/environment.js` — the clock, palettes, boundary blend and
   `?time=` parsing.
-- `game/src/traffic.js`, `traffic-signals.js` — cars, crowd, signals and
+- `game/src/traffic.js` plus `traffic-cars.js`, `traffic-peds.js` and
+  `traffic-crowd.js`, and `traffic-signals.js` — cars, crowd, signals and
   collision-aware walking.
 - `game/src/glow-field.js`, `geo.js` — instanced glow billboards and the
   shared mesh/facade/sign factories.

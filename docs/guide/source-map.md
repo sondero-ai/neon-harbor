@@ -11,33 +11,64 @@ to the repository root.
 | Path | Responsibility |
 | --- | --- |
 | `game/index.html` | page, title/pause/controls markup, CSS (including the Audio row), boot-error reporter |
-| `game/src/main.js` | boot, fixed-step loop, screen state machine, quality, save wiring, vehicle entry/exit, radio input and the hold-Tab wheel, `__neon.radio`, volume/mute UI, deterministic shot staging |
-| `game/src/world.js` | nine-by-nine city generation, Old Town and the Foundry, the market square, ground/collision/camera queries, the shoreline beach and wet sand, pier, lighthouse, ocean, four sky textures, sun and moon, lights, signs, the merged glow field, the seat registry, pier props and the mall hook |
+| `game/src/main.js` | boot, the `Game` class, fixed-step loop, city reset and save wiring, and the `window.__neon` surface |
+| `game/src/main-menu.js` | title, pause and controls screens, DOM/window bindings, quality, resize, pause stats and the look hint |
+| `game/src/main-radio.js` | radio keys, the hold-Tab wheel, station/track toasts and the volume/mute UI |
+| `game/src/main-hud-state.js` | the respect, crew and full HUD state reads |
+| `game/src/main-shots.js` | the deterministic `?shot=` staging and chase drama |
+| `game/src/main-shared.js` | `STEP`, the title view, `byId`, `formatCash` and `setHidden` shared by the main modules |
+| `game/src/world.js` | the `World` class: construction order, merged batches, glow field, objective marker, public query wrappers and animation |
+| `game/src/world/query.js` | ground/beach height, `collides`/`resolveCircle`, ray/line/camera queries, `vehicleBlocked` and the block/pier predicates |
+| `game/src/world/sky.js` | sky textures, sun/moon, lights, the cloud pass and the environment blend |
+| `game/src/world/ground.js` | the ground grid, road paint, beach and ocean |
+| `game/src/world/city.js` | the nine-by-nine blocks, towers, storefronts, rooftops, market square and beacons |
+| `game/src/world/landmarks.js` | the hotel, Casa Luna, Motor Row, radio block and Luna Plaza |
+| `game/src/world/pier.js` | the pier, its props, the lighthouse and the boats |
+| `game/src/world/props.js` | beach dressing, vegetation, streetlights, signs, arches, pylons and billboards |
+| `game/src/world/shared.js` | the constants and helpers shared by the world modules |
 | `game/src/world-kit.js` | the shared part/box/cylinder/crown-band/material helpers and the geometry-merge re-export used by the world, mall and pier |
 | `game/src/environment.js` | the 24-hour clock, the dawn/day/dusk/night palettes, the boundary blend, `?time=` parsing, renderer/scene apply |
 | `game/src/glow-field.js` | one instanced camera-facing quad mesh for static glow sprites, with per-item colour and brightness |
 | `game/src/geo.js` | reusable mesh, facade, sign and billboard factories, and the geometry merge |
-| `game/src/vehicles.js` | seven vehicle classes, meshes, instanced wheels, arcade physics, fuel tanks, lights, pooled skid marks and `overlapCircle` |
+| `game/src/vehicles.js` | the `Vehicle` class: arcade physics, the tank, lights, skid marks and `overlapCircle` |
+| `game/src/vehicle-geometry.js` | the seven class builders, wheels, decals and geometry |
+| `game/src/vehicle-fleet.js` | the `Vehicles` pool, contacts, nearest-enterable and blocking queries |
 | `game/src/fuel.js` | the fuel constants, distance drain, HUD percent and the pure service quote |
 | `game/src/gas-station.js` | the Solano Fuel forecourt: merged canopy, islands, kiosk, lanes and colliders, pump slots, player service and the NPC pull-in/pump/pull-out state machine |
-| `game/src/traffic.js` | 18 lane cars, the 168-slot crowd, crosswalks, beach/pier crowd, seated shoppers, mall guards, low-fuel station divert, panic and armed witnesses, wall sliding, driver ejection, off-grid cleanup and shot staging |
+| `game/src/traffic.js` | the `Traffic` class and update loop, ambient seeding, beach/mall staging, density and public wrappers |
+| `game/src/traffic-cars.js` | the 18 lane cars, gap/stop-line AI, low-fuel station divert hook, recycling, ejection and cleanup |
+| `game/src/traffic-peds.js` | pedestrian spawn, sidewalk/crossing routes, panic, armed witnesses, hits and death |
+| `game/src/traffic-crowd.js` | the 168-slot instanced crowd renderer |
 | `game/src/traffic-signals.js` | the shared 18 s signal clock, merged pole/housing mesh, six instanced lamp sets and the night pool |
 | `game/src/mall.js` | the Solano Mall shell: walls, glass doors, skylight, mezzanine, six shop bays, the food court and its 24 seats, the jewelry register and the hall lights |
 | `game/src/parking.js` | the 26-stall lot, instanced static cars and their colliders, clock-driven occupancy, parked-car theft and the valet storage |
 | `game/src/mall-life.js` | the shopper schedule from the clock, mall routes, door transit and chair allocation |
 | `game/src/robbery.js` | the one-per-reset register robbery, alarm, two security guards, crowd panic and the counter cash drop |
 | `game/src/interactions.js` | the contextual **E** layer and its priority: stand, sit, rob, steal, valet, retrieve, then vehicle entry, plus **SERVICE** at a pump while driving |
-| `game/src/police.js` | wanted level, pursuit driving, search/decay, cruiser and officer combat, civilian murder reports and the 911 call, roadblocks, callsigns, the merged Air 1 airframe and searchlight, the response roster, busted/wasted handshake and chase staging |
-| `game/src/missions.js` | the five-mission director: markers, dialogue queue, mission crew and bosses, objectives, timers, rewards, failure and retry, pier fire, mission/heist staging |
+| `game/src/police.js` | wanted level, pursuit driving, search/decay, roadblocks, the 911 call, response roster, busted/wasted and chase staging |
+| `game/src/police-shared.js` | the star/callsign tables, road routing and police ray helpers |
+| `game/src/police-units.js` | the officer body and materials |
+| `game/src/police-air.js` | the Air 1 airframe, decal, rotor and searchlight |
+| `game/src/missions.js` | the `Missions` director: markers, dialogue, objectives, timers, rewards, failure/retry and runtime entities |
+| `game/src/missions-data.js` | the five-story table and the Pier 9 crate/spawn data |
+| `game/src/missions-actor.js` | the mission enemy actor and its materials |
+| `game/src/missions-shots.js` | the staged mission and heist poses |
 | `game/src/activities.js` | cash stashes, the rotating hot-car delivery, the Heat Run, the safehouse save/heal/clear-heat point and their street panels |
 | `game/src/loot.js` | the pure death-drop table: weights, $5 cash steps and the SMG unlock gate |
 | `game/src/pickups.js` | walk-over pickup rings, weapon/medkit/armor spawns, one-shot death drops, 30-second expiry, payout and reset cleanup |
-| `game/src/player.js` | movement, driving, chase camera, vehicle contacts and knockdown, hitscan guns, the street knife swing, aiming, damage and Rae's low-poly walk/run/aim cycle |
+| `game/src/player.js` | the `Player` class: state, weapon models, seats, knockdown and public wrappers |
+| `game/src/player-controls.js` | movement, driving, vehicle enter/exit, contacts and the chase camera |
+| `game/src/player-combat.js` | hitscan guns, the knife swing, aiming, damage and healing |
 | `game/src/humanoid.js` | Rae's low-poly body, walk/run/aim cycle and the melee arm stab pose |
 | `game/src/effects.js` | sparks, smoke, flashes, tracers, explosions, skid marks, vehicle lights, screen shake and hurt accumulation |
 | `game/src/audio.js` | the WebAudio engine, sirens, guns, impacts, horn, UI blips, stings and the three procedural synthwave/chiptune/surf fallback beds |
 | `game/src/radio.js` | the two-deck OGG player: crossfade, auto-advance, station/track wrap, master volume and mute, missing-file fallback and OFF AIR |
-| `game/src/hud.js` | the Canvas 2D HUD: mission card, vitals, state card, minimap with the mall footprint and parking lot, crew panel, portrait dialogue, police response roster, Air 1 banner, five-slot weapon strip, vehicle/radio card with the fuel gauge, hold-Tab station wheel, objective and street-job panels, the contextual **E** prompt, crosshair, rewards and failure/down/ending screens |
+| `game/src/hud.js` | the `Hud` class: canvas, state, update and draw orchestration |
+| `game/src/hud/draw-utils.js` | the shared fonts/colours and the chamfer/panel/label/text primitives |
+| `game/src/hud/panels.js` | mission, vitals, state, district, air, objective, challenge, dialogue, crew and police panels |
+| `game/src/hud/cards.js` | vehicle/radio cards, weapon strip, reward, failure, ending and toast |
+| `game/src/hud/minimap.js` | the minimap renderer with the mall/parking footprint |
+| `game/src/hud/prompts.js` | crosshair, damage, down, prompt and the hold-Tab wheel |
 | `game/src/input.js` | keyboard, mouse, wheel, pointer lock, mouse edges and the Tab-wheel focus capture |
 | `game/src/save.js` | guarded localStorage save, story/mission index, weapons, clock minute and day, radio station/track/on-off, quality, volume and mute |
 | `game/src/random.js` | seeded RNG |
@@ -55,7 +86,8 @@ to the repository root.
 | `vendor/makefun-game.ts` | the bounty's dossier library |
 | `tools/capture.mjs` | stdlib-only headless-Chrome screenshot driver; the four JPEGs at 1280×720 plus the heist and Solano Fuel gallery stills |
 | `tools/capture-media.mjs` | README media driver: the 36-frame overview GIF and the combat still; needs ffmpeg |
-| `tools/test-npc-loot.mjs` | stdlib-only headless-Chrome E2E for death, loot, heat, knife, crowd density, signals, wall collision, the clock, radio, vehicle hits, knife arm, beach, carjacking, volume, ambient spawns, the pier, seats, the mall, parking, mall life, the robbery and the gas station |
+| `tools/test-npc-loot.mjs` | the stdlib-only headless-Chrome E2E harness: static server, CDP client, runner and report |
+| `tools/e2e/groups/` | the 28 E2E groups in seven modules (movement, combat, crowd, vehicles, world, city life, mall/station) |
 | `test/loot.test.mjs` | pure loot table |
 | `test/fuel.test.mjs` | pure fuel drain, HUD percent and service quote |
 | `test/radio.test.mjs` | station order, track data, OGG files, budget and MUSIC.md credits |
