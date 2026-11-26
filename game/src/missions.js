@@ -12,6 +12,14 @@ import {
 import {
   MOTOR_SHOP, PIER_HEIST_CRATES, PIER_HEIST_SPAWNS, SAFEHOUSE, STORY,
 } from './missions-data.js';
+import {
+  poseAim as poseAimModule,
+  prepareShot as prepareShotModule,
+  stageHeistShot as stageHeistShotModule,
+  stageMissionShot as stageMissionShotModule,
+  stageShot as stageShotModule,
+  stageShotDrama as stageShotDramaModule,
+} from './missions-shots.js';
 
 const CORAL = 0xff6f61;
 const GOLD = 0xffc95c;
@@ -117,17 +125,7 @@ export class Missions {
   }
 
   prepareShot() {
-    this.suspended = true;
-    this.staged = false;
-    this.clearMissionEntities();
-    this.clearProps();
-    this.clearFire();
-    this.active = null;
-    this.failure = null;
-    this.subtitle = null;
-    this.queue.length = 0;
-    this.storyDone = false;
-    this.index = 0;
+    prepareShotModule(this);
   }
 
   setIdleObjective() {
@@ -943,163 +941,27 @@ export class Missions {
     return enemy;
   }
 
+
   // ---------------------------------------------------------------- deterministic shots
 
   stageShot(name) {
-    this.prepareShot();
-    this.staged = true;
-    this.subtitle = null;
-    this.queue.length = 0;
-    if (name === 'mission') this.stageMissionShot();
-    else if (name === 'heist') this.stageHeistShot();
+    stageShotModule(this, name);
   }
 
   stageMissionShot() {
-    this.addCrate(-5.6, 11.3, 1.1);
-    this.addCrate(6.4, 10.8, 1.0);
-    this.addCrate(-8.2, 8.8, 0.85);
-    this.addCrate(8.0, 7.8, 0.95);
-    const spawns = [
-      { x: 0, z: 9.3, health: 205, boss: true, name: 'Tomas', damage: 11, speed: 2.2 },
-      { x: -4.8, z: 9.9, health: 105 },
-      { x: 4.9, z: 9.5, health: 105 },
-      { x: 2.7, z: 12.2, health: 105 },
-      { x: -3.9, z: 15.1, health: 105, dead: true },
-    ];
-    for (const spec of spawns) this.enemies.push(new Thug(this.scene, this.world, this.materials, spec, this.enemies.length));
-    this.enemies[0].setPose(0);
-    this.enemies[0].aim = 1;
-    this.enemies[1].setPose(0.5);
-    this.enemies[2].setPose(-0.5);
-    this.enemies[3].setPose(0.2);
-    this.enemies[4].setPose(-1.2);
-    for (let i = 0; i < 4; i += 1) this.poseAim(this.enemies[i]);
-    this.objective = {
-      title: 'Survive the Ambush',
-      sub: 'Tomas and his crew have the fountain covered.',
-      marker: { x: 0, z: 8.4 },
-      tag: 'MISSION 04 · FAMILY CUT',
-      progress: { label: 'CREW', value: 2, max: 5 },
-    };
-    this.world.setObjectiveMarker(0, 8.4);
-    this.subtitle = {
-      speaker: 'TOMAS',
-      text: 'You brought the case. And a conscience.',
-      life: 999,
-    };
+    stageMissionShotModule(this);
   }
 
   stageHeistShot() {
-    this.addCrate(-236, 62.8, 1.0);
-    this.addCrate(-239, 77.0, 1.1);
-    this.addCrate(-247, 62.4, 0.9);
-    this.addCrate(-252, 77.2, 1.0);
-    this.addFireSpot(-256, 62.8);
-    this.addFireSpot(-258, 76.2);
-    this.addFireSpot(-249, 58.8);
-    this.addFireSpot(-237.2, 77.0);
-    this.addFireSpot(-243.5, 62.2);
-    this.addFireSpot(-234.2, 73.9);
-    this.addFireSpot(-236.4, 65.6);
-    const spawns = [
-      { x: -250, z: 70, health: 280, boss: true, name: 'Aurelio', damage: 13, speed: 2.2 },
-      { x: -237.5, z: 65.6, health: 115 },
-      { x: -238.5, z: 74.8, health: 115 },
-      { x: -243.4, z: 69.4, health: 120 },
-      { x: -243.8, z: 72.7, health: 120 },
-      { x: -247.4, z: 65.3, health: 125 },
-      { x: -246.8, z: 75.4, health: 125 },
-      { x: -231.9, z: 68.4, health: 105, dead: true },
-    ];
-    for (const spec of spawns) this.enemies.push(new Thug(this.scene, this.world, this.materials, spec, this.enemies.length));
-    this.enemies[0].setPose(Math.PI / 2);
-    this.enemies[0].aim = 1;
-    for (let i = 1; i < 7; i += 1) {
-      this.enemies[i].setPose(Math.PI / 2 + (i % 2 === 0 ? 0.3 : -0.3));
-      this.enemies[i].aim = 0.8;
-      this.poseAim(this.enemies[i]);
-    }
-    this.poseAim(this.enemies[0]);
-    this.objective = {
-      title: 'Clear Pier 9',
-      sub: 'Put Aurelio down and get off the deck.',
-      marker: { x: -250, z: 70 },
-      tag: 'MISSION 05 · PIER 9 BURNING',
-      progress: { label: 'ENFORCERS', value: 4, max: 8 },
-    };
-    this.world.setObjectiveMarker(-250, 70);
-    this.subtitle = {
-      speaker: 'AURELIO',
-      text: 'The harbor always collects, Rae. Even from family.',
-      life: 999,
-    };
-    for (const fire of this.fireSpots) {
-      this.effects?.smokePuff(fire.x, this.world.groundHeightAt(fire.x, fire.z) + 1.4, fire.z, {
-        scale: 3.0, life: 3.4, color: 0x40383b, rise: 1.7,
-      });
-    }
+    stageHeistShotModule(this);
   }
 
   poseAim(enemy) {
-    enemy.arms.right.shoulder.rotation.x = -1.25 * enemy.aim;
-    enemy.arms.right.shoulder.rotation.z = -0.08;
-    enemy.arms.right.elbow.rotation.x = -0.2 - enemy.aim * 0.2;
-    enemy.arms.left.shoulder.rotation.x = -0.3;
-    enemy.torso.rotation.x = 0.02;
+    poseAimModule(this, enemy);
   }
 
   stageShotDrama(name) {
-    const player = this.player;
-    const facing = player.facing;
-    const muzzle = new THREE.Vector3(
-      player.position.x + Math.sin(facing) * 0.62,
-      player.position.y + 1.36,
-      player.position.z + Math.cos(facing) * 0.62,
-    );
-    if (name === 'mission') {
-      const boss = this.enemies.find((enemy) => enemy.name === 'Tomas');
-      const flunky = this.enemies[1];
-      if (boss && flunky) {
-        const chest = new THREE.Vector3(flunky.x, flunky.y + 1.2, flunky.z);
-        this.effects?.muzzle(muzzle.x, muzzle.y, muzzle.z, 0xffd79a);
-        this.effects?.flash(muzzle.x, muzzle.y, muzzle.z, { color: 0xffe0a0, scale: 0.9, life: 0.1, grow: 1.8 });
-        this.effects?.tracer(muzzle, chest, 0xffd49a);
-        this.effects?.flash(chest.x, chest.y, chest.z, { color: 0xff9a63, scale: 0.8, life: 0.1, grow: 1.7 });
-        this.effects?.spark(chest.x, chest.y, chest.z, null, 0xffb04a, 12, 4.8);
-        const enemyMuzzle = boss.muzzle();
-        const target = new THREE.Vector3(player.position.x, player.position.y + 1.05, player.position.z);
-        this.effects?.muzzle(enemyMuzzle.x, enemyMuzzle.y, enemyMuzzle.z, 0xffd08a);
-        this.effects?.tracer(enemyMuzzle, target, 0xffbd7a);
-        this.effects?.flash(flunky.x, flunky.y + 1.3, flunky.z, { color: 0xffb066, scale: 1.6, life: 0.18, grow: 2.8 });
-        this.effects?.smokePuff(-5.6, 1.1, 11.3, { scale: 1.8, life: 2.0, color: 0x5a4c4c, rise: 0.9 });
-        player.hitMarker = 0.75;
-      }
-    } else if (name === 'heist') {
-      const boss = this.enemies.find((enemy) => enemy.name === 'Aurelio');
-      if (boss) {
-        const chest = new THREE.Vector3(boss.x, boss.y + 1.2, boss.z);
-        this.effects?.muzzle(muzzle.x, muzzle.y, muzzle.z, 0xffd79a);
-        this.effects?.tracer(muzzle, chest, 0xffd49a);
-        this.effects?.flash(chest.x, chest.y, chest.z, { color: 0xffa063, scale: 0.9, life: 0.1, grow: 1.8 });
-      }
-      const visible = this.enemies.slice(1, 4);
-      for (let i = 0; i < visible.length; i += 1) {
-        const enemy = visible[i];
-        const origin = enemy.muzzle();
-        const target = new THREE.Vector3(player.position.x, player.position.y + 1.02, player.position.z);
-        this.effects?.muzzle(origin.x, origin.y, origin.z, 0xffd08a);
-        this.effects?.tracer(origin, target, 0xffbd7a);
-        if (i === 0) this.effects?.flash(origin.x, origin.y, origin.z, { color: 0xffcf8a, scale: 1.15, life: 0.12, grow: 2.0 });
-      }
-      const ground = this.world.groundHeightAt(-256, 62.8);
-      this.effects?.explosion(-256, ground + 1.4, 62.8);
-      this.effects?.explosion(-238.5, this.world.groundHeightAt(-238.5, 76.9) + 1.0, 76.9);
-      this.effects?.flash(-250, 1.6, 72, { color: 0xff8a4a, scale: 2.4, life: 0.24, grow: 3.2 });
-      this.effects?.spark(-244, 1.8, 70, null, 0xffb05a, 14, 7);
-      this.effects?.smokePuff(-246, 1.4, 70, { scale: 2.6, life: 2.4, color: 0x54484c, rise: 1.2 });
-      this.effects?.smokePuff(-239, 1.2, 76.5, { scale: 2.2, life: 2.2, color: 0x4c4246, rise: 1.1 });
-      player.hitMarker = 0.5;
-    }
+    stageShotDramaModule(this, name);
   }
 }
 
