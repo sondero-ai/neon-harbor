@@ -128,6 +128,7 @@ class Game {
       onDown: (type) => this.beginDown(type),
     });
     this.player.police = this.police;
+    this.traffic.police = this.police;
     this.pickups = new Pickups(this.scene, this.world, this.effects, {
       audio: this.audio,
       onPickup: (message) => {
@@ -161,6 +162,10 @@ class Game {
     this.traffic.onPedDeath = (ped, { witnesses = 0 } = {}) => {
       lootFrom(ped.x, ped.z);
       this.police.reportCivilianDeath(ped.x, ped.z, { witnesses });
+    };
+    this.traffic.onArmedHostile = () => {
+      if (this.hud.suppressToasts) return;
+      this.hud.toast = { title: 'Armed Witness', sub: 'RETURN FIRE', life: 3.0 };
     };
     this.police.onHumanDeath = lootFrom;
     this.missions.onHumanDeath = lootFrom;

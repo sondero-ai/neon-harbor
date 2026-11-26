@@ -185,10 +185,14 @@ const TESTS = [
       const bounded = traffic.traceShot(cam, direction, hit ? hit.distance - 1 : 0);
       check('test 1: bounded ray misses', bounded === null, JSON.stringify(bounded && { type: bounded.type }));
 
-      const bystander = traffic.spawnPed({ x: ped.x, z: ped.z + 2 });
+      const bystander = traffic.spawnPed({ x: ped.x, z: ped.z + 2, armed: false });
       check('test 1: bystander spawns', Boolean(bystander), 'spawnPed returned null (no free crowd slot)');
       const resumeTarget = { x: bystander ? bystander.x + 5 : 0, z: bystander ? bystander.z : 0 };
       if (bystander) bystander.target = { x: resumeTarget.x, z: resumeTarget.z };
+      // The panic radius is 14 m: 13 m must run, 15 m must not.
+      const panicNear = traffic.spawnPed({ x: ped.x + 13, z: ped.z, armed: false });
+      const panicFar = traffic.spawnPed({ x: ped.x + 15, z: ped.z, armed: false });
+      check('test 1: the panic-radius pair spawns', Boolean(panicNear) && Boolean(panicFar), 'spawnPed returned null');
 
       const beforeKill = neon.pedestrians;
       traffic.applyPlayerHit(hit, 34);
@@ -205,9 +209,19 @@ const TESTS = [
       check('test 1: dead pedestrian is not targetable', corpseRay === null, JSON.stringify(corpseRay && { type: corpseRay.type }));
 
       check(
-        'test 1: the death panic starts a 4 s flee timer on the bystander',
-        Boolean(bystander) && bystander.fleeTimer === 4,
+        'test 1: the death panic starts a 6 s flee timer on the bystander',
+        Boolean(bystander) && bystander.fleeTimer === 6,
         `fleeTimer=${bystander && bystander.fleeTimer}`,
+      );
+      check(
+        'test 1: a pedestrian 13 m from the body panics at the 14 m radius',
+        Boolean(panicNear) && panicNear.fleeTimer === 6,
+        `fleeTimer=${panicNear && panicNear.fleeTimer}`,
+      );
+      check(
+        'test 1: a pedestrian 15 m from the body stays calm',
+        Boolean(panicFar) && panicFar.fleeTimer === 0,
+        `fleeTimer=${panicFar && panicFar.fleeTimer}`,
       );
       check(
         'test 1: the panic saves the bystander target for the resume',
@@ -266,16 +280,16 @@ const TESTS = [
       // slot, so only these two pedestrians react to each other.
       const farX = player.position.x + 150;
       const farZ = player.position.z + 150;
-      const fleeVictim = traffic.spawnPed({ x: farX, z: farZ });
-      const fleeCorpse = traffic.spawnPed({ x: farX + 2, z: farZ });
+      const fleeVictim = traffic.spawnPed({ x: farX, z: farZ, armed: false });
+      const fleeCorpse = traffic.spawnPed({ x: farX + 2, z: farZ, armed: false });
       check('test 1: the fleeing-corpse pair spawns', Boolean(fleeVictim) && Boolean(fleeCorpse), 'spawnPed returned null');
       if (fleeVictim && fleeCorpse) {
         const fleeingBeforePanic = neon.pedestrians.fleeing;
         traffic.applyPlayerHit({ ped: fleeVictim, headshot: false }, 500);
         const fleeingAfterPanic = neon.pedestrians.fleeing;
         check(
-          'test 1: a bystander starts fleeing at the 4 s panic duration',
-          fleeCorpse.fleeTimer === 4 && fleeingAfterPanic === fleeingBeforePanic + 1,
+          'test 1: a bystander starts fleeing at the 6 s panic duration',
+          fleeCorpse.fleeTimer === 6 && fleeingAfterPanic === fleeingBeforePanic + 1,
           `fleeTimer=${fleeCorpse.fleeTimer} fleeing ${fleeingBeforePanic} -> ${fleeingAfterPanic}`,
         );
         traffic.applyPlayerHit({ ped: fleeCorpse, headshot: false }, 34);
