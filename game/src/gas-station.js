@@ -144,10 +144,12 @@ export class GasStation {
         addBox(islandParts, 0.56, 1.28, 0.46, pumpX, GROUND + 1.66, island.z, 0xe6dccb);
         addBox(islandParts, 0.62, 0.16, 0.5, pumpX, GROUND + 2.3, island.z, 0xa63a32);
         addBox(neon, 0.36, 0.16, 0.48, pumpX, GROUND + 2.02, island.z, 0x3fe0cf);
-        // A dark nozzle holster and hose on the road-facing side.
-        const nozzleX = island.x + 2.55;
+        // A dark nozzle holster and hose on the road-facing side of each
+        // pump, so the island shows four distinct nozzles rather than two
+        // overlapping pairs.
+        const nozzleX = pumpX + 0.36;
         addBox(islandParts, 0.14, 0.24, 0.14, nozzleX, GROUND + 1.36, island.z + 0.3, 0x1d1a24);
-        addCylinder(islandParts, 0.035, 0.035, 1.1, 6, nozzleX - 0.06, GROUND + 0.85, island.z + 0.3, 0x1d1a24);
+        addCylinder(islandParts, 0.035, 0.035, 1.1, 6, nozzleX, GROUND + 0.85, island.z + 0.3, 0x1d1a24);
       }
       addCollider(world, 'prop', island.x - 3, island.x + 3, island.z - 0.6, island.z + 0.6, 1.05);
     }

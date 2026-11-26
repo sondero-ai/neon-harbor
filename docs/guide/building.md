@@ -70,7 +70,7 @@ The latest run:
 
 ```text
 1-cover.jpg  1280x720  q87  185.6 KiB  400 draws
-2-street.jpg 1280x720  q87  175.0 KiB  395 draws
+2-street.jpg 1280x720  q87  175.5 KiB  395 draws
 3-mission.jpg 1280x720 q87  145.4 KiB  215 draws
 4-title.jpg  1280x720  q89  145.4 KiB  348 draws
 heist.jpg    1280x720  q87  143.9 KiB  406 draws

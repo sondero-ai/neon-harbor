@@ -82,14 +82,15 @@ runs at `x = -92` from the entry curb cut at `z -20..-16` to the exit at
 `(-84.2, -18)` and `(-84.2, +18)`.
 
 The canopy, kiosk, pump islands, columns and air stand are solid normal
-colliders; the forecourt, pads, service lane and both curb cuts are clear for
-a car. The station's two pads are real slots. About **22%** of ambient cars
-spawn with a low tank; a flagged northbound car on the adjacent lane pulls
-into a free pad, waits **4–6 s**, fills, then loops around the kiosk and
-rejoins the lane at `(-84.2, 18)`. Both pumps can be busy at once, and a
-third flagged car keeps rolling instead of queueing in the road. The station
-is also its own `?shot=station` scene with a car on pad 0 and one on the
-approach.
+colliders. The two pad poses and both curb cuts are clear at a car's width,
+and the forecourt stays drivable; the two east canopy columns stand just
+inside the painted lane, so the NPC approaches thread east of them. The
+station's two pads are real slots. About **22%** of ambient cars spawn with a
+low tank; a flagged northbound car on the adjacent lane pulls into a free
+pad, waits **4–6 s**, fills, then loops around the kiosk and rejoins the lane
+at `(-84.2, 18)`. Both pumps can be busy at once, and a third flagged car
+keeps rolling instead of queueing in the road. The station is also its own
+`?shot=station` scene with a car on pad 0 and one on the approach.
 
 ## The living clock
 

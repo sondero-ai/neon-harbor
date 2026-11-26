@@ -168,7 +168,7 @@ ffprobe -v error -select_streams v:0 \
 The current files:
 
 - `screenshots/1-cover.jpg` — 1280×720, 185.6 KiB
-- `screenshots/2-street.jpg` — 1280×720, 175.0 KiB
+- `screenshots/2-street.jpg` — 1280×720, 175.5 KiB
 - `screenshots/3-mission.jpg` — 1280×720, 145.4 KiB
 - `screenshots/4-title.jpg` — 1280×720, 145.4 KiB
 - `docs/media/overview.gif` — 640×360, 36 frames, 3.25 s, 2.88 MiB
