@@ -34,6 +34,15 @@ import {
 } from './geo.js';
 import { GlowField } from './glow-field.js';
 import { makeRng } from './random.js';
+import {
+  addBox,
+  addCrownBand,
+  addCylinder,
+  addPart,
+  basicMaterial,
+  material,
+  matrixFor,
+} from './world-kit.js';
 
 const ROAD_HALF = WORLD.roadWidth / 2;
 const BLOCK_HALF = WORLD.blockSize / 2;
@@ -57,54 +66,6 @@ function districtForBlock(cx, cz) {
 const _origin = new THREE.Vector3();
 const _direction = new THREE.Vector3();
 const _hit = new THREE.Vector3();
-const _euler = new THREE.Euler();
-const _quaternion = new THREE.Quaternion();
-const _scale = new THREE.Vector3();
-
-function matrixFor(x, y, z, { rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1 } = {}) {
-  _euler.set(rx, ry, rz);
-  _quaternion.setFromEuler(_euler);
-  _scale.set(sx, sy, sz);
-  return new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), _quaternion, _scale);
-}
-
-function addPart(parts, geometry, x, y, z, color, options = {}) {
-  parts.push({ geometry, matrix: matrixFor(x, y, z, options), color });
-}
-
-function addBox(parts, width, height, depth, x, y, z, color, options = {}) {
-  addPart(parts, new THREE.BoxGeometry(width, height, depth), x, y, z, color, options);
-}
-
-function addCylinder(parts, radiusTop, radiusBottom, height, segments, x, y, z, color, options = {}) {
-  addPart(parts, new THREE.CylinderGeometry(radiusTop, radiusBottom, height, segments), x, y, z, color, options);
-}
-
-// A neon crown is an edge band, never a solid lid: from the title camera the
-// old solid box read as a giant coloured roof.
-function addCrownBand(parts, cx, cz, width, depth, y, color, thickness = 0.22) {
-  addBox(parts, width, thickness, 0.24, cx, y, cz - depth / 2, color);
-  addBox(parts, width, thickness, 0.24, cx, y, cz + depth / 2, color);
-  addBox(parts, 0.24, thickness, depth, cx - width / 2, y, cz, color);
-  addBox(parts, 0.24, thickness, depth, cx + width / 2, y, cz, color);
-}
-
-function material(color, options = {}) {
-  return new THREE.MeshStandardMaterial({
-    color,
-    roughness: options.roughness ?? 0.85,
-    metalness: options.metalness ?? 0.03,
-    ...options,
-  });
-}
-
-function basicMaterial(color, options = {}) {
-  return new THREE.MeshBasicMaterial({
-    color,
-    toneMapped: options.toneMapped ?? false,
-    ...options,
-  });
-}
 
 function segmentHit(origin, direction, maxDistance, box, radius) {
   let near = 0;
