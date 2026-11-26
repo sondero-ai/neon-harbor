@@ -398,7 +398,10 @@ export class Traffic {
       [-174, 150], [-156, 130], [-226, -118], [-200, -132], [-176, -120], [-158, -96],
     ];
     for (let i = 0; i < Math.min(spots.length, BEACH_TARGET); i += 1) {
-      const [x, z] = spots[i];
+      // The sand now ends at the shoreline, so a spot within a metre of it
+      // walks in from the last dry metre instead of standing in the water.
+      const [spotX, z] = spots[i];
+      const x = Math.max(spotX, WORLD.shorelineX + 1);
       const ped = this.spawnPed({
         x,
         z,

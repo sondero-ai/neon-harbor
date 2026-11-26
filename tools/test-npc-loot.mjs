@@ -2156,6 +2156,140 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 17: beach',
+    shot: 'street',
+    body: function beach() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const world = neon && neon.debug && neon.debug.world;
+      const traffic = neon && neon.debug && neon.debug.traffic;
+      const missing = [];
+      if (!world || typeof world.beachHeight !== 'function') missing.push('world.beachHeight');
+      if (!world || typeof world.collides !== 'function') missing.push('world.collides');
+      if (!world || typeof world.groundHeightAt !== 'function') missing.push('world.groundHeightAt');
+      if (!world || !world.beach || !world.beach.geometry) missing.push('world.beach');
+      if (!world || !world.beachWet) missing.push('world.beachWet');
+      if (!world || !world.foam) missing.push('world.foam');
+      if (!traffic || !traffic.peds) missing.push('__neon.debug.traffic.peds');
+      check('test 17: beach hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      const shorelineX = -232;
+      const cityEdgeX = -142;
+      const round = (value) => Math.round(value * 1000) / 1000;
+      world.beach.geometry.computeBoundingBox();
+      const bounds = world.beach.geometry.boundingBox;
+      check(
+        'test 17: the sand mesh starts at the shoreline and ends at the city edge',
+        Math.abs(bounds.min.x - shorelineX) < 0.001 && Math.abs(bounds.max.x - cityEdgeX) < 0.001,
+        `minX=${round(bounds.min.x)} maxX=${round(bounds.max.x)}`,
+      );
+      check(
+        'test 17: no sand is drawn west of the shoreline',
+        bounds.min.x >= shorelineX - 0.001,
+        `minX=${round(bounds.min.x)}`,
+      );
+
+      const dryZ = -100;
+      check(
+        'test 17: half a metre east of the shoreline is walkable',
+        world.collides(shorelineX + 0.5, dryZ, 0.46) === false,
+        `collides=${world.collides(shorelineX + 0.5, dryZ, 0.46)}`,
+      );
+      check(
+        'test 17: half a metre west of the shoreline is blocked',
+        world.collides(shorelineX - 0.5, dryZ, 0.46) === true,
+        `collides=${world.collides(shorelineX - 0.5, dryZ, 0.46)}`,
+      );
+      check(
+        'test 17: the ground height is finite on both sides of the line',
+        Number.isFinite(world.groundHeightAt(shorelineX + 0.5, dryZ))
+          && Number.isFinite(world.groundHeightAt(shorelineX - 0.5, dryZ)),
+        JSON.stringify({
+          east: world.groundHeightAt(shorelineX + 0.5, dryZ),
+          west: world.groundHeightAt(shorelineX - 0.5, dryZ),
+        }),
+      );
+
+      const cityHeight = world.beachHeight(cityEdgeX, dryZ);
+      const shoreHeight = world.beachHeight(shorelineX, dryZ);
+      check(
+        'test 17: the beach keeps the 0.45 m fall from the city edge to the water',
+        Math.abs(cityHeight) < 0.001 && Math.abs(shoreHeight + 0.45) <= 0.0101,
+        `city=${round(cityHeight)} shore=${round(shoreHeight)}`,
+      );
+
+      let minRipple = Infinity;
+      let maxRipple = -Infinity;
+      for (let z = -200; z <= 200; z += 3) {
+        const height = world.beachHeight(shorelineX, z);
+        minRipple = Math.min(minRipple, height);
+        maxRipple = Math.max(maxRipple, height);
+      }
+      check(
+        'test 17: the shoreline ripple stays within one centimetre',
+        maxRipple - minRipple <= 0.0201,
+        `peak-to-peak=${round(maxRipple - minRipple)}`,
+      );
+
+      let maxStep = 0;
+      let previous = world.beachHeight(shorelineX, dryZ);
+      for (let x = shorelineX + 0.5; x <= cityEdgeX; x += 0.5) {
+        const height = world.beachHeight(x, dryZ);
+        maxStep = Math.max(maxStep, Math.abs(height - previous));
+        previous = height;
+      }
+      check(
+        'test 17: the slope is smooth between half-metre samples',
+        maxStep < 0.006,
+        `maxStep=${round(maxStep)}`,
+      );
+
+      let blocked = 0;
+      for (let x = shorelineX + 0.5; x <= cityEdgeX; x += 2.5) {
+        if (world.collides(x, dryZ, 0.46)) blocked += 1;
+      }
+      check(
+        'test 17: every visible sand metre east of the shoreline is walkable',
+        blocked === 0,
+        `blocked=${blocked}`,
+      );
+
+      world.beachWet.geometry.computeBoundingBox();
+      const wetBounds = world.beachWet.geometry.boundingBox;
+      check(
+        'test 17: the wet-sand strip runs from the shoreline a few metres inland',
+        world.beachWet.material.transparent === true
+          && Math.abs(wetBounds.min.x - shorelineX) < 0.001
+          && wetBounds.max.x > shorelineX + 6
+          && wetBounds.max.x < shorelineX + 12,
+        `minX=${round(wetBounds.min.x)} maxX=${round(wetBounds.max.x)}`,
+      );
+
+      const foam = world.foam;
+      const foamHalf = foam.geometry.parameters.width / 2;
+      check(
+        'test 17: the foam line sits on the water edge',
+        Math.abs(foam.position.x - shorelineX) <= 0.5
+          && foam.position.x - foamHalf <= shorelineX
+          && foam.position.x + foamHalf >= shorelineX,
+        JSON.stringify({ x: round(foam.position.x), half: round(foamHalf) }),
+      );
+
+      const beachPeds = traffic.peds.filter((ped) => ped.active && ped.mode === 'beach');
+      check(
+        'test 17: all beach walkers stand on the visible sand',
+        beachPeds.length === 22 && beachPeds.every((ped) => ped.x >= shorelineX + 1 - 1e-6),
+        `count=${beachPeds.length} minX=${round(Math.min(...beachPeds.map((ped) => ped.x)))}`,
+      );
+      return results;
+    },
+  },
 ];
 
 async function main() {

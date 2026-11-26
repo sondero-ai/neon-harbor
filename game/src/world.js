@@ -740,7 +740,7 @@ export class World {
 
   beachHeight(x, z = 0) {
     const t = clamp((WORLD.cityMinX - x) / (WORLD.cityMinX - WORLD.shorelineX), 0, 1);
-    return -0.45 * t + Math.sin((z + x * 0.6) * 0.09) * 0.018 * t;
+    return -0.45 * t + Math.sin((z + x * 0.6) * 0.09) * 0.01 * t;
   }
 
   buildBeach() {
@@ -753,22 +753,67 @@ export class World {
         ctx.fillStyle = `rgba(${value},${value - 20},${value - 50},${rng.range(0.08, 0.36)})`;
         ctx.fillRect(rng.range(0, width), rng.range(0, height), rng.range(0.5, 1.6), rng.range(0.5, 1.6));
       }
-    }, { repeat: [16, 52] });
+    }, { repeat: [14, 52] });
 
-    const geometry = new THREE.PlaneGeometry(WORLD.beachMaxX - WORLD.beachMinX, WORLD.beachMaxZ - WORLD.beachMinZ, 22, 78);
+    // The visible sand stops at the shoreline: west of it is water, and every
+    // sand metre east of it must be walkable. The 0.45 m fall is one smooth
+    // slope with a ripple no deeper than 1 cm.
+    const sandMinX = WORLD.shorelineX;
+    const sandMaxX = WORLD.beachMaxX;
+    const depth = WORLD.beachMaxZ - WORLD.beachMinZ;
+    const geometry = new THREE.PlaneGeometry(sandMaxX - sandMinX, depth, 45, 128);
     geometry.rotateX(-Math.PI / 2);
-    geometry.translate((WORLD.beachMinX + WORLD.beachMaxX) / 2, 0, (WORLD.beachMinZ + WORLD.beachMaxZ) / 2);
+    geometry.translate((sandMinX + sandMaxX) / 2, 0, (WORLD.beachMinZ + WORLD.beachMaxZ) / 2);
     const position = geometry.attributes.position;
     for (let i = 0; i < position.count; i += 1) {
       position.setY(i, this.beachHeight(position.getX(i), position.getZ(i)));
     }
     geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
     const beach = new THREE.Mesh(
       geometry,
       material(0xffffff, { map: sandTexture, roughness: 0.96, metalness: 0 }),
     );
     beach.receiveShadow = true;
     this.root.add(beach);
+    this.beach = beach;
+
+    // A darker wet-sand strip from the waterline a few metres inland. Its
+    // alpha fades east so the transition reads as a tide line, not a bar.
+    const wetTexture = canvasTexture(64, 8, (ctx, width, height) => {
+      ctx.clearRect(0, 0, width, height);
+      const gradient = ctx.createLinearGradient(0, 0, width, 0);
+      gradient.addColorStop(0, 'rgba(91,65,45,0.62)');
+      gradient.addColorStop(0.45, 'rgba(108,80,57,0.34)');
+      gradient.addColorStop(1, 'rgba(124,96,69,0)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+    });
+    const wetWidth = 9;
+    const wetGeometry = new THREE.PlaneGeometry(wetWidth, depth, 12, 128);
+    wetGeometry.rotateX(-Math.PI / 2);
+    wetGeometry.translate(WORLD.shorelineX + wetWidth / 2, 0, (WORLD.beachMinZ + WORLD.beachMaxZ) / 2);
+    const wetPosition = wetGeometry.attributes.position;
+    for (let i = 0; i < wetPosition.count; i += 1) {
+      wetPosition.setY(i, this.beachHeight(wetPosition.getX(i), wetPosition.getZ(i)) + 0.008);
+    }
+    wetGeometry.computeVertexNormals();
+    const wet = new THREE.Mesh(
+      wetGeometry,
+      new THREE.MeshStandardMaterial({
+        map: wetTexture,
+        transparent: true,
+        roughness: 0.94,
+        metalness: 0,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      }),
+    );
+    wet.receiveShadow = true;
+    this.root.add(wet);
+    this.beachWet = wet;
 
     const foamTexture = canvasTexture(256, 64, (ctx, width, height) => {
       ctx.clearRect(0, 0, width, height);
@@ -786,7 +831,7 @@ export class World {
       }
     }, { repeat: [1, 22] });
     const foam = new THREE.Mesh(
-      new THREE.PlaneGeometry(7, WORLD.beachMaxZ - WORLD.beachMinZ),
+      new THREE.PlaneGeometry(3.6, depth),
       new THREE.MeshBasicMaterial({
         map: foamTexture,
         transparent: true,
@@ -797,7 +842,8 @@ export class World {
       }),
     );
     foam.rotation.x = -Math.PI / 2;
-    foam.position.set(WORLD.shorelineX + 1.4, WATER_Y + 0.015, (WORLD.beachMinZ + WORLD.beachMaxZ) / 2);
+    // The foam sits on the water edge itself, half over the last sand metre.
+    foam.position.set(WORLD.shorelineX - 0.2, WATER_Y + 0.015, (WORLD.beachMinZ + WORLD.beachMaxZ) / 2);
     this.root.add(foam);
     this.foam = foam;
     this.foamTexture = foamTexture;
