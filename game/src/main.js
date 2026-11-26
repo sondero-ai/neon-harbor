@@ -314,7 +314,7 @@ class Game {
   updateTitleCamera() { return updateTitleCamera(this); }
 
   // Radio controls and the hold-Tab wheel (main-radio.js)
-  radioToast(state, options) { return radioToast(this, state, options); }
+  radioToast(state, { off = false } = {}) { return radioToast(this, state, { off }); }
   toggleRadio() { return toggleRadio(this); }
   cycleStation(direction) { return cycleStation(this, direction); }
   cycleTrack(direction) { return cycleTrack(this, direction); }
@@ -324,7 +324,7 @@ class Game {
   applyRadioWheel() { return applyRadioWheel(this); }
   pickRadioWheel(hit) { return pickRadioWheel(this, hit); }
   toggleMute() { return toggleMute(this); }
-  setVolumeLevel(value, options) { return setVolumeLevel(this, value, options); }
+  setVolumeLevel(value, { toast = false } = {}) { return setVolumeLevel(this, value, { toast }); }
   changeVolume(delta) { return changeVolume(this, delta); }
 
   // Deterministic shot staging (main-shots.js)
