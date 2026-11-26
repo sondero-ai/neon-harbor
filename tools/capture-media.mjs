@@ -7,7 +7,8 @@
 //   node tools/capture-media.mjs
 //
 // Outputs:
-//   docs/media/overview.gif   800x450, ~3 s of real gameplay, under 4.5 MiB
+//   docs/media/overview.gif   800x450 preferred, ~3 s of real gameplay, under
+//                             4.5 MiB; falls back to 640x360 or 560x315
 //   docs/media/combat.jpg     1280x720 still of a fallen pedestrian and loot
 //
 // The GIF is real input: the tool presses Enter, holds W and records the walk
@@ -319,6 +320,11 @@ async function main() {
       if (statSync(gifPath).size <= MAX_GIF_BYTES) break;
     }
     const gifBytes = statSync(gifPath).size;
+    if (gifBytes > MAX_GIF_BYTES) {
+      throw new Error(
+        `overview.gif is ${(gifBytes / 1024 / 1024).toFixed(2)} MiB, over the ${(MAX_GIF_BYTES / 1024 / 1024).toFixed(1)} MiB limit after the final 560x315 attempt`,
+      );
+    }
     console.log(`overview.gif  ${totalFrames} frames  ${fps.toFixed(1)} fps  ${(gifBytes / 1024 / 1024).toFixed(2)} MiB`);
 
     // ---------------------------------------------------------------- still

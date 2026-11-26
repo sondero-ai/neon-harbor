@@ -308,11 +308,11 @@ const TESTS = [
         kinds.join(', '),
       );
 
-      const item = pk.spawnDrop({ x: -210, z: 20, kind: 'cash', amount: 25 });
-      const expected = world.groundHeightAt(-210, 20);
+      const item = pk.spawnDrop({ x: -210, z: 70, kind: 'cash', amount: 25 });
+      const expected = world.groundHeightAt(-210, 70);
       check(
-        'test 2: the drop sits on the pier ground',
-        Boolean(item) && item.y === expected,
+        'test 2: the drop sits on the pier deck',
+        Boolean(item) && item.y === expected && expected > 1,
         `y=${item && item.y} expected=${expected}`,
       );
       return results;

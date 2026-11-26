@@ -208,14 +208,14 @@ Every human NPC death leaves exactly one item: 60% cash, 30% Solano 9 ammo
 (+12) and, once the Kestrel SMG is owned, 10% an SMG crate (+32); before the
 unlock that share folds back into pistol ammo. Pedestrian and officer cash
 pays $15–70 in $5 steps, mission enemies pay $40–120 and the boss pays a flat
-$150. The drop lands on a small glowing ring, pays out when Rae walks over it,
-announces itself in a toast, and expires after 30 seconds; a collected or
-expired drop never respawns.
+$150 when it drops cash. The drop lands on a small glowing ring, pays out when
+Rae walks over it, announces itself in a toast, and expires after 30 seconds;
+a collected or expired drop never respawns.
 
-![A pedestrian falls on Vega Strip and leaves a cash drop](docs/media/combat.jpg)
+![A staged pedestrian kill on Vega Strip leaves a loot drop](docs/media/combat.jpg)
 
-Two Solano 9 rounds at `?shot=street`: the body folds into the fall pose and
-the gold ring beside it is the cash drop, ready for Rae to walk over.
+A staged pedestrian kill at `?shot=street`: the body folds into the fall and
+the glowing ring beside it is the drop, ready for Rae to walk over.
 
 ## Effects, HUD and audio
 
@@ -340,7 +340,7 @@ and the SMG gate without a browser. `tools/test-npc-loot.mjs` serves `game/`,
 launches headless Chrome through the DevTools protocol like
 `tools/capture.mjs`, and drives the frozen `?shot=street` and `?shot=blockade`
 scenes through `window.__neon`: the pedestrian chest hitbox, damage and death,
-the fall pose and corpse cleanup, panic flee and recovery, loot pickup and its
+the fall state and corpse cleanup, panic flee and recovery, loot pickup and its
 30-second expiry, reset, the real `player.fireWeapon` path and officer death
 loot.
 Set `CHROME` to a Chrome or Chromium executable if the default lookup misses.

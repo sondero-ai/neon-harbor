@@ -692,13 +692,15 @@ export class Traffic {
     ped.health -= damage * (target.headshot ? 1.75 : 1);
     if (this.player) {
       this.player.hitMarker = 1;
-      if (this.player.effects) this.player.effects.impact(target.point, null, 'metal');
+      if (this.player.effects && target.point) this.player.effects.impact(target.point, null, 'metal');
       if (this.player.audio) this.player.audio.impact(0.9);
     }
     if (ped.health > 0) return;
     ped.dead = true;
     ped.deadTimer = 8;
     ped.health = 0;
+    // A corpse is not fleeing; stop it counting as panicked after death.
+    ped.fleeTimer = 0;
     for (const other of this.peds) {
       if (other === ped || !other.active || other.dead) continue;
       if (Math.hypot(other.x - ped.x, other.z - ped.z) < 9) {
@@ -748,7 +750,7 @@ export class Traffic {
         const dz = ped.z - ped.fleeFromZ;
         const distance = Math.hypot(dx, dz) || 1;
         ped.target = { x: ped.x + (dx / distance) * 12, z: ped.z + (dz / distance) * 12 };
-        const moving = this.walkToward(ped, ped.speed * 1.6, dt);
+        this.walkToward(ped, ped.speed * 1.6, dt);
         ped.phase += dt * 7;
         ped.motion = damp(ped.motion, 1, 8, dt);
         ped.y = damp(ped.y, this.world.groundHeightAt(ped.x, ped.z), 15, dt);

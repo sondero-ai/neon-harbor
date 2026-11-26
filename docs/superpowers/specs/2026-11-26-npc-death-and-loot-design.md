@@ -1,7 +1,7 @@
 # Neon Harbor — NPC death and loot — design
 
 Date: 2026-11-26
-Status: proposed
+Status: implemented — 2026-11-26, branch `npc-loot`
 
 ## Intent
 

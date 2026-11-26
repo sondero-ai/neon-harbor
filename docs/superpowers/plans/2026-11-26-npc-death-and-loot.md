@@ -53,7 +53,7 @@
   - Weights: `smgOwned=false` → cash 60%, pistol 40%;
     `smgOwned=true` → cash 60%, pistol 30%, smg 10%.
 
-- [ ] **Step 1: Branch and write the failing tests**
+- [x] **Step 1: Branch and write the failing tests**
 
 ```bash
 git switch -c npc-loot
@@ -102,12 +102,12 @@ test('amounts are pinned', () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `node --test test/loot.test.mjs`
 Expected: FAIL — `Cannot find module .../game/src/loot.js`.
 
-- [ ] **Step 3: Implement `game/src/loot.js`**
+- [x] **Step 3: Implement `game/src/loot.js`**
 
 ```js
 // The loot table for human NPC deaths. Pure on purpose: the unit tests pin the
@@ -128,12 +128,12 @@ export function rollDrop(random = Math.random, { smgOwned = false, cashMin = 15,
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `node --test test/loot.test.mjs`
 Expected: PASS, 4 tests.
 
-- [ ] **Step 5: Syntax check and commit**
+- [x] **Step 5: Syntax check and commit**
 
 ```bash
 node --check game/src/loot.js
@@ -163,7 +163,7 @@ git commit -m "Add the pure human-NPC loot table"
   - `window.__neon.view` → `{ cameraYaw, cameraPitch }`
   - `window.__neon.debug` → `{ traffic, player, camera }`
 
-- [ ] **Step 1: Write the failing E2E test**
+- [x] **Step 1: Write the failing E2E test**
 
 Create `tools/test-npc-loot.mjs` by copying the server + Chrome + CDP plumbing
 from `tools/capture.mjs` (static server, `chromePath()`, `freePort()`,
@@ -195,13 +195,13 @@ const ped = __neon.debug.traffic.spawnPed({
 `applyPlayerHit` must accept the trace result directly; the test passes the
 object returned in step 4.
 
-- [ ] **Step 2: Run the tool to verify it fails**
+- [x] **Step 2: Run the tool to verify it fails**
 
 Run: `node tools/test-npc-loot.mjs`
 Expected: FAIL — `window.__neon.pedestrians` is undefined and
 `traffic.traceShot` is not a function.
 
-- [ ] **Step 3: Add the ped fields in `spawnPed`**
+- [x] **Step 3: Add the ped fields in `spawnPed`**
 
 In the object literal, after `motion: 0.6`, add:
 
@@ -215,7 +215,7 @@ fleeFromX: 0,
 fleeFromZ: 0,
 ```
 
-- [ ] **Step 4: Implement `traceShot` and `applyPlayerHit` in `Traffic`**
+- [x] **Step 4: Implement `traceShot` and `applyPlayerHit` in `Traffic`**
 
 Add a module-local `raySphere` helper (same math as `police.js`), then:
 
@@ -248,7 +248,7 @@ applyPlayerHit(target, damage) {
 }
 ```
 
-- [ ] **Step 5: Handle dead and fleeing pedestrians in `updatePeds`**
+- [x] **Step 5: Handle dead and fleeing pedestrians in `updatePeds`**
 
 At the top of the per-ped loop, after `if (!ped.active) continue;`:
 
@@ -275,7 +275,7 @@ if (ped.fleeTimer > 0) {
 }
 ```
 
-- [ ] **Step 6: Add the fall pose to `Crowd.write`**
+- [x] **Step 6: Add the fall pose to `Crowd.write`**
 
 After `const scale = ped.scale;`:
 
@@ -288,7 +288,7 @@ this._position.set(ped.x, ped.y + 0.12 * fall, ped.z);
 
 (The rest of `write` already composes from `this._base`.)
 
-- [ ] **Step 7: Wire and expose the QA hooks in `main.js`**
+- [x] **Step 7: Wire and expose the QA hooks in `main.js`**
 
 After `this.traffic = new Traffic(...)`:
 
@@ -324,12 +324,12 @@ debug: {
 },
 ```
 
-- [ ] **Step 8: Run the tool to verify it passes**
+- [x] **Step 8: Run the tool to verify it passes**
 
 Run: `node tools/test-npc-loot.mjs`
 Expected: every assertion prints `ok`, exit code 0.
 
-- [ ] **Step 9: Syntax check, entry check, commit**
+- [x] **Step 9: Syntax check, entry check, commit**
 
 ```bash
 node --check game/src/traffic.js
@@ -357,7 +357,7 @@ git commit -m "Let bullets kill pedestrians and the crowd react"
   - `window.__neon.combat.cash`
 - Consumes: `rollDrop` (Task 1), `__neon.combat` (existing getter).
 
-- [ ] **Step 1: Extend the tool with the failing pickup test**
+- [x] **Step 1: Extend the tool with the failing pickup test**
 
 Add test 2 to `tools/test-npc-loot.mjs` (same `?shot=street` page):
 
@@ -373,12 +373,12 @@ Add test 2 to `tools/test-npc-loot.mjs` (same `?shot=street` page):
 7. `pk.spawnDrop({ x: -210, z: 20, kind: 'cash', amount: 25 });` → the new item's
    `y` equals `__neon.debug.world.groundHeightAt(-210, 20)` (pier test).
 
-- [ ] **Step 2: Run the tool to verify it fails**
+- [x] **Step 2: Run the tool to verify it fails**
 
 Run: `node tools/test-npc-loot.mjs`
 Expected: FAIL — `pk.spawnDrop` is not a function.
 
-- [ ] **Step 3: Add the cash colour and icon**
+- [x] **Step 3: Add the cash colour and icon**
 
 In `COLORS` add `cash: 0xffc95c`. In `buildIcon`, before the weapon branch, add:
 
@@ -395,7 +395,7 @@ if (kind === 'cash') {
 }
 ```
 
-- [ ] **Step 4: Extend `addItem` and `update` for one-shot drops**
+- [x] **Step 4: Extend `addItem` and `update` for one-shot drops**
 
 In `addItem`, the pushed item gains:
 
@@ -425,7 +425,7 @@ everywhere (`if (item.removed) continue;` at the top of the loop). In
 (`item.respawn = item.oneShot ? 0 : RESPAWN;`), and the collected branch of
 `update` must `continue` for one-shot items so they never come back.
 
-- [ ] **Step 5: Make `collect` amount-aware**
+- [x] **Step 5: Make `collect` amount-aware**
 
 Replace the smg/pistol branches and add cash:
 
@@ -443,7 +443,7 @@ Replace the smg/pistol branches and add cash:
 }
 ```
 
-- [ ] **Step 6: Add `spawnDrop` and `spawnDeathLoot`**
+- [x] **Step 6: Add `spawnDrop` and `spawnDeathLoot`**
 
 ```js
 spawnDrop(spec) {
@@ -459,7 +459,7 @@ spawnDeathLoot(x, z, { smgOwned = false, cashMin = 15, cashMax = 70 } = {}) {
 
 Import `rollDrop` from `./loot.js`.
 
-- [ ] **Step 7: Expose the loot and cash state in `main.js`**
+- [x] **Step 7: Expose the loot and cash state in `main.js`**
 
 Add to `__neon`:
 
@@ -476,12 +476,12 @@ get loot() {
 Add `cash: game.player.cash` to `get combat()`, and `pickups: game.pickups`,
 `world: game.world` to `debug`.
 
-- [ ] **Step 8: Run the tool to verify it passes**
+- [x] **Step 8: Run the tool to verify it passes**
 
 Run: `node tools/test-npc-loot.mjs`
 Expected: PASS, exit code 0.
 
-- [ ] **Step 9: Syntax check, entry check, commit**
+- [x] **Step 9: Syntax check, entry check, commit**
 
 ```bash
 node --check game/src/pickups.js
@@ -511,7 +511,7 @@ git commit -m "Let human NPC deaths drop cash and ammunition"
   - `Missions.prototype.onHumanDeath(x, z, opts)` — null by default
   - `Traffic.prototype.onPedDeath(ped)` — null by default
 
-- [ ] **Step 1: Extend the tool with the failing fire-path and officer tests**
+- [x] **Step 1: Extend the tool with the failing fire-path and officer tests**
 
 Test 3 (on `?shot=street`):
 
@@ -531,13 +531,13 @@ Test 4 (reload `?shot=blockade`):
 2. `__neon.debug.police.applyPlayerHit({ officer, headshot: false }, 500);`
 3. Assert `officer.dead === true` and `__neon.loot.count` rose.
 
-- [ ] **Step 2: Run the tool to verify it fails**
+- [x] **Step 2: Run the tool to verify it fails**
 
 Run: `node tools/test-npc-loot.mjs`
 Expected: FAIL — the ped survives `fireWeapon`, and no loot appears after the
 officer death.
 
-- [ ] **Step 3: Include pedestrians in `fireWeapon`**
+- [x] **Step 3: Include pedestrians in `fireWeapon`**
 
 In `Player`'s constructor add `this.traffic = null;`. In `fireWeapon`:
 
@@ -561,7 +561,7 @@ In the target branch, after the police/mission hit handling:
 `maxDistance` is already `worldHit.distance` (world-limited), so a ped behind a
 wall is not hit.
 
-- [ ] **Step 4: Call the human-death hook from police and missions**
+- [x] **Step 4: Call the human-death hook from police and missions**
 
 `police.js`: in the constructor add `this.onHumanDeath = null;`. In the
 `officer.health <= 0` branch, after `this.addWanted(2, 'Officer Down');`:
@@ -577,7 +577,7 @@ this.onHumanDeath?.(officer.x, officer.z);
 this.onHumanDeath?.(enemy.x, enemy.z, enemy.boss ? { cashMin: 150, cashMax: 150 } : { cashMin: 40, cashMax: 120 });
 ```
 
-- [ ] **Step 5: Wire the callbacks in `main.js`**
+- [x] **Step 5: Wire the callbacks in `main.js`**
 
 After `this.pickups = new Pickups(...)` and after the traffic assignment:
 
@@ -594,12 +594,12 @@ this.missions.onHumanDeath = lootFrom;
 Also add `police: game.police, missions: game.missions` to `__neon.debug` so
 test 4 can reach the officer list.
 
-- [ ] **Step 6: Run the tool to verify it passes**
+- [x] **Step 6: Run the tool to verify it passes**
 
 Run: `node tools/test-npc-loot.mjs`
 Expected: PASS, exit code 0, all four tests.
 
-- [ ] **Step 7: Syntax check, entry check, commit**
+- [x] **Step 7: Syntax check, entry check, commit**
 
 ```bash
 node --check game/src/player.js
@@ -620,7 +620,7 @@ git commit -m "Let every human NPC death feed the loot table"
 - Modify: `D:\Proyek Penting\Airdrop Farm\AGENTS.md` (game feature baseline + docs standard)
 - Deploy: merge `npc-loot` into `night-final`, rebuild `gh-pages`
 
-- [ ] **Step 1: Update the README**
+- [x] **Step 1: Update the README**
 
 - Opening description: add one line that bullets can drop pedestrians and that
   every human NPC death leaves cash or ammo.
@@ -632,7 +632,7 @@ git commit -m "Let every human NPC death feed the loot table"
   plus what each covers.
 - "Source map": add `game/src/loot.js` and `tools/test-npc-loot.mjs`.
 
-- [ ] **Step 2: Update the project `AGENTS.md`**
+- [x] **Step 2: Update the project `AGENTS.md`**
 
 Add a "Game feature baseline" section (for future entries) listing the systems
 a new game should ship from day one: layered HUD, combat with hitboxes/health/
@@ -642,7 +642,7 @@ shots, a `window.__neon` QA surface, and a dependency-free E2E tool. Add a
 `docs/superpowers/specs/`, plan in `docs/superpowers/plans/`, test commands in
 the README. Keep the file under 200 lines.
 
-- [ ] **Step 3: Run the full local verification**
+- [x] **Step 3: Run the full local verification**
 
 ```bash
 node --test test/loot.test.mjs
@@ -652,7 +652,7 @@ MAKEFUN_OUTPUT_DIR=out node main.ts --check
 
 Expected: tests PASS; E2E prints all `ok`; check PASS.
 
-- [ ] **Step 4: Commit the documentation**
+- [x] **Step 4: Commit the documentation**
 
 ```bash
 git add README.md docs/
