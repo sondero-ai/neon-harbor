@@ -20,6 +20,8 @@ const MAX_PEDS = 48;
 const SIDEWALK_TARGET = 24;
 const BEACH_TARGET = 11;
 const CAR_TARGET = 13;
+const PANIC_RADIUS = 9;
+const PANIC_SECONDS = 4;
 
 const CORNERS = [
   [CORNER, CORNER],
@@ -701,16 +703,17 @@ export class Traffic {
     ped.health = 0;
     // A corpse is not fleeing; stop it counting as panicked after death.
     ped.fleeTimer = 0;
+    let witnesses = 0;
     for (const other of this.peds) {
       if (other === ped || !other.active || other.dead) continue;
-      if (Math.hypot(other.x - ped.x, other.z - ped.z) < 9) {
-        if (!other.fleeResumeTarget) other.fleeResumeTarget = { x: other.target.x, z: other.target.z };
-        other.fleeTimer = 4;
-        other.fleeFromX = ped.x;
-        other.fleeFromZ = ped.z;
-      }
+      if (Math.hypot(other.x - ped.x, other.z - ped.z) >= PANIC_RADIUS) continue;
+      witnesses += 1;
+      if (!other.fleeResumeTarget) other.fleeResumeTarget = { x: other.target.x, z: other.target.z };
+      other.fleeTimer = PANIC_SECONDS;
+      other.fleeFromX = ped.x;
+      other.fleeFromZ = ped.z;
     }
-    this.onPedDeath?.(ped);
+    this.onPedDeath?.(ped, { witnesses });
   }
 
   pickBeachTarget(ped) {

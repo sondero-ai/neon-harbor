@@ -158,7 +158,10 @@ class Game {
       ...opts,
       smgOwned: this.player.weapons.smg.owned,
     });
-    this.traffic.onPedDeath = (ped) => lootFrom(ped.x, ped.z);
+    this.traffic.onPedDeath = (ped, { witnesses = 0 } = {}) => {
+      lootFrom(ped.x, ped.z);
+      this.police.reportCivilianDeath(ped.x, ped.z, { witnesses });
+    };
     this.police.onHumanDeath = lootFrom;
     this.missions.onHumanDeath = lootFrom;
     this.activities = new Activities(this.scene, this.world, this.vehicles, this.player, this.police, this.effects, this.audio, {
