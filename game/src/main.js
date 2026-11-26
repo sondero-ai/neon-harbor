@@ -41,6 +41,20 @@ import { Missions, MISSION_COUNT, missionName } from './missions.js';
 import { Activities } from './activities.js';
 import { LOW_FUEL } from './fuel.js';
 import { crewState, hudState, respectState } from './main-hud-state.js';
+import {
+  applyRadioWheel,
+  changeVolume,
+  closeRadioWheel,
+  cycleStation,
+  cycleTrack,
+  openRadioWheel,
+  pickRadioWheel,
+  radioToast,
+  setVolumeLevel,
+  toggleMute,
+  toggleRadio,
+  updateRadioWheel,
+} from './main-radio.js';
 import { DEFAULT_TITLE_VIEW, STEP, byId, formatCash, setHidden } from './main-shared.js';
 
 const MAX_STEPS = 5;
@@ -247,6 +261,20 @@ class Game {
   respectState() { return respectState(this); }
   crewState() { return crewState(this); }
   hudState() { return hudState(this); }
+
+  // Radio controls and the hold-Tab wheel (main-radio.js)
+  radioToast(state, options) { return radioToast(this, state, options); }
+  toggleRadio() { return toggleRadio(this); }
+  cycleStation(direction) { return cycleStation(this, direction); }
+  cycleTrack(direction) { return cycleTrack(this, direction); }
+  updateRadioWheel(input) { return updateRadioWheel(this, input); }
+  openRadioWheel() { return openRadioWheel(this); }
+  closeRadioWheel() { return closeRadioWheel(this); }
+  applyRadioWheel() { return applyRadioWheel(this); }
+  pickRadioWheel(hit) { return pickRadioWheel(this, hit); }
+  toggleMute() { return toggleMute(this); }
+  setVolumeLevel(value, options) { return setVolumeLevel(this, value, options); }
+  changeVolume(delta) { return changeVolume(this, delta); }
 
   // ---------------------------------------------------------------- setup
 
@@ -569,152 +597,6 @@ class Game {
       color: 0x1d2029,
     });
     cruiser.setDriver(null);
-  }
-
-  radioToast(state, { off = false } = {}) {
-    if (this.hud.suppressToasts) return;
-    if (off) {
-      this.hud.toast = { title: 'Radio Off', sub: 'PRESS T TO TUNE IN', life: 2.0 };
-      return;
-    }
-    const status = state.offAir ? 'OFF AIR' : state.fallback ? 'SYNTH' : 'ON AIR';
-    this.hud.toast = {
-      title: state.station,
-      sub: `${state.trackNumber}/${state.trackCount} · ${state.track.toUpperCase()} — ${state.artist.toUpperCase()} · ${status}`,
-      life: 2.6,
-    };
-  }
-
-  toggleRadio() {
-    this.audio.unlock();
-    const wasEnabled = this.radio.enabled;
-    const state = this.radio.toggle();
-    this.audio.radioSwitch();
-    this.radioToast(state, { off: wasEnabled });
-  }
-
-  cycleStation(direction) {
-    this.audio.unlock();
-    if (!this.radio.enabled) this.radio.setEnabled(true, { autoplay: false });
-    const moved = this.radio.nextStation(direction);
-    this.audio.radioSwitch();
-    if (!moved) {
-      if (!this.hud.suppressToasts) this.hud.toast = { title: 'All Stations Off Air', sub: 'NO PLAYABLE RADIO', life: 2.0 };
-      return;
-    }
-    this.radioToast(this.radio.state);
-  }
-
-  cycleTrack(direction) {
-    this.audio.unlock();
-    if (!this.radio.enabled) this.radio.setEnabled(true, { autoplay: false });
-    this.radio.nextTrack(direction);
-    this.audio.radioSwitch();
-    this.radioToast(this.radio.state);
-  }
-
-  // ---------------------------------------------------------------- radio wheel
-
-  updateRadioWheel(input) {
-    const canOpen = this.mode === 'playing' && !this.down && !this.hud.ending;
-    const held = canOpen && input.isDown('Tab');
-    if (held && !this.radioWheel.open) this.openRadioWheel();
-    else if (!held && this.radioWheel.open) this.closeRadioWheel();
-    if (this.radioWheel.open) {
-      const wheel = this.radioWheel;
-      const stations = RADIO.stations;
-      const stationCount = stations.length;
-      if (input.wasPressed('ArrowLeft')) wheel.station = (wheel.station + stationCount - 1) % stationCount;
-      if (input.wasPressed('ArrowRight')) wheel.station = (wheel.station + 1) % stationCount;
-      wheel.track = Math.min(wheel.track, stations[wheel.station].tracks.length - 1);
-      const trackCount = stations[wheel.station].tracks.length;
-      if (input.wasPressed('ArrowUp')) wheel.track = (wheel.track + trackCount - 1) % trackCount;
-      if (input.wasPressed('ArrowDown')) wheel.track = (wheel.track + 1) % trackCount;
-      if (input.wasPressed('Enter', 'NumpadEnter')) {
-        this.applyRadioWheel();
-        input.consumePressed('Enter', 'NumpadEnter');
-      }
-    }
-    // Movement axes read this flag, so the wheel can use the arrow keys without
-    // walking Rae around the block.
-    input.radioWheelOpen = this.radioWheel.open;
-  }
-
-  openRadioWheel() {
-    this.audio.unlock();
-    this.radioWheel.open = true;
-    this.radioWheel.station = this.radio.stationIndex;
-    this.radioWheel.track = this.radio.trackIndex;
-    this.radioWheel.lock = this.input.locked;
-    this.input.wheelLockRestore = this.radioWheel.lock;
-    if (this.radioWheel.lock) this.input.releaseLock();
-    this.input.radioWheelOpen = true;
-    this.hud.setWheelInteractive(true);
-    this.updateLookHint();
-    this.audio.uiClick();
-  }
-
-  closeRadioWheel() {
-    if (!this.radioWheel.open) return;
-    this.radioWheel.open = false;
-    this.radioWheel.lock = false;
-    this.input.radioWheelOpen = false;
-    this.input.wheelLockRestore = false;
-    this.hud.setWheelInteractive(false);
-    this.updateLookHint();
-  }
-
-  applyRadioWheel() {
-    this.audio.unlock();
-    const wheel = this.radioWheel;
-    const state = this.radio.setStation(wheel.station, wheel.track);
-    this.audio.radioSwitch();
-    this.radioToast(state);
-  }
-
-  pickRadioWheel(hit) {
-    if (!this.radioWheel.open || !hit) return;
-    this.radioWheel.station = hit.station;
-    this.radioWheel.track = hit.track;
-    this.applyRadioWheel();
-  }
-
-  toggleMute() {
-    this.audio.unlock();
-    const muted = this.audio.toggleMute();
-    this.settings.muted = muted;
-    SaveStore.saveSettings(this.settings);
-    this.syncAudioControls();
-    if (!this.hud.suppressToasts) {
-      const state = this.radio.state;
-      this.hud.toast = {
-        title: muted ? 'Audio Muted' : 'Audio On',
-        sub: muted ? 'PRESS M TO RESTORE' : `${state.station} · ${state.track}`.toUpperCase(),
-        life: 2.0,
-      };
-    }
-  }
-
-  setVolumeLevel(value, { toast = false } = {}) {
-    this.audio.unlock();
-    const volume = Math.max(0, Math.min(1, Number(value) || 0));
-    // Setting a level also lifts an old mute, so the gesture is audible.
-    this.audio.muted = false;
-    this.audio.setVolume(volume);
-    if (this.audio.master && this.audio.ctx) {
-      this.audio.master.gain.setTargetAtTime(this.audio.volume, this.audio.ctx.currentTime, 0.03);
-    }
-    this.settings.volume = this.audio.volume;
-    this.settings.muted = false;
-    SaveStore.saveSettings(this.settings);
-    this.syncAudioControls();
-    if (toast && !this.hud.suppressToasts) {
-      this.hud.toast = { title: `Volume ${Math.round(this.audio.volume * 100)}%`, sub: 'MINUS / EQUALS', life: 1.6 };
-    }
-  }
-
-  changeVolume(delta) {
-    this.setVolumeLevel(this.audio.volume + delta, { toast: true });
   }
 
   announceVehicle(enteredCar, exitedCar, carjacked = false) {
