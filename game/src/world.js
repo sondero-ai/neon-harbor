@@ -71,6 +71,14 @@ import {
   resolveCircle,
   vehicleBlocked,
 } from './world/query.js';
+import {
+  applyEnvironment,
+  buildClouds,
+  buildLights,
+  buildSky,
+  focusAt,
+  setSky,
+} from './world/sky.js';
 
 export class World {
   constructor(scene, { quality = 'high' } = {}) {
@@ -102,8 +110,8 @@ export class World {
     this.streetGlowIndices = [];
     this.pierGlowIndices = [];
 
-    this.buildSky();
-    this.buildLights();
+    buildSky(this);
+    buildLights(this);
     this.buildGround();
     this.buildRoadMarkings();
     this.buildBeach();
@@ -117,7 +125,7 @@ export class World {
     this.buildVegetation();
     this.buildStreetlights();
     this.buildSigns();
-    this.buildClouds();
+    buildClouds(this);
     this.finishMergedMeshes();
     this.glowField.build();
   }
@@ -179,324 +187,6 @@ export class World {
     }
     const ground = this.groundHeightAt(x, z);
     this.objectiveMarker.group.position.set(x, ground, z);
-  }
-
-  // ---------------------------------------------------------------- sky
-
-  // One baked sky per period. The night keeps the indigo-to-magenta gradient
-  // the first build was framed around; the other three add the dawn, day and
-  // dusk bands. Stars and the moon live as separate objects so the environment
-  // can fade them instead of repainting the canvas.
-  makeSkyTexture(state) {
-    const texture = canvasTexture(1024, 512, (ctx, width, height) => {
-      const gradient = ctx.createLinearGradient(0, 0, 0, height);
-      const stops = {
-        night: [
-          [0, '#040410'], [0.16, '#090a20'], [0.32, '#15102e'], [0.45, '#261543'],
-          [0.53, '#482052'], [0.575, '#7a2e5a'], [0.61, '#a8445f'], [0.66, '#5a2948'],
-          [0.8, '#24152c'], [1, '#080612'],
-        ],
-        dawn: [
-          [0, '#0d0d26'], [0.24, '#241c46'], [0.42, '#56306a'], [0.52, '#8f4666'],
-          [0.58, '#d47a63'], [0.63, '#f2b878'], [0.69, '#7a4a5c'], [0.82, '#2a1c30'],
-          [1, '#100b18'],
-        ],
-        day: [
-          [0, '#265a9e'], [0.28, '#4781bc'], [0.48, '#7fb0d5'], [0.58, '#bcd9e9'],
-          [0.65, '#dbe9ef'], [0.76, '#a9becb'], [0.9, '#7c93a1'], [1, '#5f7580'],
-        ],
-        dusk: [
-          [0, '#05051a'], [0.2, '#161034'], [0.38, '#3d214c'], [0.5, '#762c4e'],
-          [0.56, '#c0554f'], [0.62, '#f09a5e'], [0.68, '#5c2d42'], [0.82, '#1d1324'],
-          [1, '#080610'],
-        ],
-      }[state];
-      for (const [offset, color] of stops) gradient.addColorStop(offset, color);
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, width, height);
-
-      // City light pollution or horizon haze, depending on the hour.
-      const horizon = ctx.createRadialGradient(width * 0.42, height * 0.6, 10, width * 0.42, height * 0.6, width * 0.56);
-      if (state === 'day') {
-        horizon.addColorStop(0, 'rgba(255,248,228,0.2)');
-        horizon.addColorStop(0.45, 'rgba(220,232,238,0.08)');
-        horizon.addColorStop(1, 'rgba(180,205,215,0)');
-      } else if (state === 'dawn') {
-        horizon.addColorStop(0, 'rgba(255,176,120,0.3)');
-        horizon.addColorStop(0.42, 'rgba(210,110,110,0.12)');
-        horizon.addColorStop(1, 'rgba(90,30,80,0)');
-      } else if (state === 'dusk') {
-        horizon.addColorStop(0, 'rgba(255,132,96,0.3)');
-        horizon.addColorStop(0.42, 'rgba(190,70,110,0.13)');
-        horizon.addColorStop(1, 'rgba(70,18,70,0)');
-      } else {
-        horizon.addColorStop(0, 'rgba(255,86,132,0.22)');
-        horizon.addColorStop(0.4, 'rgba(160,60,120,0.09)');
-        horizon.addColorStop(1, 'rgba(80,20,80,0)');
-      }
-      ctx.fillStyle = horizon;
-      ctx.fillRect(0, 0, width, height);
-
-      const rng = makeRng(0x57a2 + state.length * 97);
-      const cloudCount = state === 'day' ? 0 : state === 'night' ? 16 : 9;
-      for (let i = 0; i < cloudCount; i += 1) {
-        const x = rng.range(0, width);
-        const y = rng.range(height * 0.24, height * 0.52);
-        const rx = rng.range(30, 110);
-        const ry = rng.range(2, 7);
-        const tint = state === 'night' ? '96,62,120' : state === 'dawn' ? '210,132,110' : '200,110,104';
-        ctx.fillStyle = `rgba(${tint},${rng.range(0.04, state === 'night' ? 0.12 : 0.1)})`;
-        ctx.beginPath();
-        ctx.ellipse(x, y, rx, ry, rng.range(-0.1, 0.1), 0, Math.PI * 2);
-        ctx.fill();
-      }
-    });
-    texture.wrapS = THREE.RepeatWrapping;
-    return texture;
-  }
-
-  makeMoonTexture() {
-    return canvasTexture(128, 128, (ctx, width, height) => {
-      ctx.clearRect(0, 0, width, height);
-      const cx = width / 2;
-      const cy = height / 2;
-      const disc = ctx.createRadialGradient(cx - 6, cy - 6, 2, cx, cy, 34);
-      disc.addColorStop(0, '#f4f7ff');
-      disc.addColorStop(0.72, '#c9d6f5');
-      disc.addColorStop(1, '#8c9dd4');
-      ctx.fillStyle = disc;
-      ctx.beginPath();
-      ctx.arc(cx, cy, 33, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(110,130,180,0.22)';
-      for (const [dx, dy, r] of [[-9, 5, 6], [7, -7, 4.5], [2, 11, 3.5], [12, 8, 3]]) {
-        ctx.beginPath();
-        ctx.arc(cx + dx, cy + dy, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    });
-  }
-
-  buildSky() {
-    this.skyTextures = {
-      night: this.makeSkyTexture('night'),
-      dawn: this.makeSkyTexture('dawn'),
-      day: this.makeSkyTexture('day'),
-      dusk: this.makeSkyTexture('dusk'),
-    };
-    const skyGeometry = new THREE.SphereGeometry(1250, 48, 24);
-    this.skyA = new THREE.Mesh(skyGeometry, new THREE.MeshBasicMaterial({
-      map: this.skyTextures.night,
-      side: THREE.BackSide,
-      depthWrite: false,
-      fog: false,
-      toneMapped: false,
-    }));
-    this.skyA.frustumCulled = false;
-    this.skyA.renderOrder = -1000;
-    this.skyRoot.add(this.skyA);
-    this.skyB = new THREE.Mesh(skyGeometry, new THREE.MeshBasicMaterial({
-      map: this.skyTextures.night,
-      side: THREE.BackSide,
-      depthWrite: false,
-      transparent: true,
-      opacity: 0,
-      fog: false,
-      toneMapped: false,
-    }));
-    this.skyB.frustumCulled = false;
-    this.skyB.renderOrder = -999;
-    this.skyB.visible = false;
-    this.skyRoot.add(this.skyB);
-    this.skyFromKey = 'night';
-    this.skyToKey = 'night';
-
-    // A real star field, so the environment can fade it from day to night
-    // instead of baking stars into one texture.
-    const starRng = makeRng(0x57a2);
-    const positions = [];
-    for (let i = 0; i < 900; i += 1) {
-      const y = starRng.range(0.035, 1);
-      const ring = Math.sqrt(1 - y * y);
-      const angle = starRng.range(0, Math.PI * 2);
-      positions.push(Math.cos(angle) * ring * 1210, y * 1210, Math.sin(angle) * ring * 1210);
-    }
-    const starGeometry = new THREE.BufferGeometry();
-    starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    this.stars = new THREE.Points(starGeometry, new THREE.PointsMaterial({
-      size: 1.9,
-      map: makeGlowTexture(),
-      color: 0xe8efff,
-      transparent: true,
-      opacity: 0.9,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      depthTest: false,
-      sizeAttenuation: false,
-      fog: false,
-      toneMapped: false,
-    }));
-    this.stars.frustumCulled = false;
-    this.stars.renderOrder = -998;
-    this.skyRoot.add(this.stars);
-
-    // Sun and moon are real sky objects now: the palette moves them, fades
-    // them and tints them, and the same direction drives the directional light.
-    const halo = makeGlowSprite(0x8fa8ff, 220, 0.0);
-    halo.renderOrder = -900;
-    halo.material.fog = false;
-    halo.visible = false;
-    this.skyRoot.add(halo);
-
-    const core = makeGlowSprite(0xe8efff, 68, 0.0);
-    core.renderOrder = -899;
-    core.material.fog = false;
-    core.visible = false;
-    this.skyRoot.add(core);
-    this.sunHalo = halo;
-    this.sunCore = core;
-
-    const moonHalo = makeGlowSprite(0x8fa8ff, 200, 0.0);
-    moonHalo.renderOrder = -898;
-    moonHalo.material.fog = false;
-    moonHalo.visible = false;
-    this.skyRoot.add(moonHalo);
-    const moonCore = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: this.makeMoonTexture(),
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      fog: false,
-      toneMapped: false,
-    }));
-    moonCore.scale.set(58, 58, 1);
-    moonCore.renderOrder = -897;
-    moonCore.visible = false;
-    this.skyRoot.add(moonCore);
-    this.moonHalo = moonHalo;
-    this.moonCore = moonCore;
-  }
-
-  setSky(fromKey, toKey, blend) {
-    if (this.skyFromKey !== fromKey) {
-      this.skyA.material.map = this.skyTextures[fromKey] ?? this.skyTextures.night;
-      this.skyA.material.needsUpdate = true;
-      this.skyFromKey = fromKey;
-    }
-    this.skyB.visible = toKey !== fromKey && blend > 0.001;
-    if (this.skyToKey !== toKey) {
-      this.skyB.material.map = this.skyTextures[toKey] ?? this.skyTextures.night;
-      this.skyB.material.needsUpdate = true;
-      this.skyToKey = toKey;
-    }
-    if (this.skyB.visible) this.skyB.material.opacity = blend;
-  }
-
-  applyEnvironment(palette) {
-    this.hemi.color.setHex(palette.hemiSky);
-    this.hemi.groundColor.setHex(palette.hemiGround);
-    this.hemi.intensity = palette.hemiIntensity;
-    this.ambient.color.setHex(palette.ambient);
-    this.ambient.intensity = palette.ambientIntensity;
-    this.sun.color.setHex(palette.sunColor);
-    this.sun.intensity = palette.sunIntensity;
-    this.fill.intensity = palette.fillIntensity;
-    this.lightDir.set(palette.lightDir[0], palette.lightDir[1], palette.lightDir[2]).normalize();
-    this.focusAt(this.focusX, this.focusZ);
-
-    // Window light, neon and street lamps are emissive materials rather than
-    // real lights; the palette scales their intensity so noon reads as day.
-    this.neonLevel = 0.55 + 0.45 * palette.neon;
-    for (const style of this.facadeStyles) {
-      style.material.emissiveIntensity = style.baseEmissive * (0.18 + 0.82 * palette.window);
-    }
-    if (this.storefrontMaterial) {
-      this.storefrontMaterial.emissiveIntensity = this.storefrontBaseEmissive * (0.18 + 0.82 * palette.window);
-    }
-    if (this.crownMaterial) this.crownMaterial.color.setScalar(0.42 + 0.58 * palette.neon);
-    if (this.pierBulbMaterial) this.pierBulbMaterial.color.setScalar(0.42 + 0.58 * palette.neon);
-    if (this.lampMaterial) {
-      this.lampMaterial.color.setHex(0xffc37a).multiplyScalar(0.32 + 0.68 * palette.street);
-    }
-    const streetGlow = 0.38 * (0.1 + 0.9 * palette.street);
-    for (const index of this.streetGlowIndices) this.glowField.setBrightness(index, streetGlow);
-    const pierGlow = 0.4 * (0.15 + 0.85 * palette.street);
-    for (const index of this.pierGlowIndices) this.glowField.setBrightness(index, pierGlow);
-    if (this.streetPoolMaterial) this.streetPoolMaterial.opacity = 0.14 * palette.street;
-
-    if (this.water) {
-      this.water.material.color.setHex(palette.waterTint);
-      this.water.material.emissive.setHex(palette.waterEmissive);
-      this.water.material.emissiveIntensity = palette.waterEmissiveIntensity;
-    }
-    if (this.sparkles) this.sparkles.material.opacity = palette.sparkle;
-    if (this.stars) this.stars.material.opacity = palette.stars;
-    for (const cloud of this.clouds) {
-      cloud.sprite.material.color.setHex(palette.cloud);
-      cloud.sprite.material.opacity = cloud.baseOpacity * palette.cloudOpacity;
-    }
-
-    this.setSky(palette.skyFrom, palette.skyTo, palette.skyBlend);
-
-    const sun = palette.sun;
-    this.sunHalo.visible = sun > 0.01;
-    this.sunCore.visible = sun > 0.01;
-    if (sun > 0.01) {
-      this.sunHalo.position.set(palette.lightDir[0], palette.lightDir[1], palette.lightDir[2]).multiplyScalar(1120);
-      this.sunCore.position.set(palette.lightDir[0], palette.lightDir[1], palette.lightDir[2]).multiplyScalar(1118);
-      this.sunHalo.material.opacity = 0.45 * sun;
-      this.sunCore.material.opacity = 0.95 * sun;
-    }
-    const moon = palette.moon;
-    this.moonHalo.visible = moon > 0.01;
-    this.moonCore.visible = moon > 0.01;
-    if (moon > 0.01) {
-      this.moonHalo.position.set(palette.moonDir[0], palette.moonDir[1], palette.moonDir[2]).multiplyScalar(1120);
-      this.moonCore.position.set(palette.moonDir[0], palette.moonDir[1], palette.moonDir[2]).multiplyScalar(1118);
-      this.moonHalo.material.opacity = 0.32 * moon;
-      this.moonCore.material.opacity = moon;
-    }
-  }
-
-  buildLights() {
-    const preset = QUALITY_PRESETS[this.quality] ?? QUALITY_PRESETS.high;
-    this.lightDir = SUN_DIR.clone();
-    this.focusX = 20;
-    this.focusZ = 30;
-    this.hemi = new THREE.HemisphereLight(0x7f8fd6, 0x171322, 1.38);
-    this.scene.add(this.hemi);
-
-    this.ambient = new THREE.AmbientLight(0x4a4266, 0.56);
-    this.scene.add(this.ambient);
-
-    this.sun = new THREE.DirectionalLight(0x9fb2ff, 0.65);
-    this.sun.castShadow = preset.shadows;
-    this.sun.shadow.mapSize.set(preset.shadowMap, preset.shadowMap);
-    this.sun.shadow.camera.left = -76;
-    this.sun.shadow.camera.right = 76;
-    this.sun.shadow.camera.top = 76;
-    this.sun.shadow.camera.bottom = -76;
-    this.sun.shadow.camera.near = 12;
-    this.sun.shadow.camera.far = 300;
-    this.sun.shadow.bias = -0.00035;
-    this.sun.shadow.normalBias = 0.055;
-    this.scene.add(this.sun);
-    this.scene.add(this.sun.target);
-
-    this.fill = new THREE.DirectionalLight(0x6f83cf, 1.0);
-    this.fill.position.set(130, 70, -110);
-    this.scene.add(this.fill);
-
-    this.focusAt(20, 30);
-  }
-
-  focusAt(x, z) {
-    this.focusX = x;
-    this.focusZ = z;
-    const direction = this.lightDir ?? SUN_DIR;
-    this.sun.position.set(x + direction.x * 120, direction.y * 120 + 12, z + direction.z * 120);
-    this.sun.target.position.set(x, 0, z);
-    this.sun.target.updateMatrixWorld();
   }
 
   setQuality(quality) {
@@ -2715,40 +2405,6 @@ export class World {
     });
   }
 
-  // ---------------------------------------------------------------- clouds
-
-  buildClouds() {
-    const cloudTexture = makeCloudTexture();
-    const rng = makeRng(0xc10d);
-    const positions = [
-      [-540, 130, -420, 280, 90],
-      [-760, 168, 180, 340, 105],
-      [-420, 104, 540, 240, 74],
-      [120, 148, -620, 300, 96],
-      [470, 120, 240, 260, 84],
-      [-980, 196, -60, 390, 120],
-      [260, 184, 620, 320, 100],
-    ];
-    for (const [x, y, z, sx, sy] of positions) {
-      const opacity = rng.range(0.14, 0.28);
-      const material = new THREE.SpriteMaterial({
-        map: cloudTexture,
-        color: 0xffd6bd,
-        transparent: true,
-        opacity,
-        depthWrite: false,
-        fog: false,
-        toneMapped: false,
-        blending: THREE.NormalBlending,
-      });
-      const sprite = new THREE.Sprite(material);
-      sprite.position.set(x, y, z);
-      sprite.scale.set(sx, sy, 1);
-      this.root.add(sprite);
-      this.clouds.push({ sprite, baseX: x, baseOpacity: opacity, phase: rng.range(0, 6.28), speed: rng.range(0.8, 1.8) });
-    }
-  }
-
   // ---------------------------------------------------------------- merged leftovers
 
   finishMergedMeshes() {
@@ -2835,6 +2491,18 @@ export class World {
 
   clipCamera(from, to, radius, out) {
     return clipCamera(this, from, to, radius, out);
+  }
+
+  focusAt(x, z) {
+    return focusAt(this, x, z);
+  }
+
+  applyEnvironment(palette) {
+    return applyEnvironment(this, palette);
+  }
+
+  setSky(fromKey, toKey, blend) {
+    return setSky(this, fromKey, toKey, blend);
   }
 
   // ---------------------------------------------------------------- animation
