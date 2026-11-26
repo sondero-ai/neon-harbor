@@ -4,6 +4,8 @@
 [![rank](https://make.fun/badge/gta6-01/sondero-ai/neon-harbor/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/sondero-ai/neon-harbor/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
+![Neon Harbor — the night chase on Vega Strip, with Air 1 and two HPD cruisers](screenshots/1-cover.jpg)
+
 Neon Harbor is an original third-person open-world crime game for the desktop
 browser. It runs from plain static files with no build step, no package
 install and no network request after the page loads. The setting is a
@@ -21,6 +23,22 @@ stations, a canvas HUD and a local save.
 Pedestrians are shootable: they fall where they die, the crowd around them
 panics, and every human NPC death — pedestrian, mission enemy or police
 officer — leaves cash or ammunition on the pavement.
+
+## Overview
+
+![Neon Harbor gameplay — New Game on Vega Strip, the walk to the first mission](docs/media/overview.gif)
+
+A real recording, captured frame by frame from the live page: **New Game** on
+Vega Strip, the walk down the boulevard past the palms and the traffic, and
+Mira Sol's first call coming in over the radio. The HUD, the minimap and the
+radio line are the ones you play with; nothing is staged for the camera beyond
+hiding the pointer-lock prompt.
+
+`node tools/capture-media.mjs` re-records this GIF and the combat still below
+in one run — the same dependency-free Chrome DevTools driver the screenshots
+use. The tool presses **Enter**, holds **W** for the walk and writes the
+frames; ffmpeg (on `PATH`, or set `FFMPEG`) encodes the GIF. No npm packages,
+no video files.
 
 ## Play
 
@@ -194,6 +212,11 @@ $150. The drop lands on a small glowing ring, pays out when Rae walks over it,
 announces itself in a toast, and expires after 30 seconds; a collected or
 expired drop never respawns.
 
+![A pedestrian falls on Vega Strip and leaves a cash drop](docs/media/combat.jpg)
+
+Two Solano 9 rounds at `?shot=street`: the body folds into the fall pose and
+the gold ring beside it is the cash drop, ready for Rae to walk over.
+
 ## Effects, HUD and audio
 
 `effects.js` owns fixed-size pools for sparks, smoke, flash sprites and tracers,
@@ -241,6 +264,13 @@ and mute persist with the quality setting.
 each under 256 KiB. The first by name is the cover. They are captured by
 `tools/capture.mjs` from the live page with headless Chrome; nothing is
 composited and no filters are applied.
+
+| | |
+| --- | --- |
+| ![Night chase on Vega Strip](screenshots/1-cover.jpg)<br>**1-cover.jpg · Night chase** | ![HPD roadblock at four stars](screenshots/2-street.jpg)<br>**2-street.jpg · Roadblock** |
+| ![Pier 9 burning](screenshots/3-mission.jpg)<br>**3-mission.jpg · Pier 9 burning** | ![Title screen over the night skyline](screenshots/4-title.jpg)<br>**4-title.jpg · Title** |
+
+What each shot shows:
 
 - `1-cover.jpg` — `?shot=chase`: the night chase on Vega Strip with the red
   Riptide, two HPD cruisers with lit bars, lane traffic, crosswalk pedestrians,
@@ -309,9 +339,10 @@ node tools/test-npc-loot.mjs       # headless Chrome end-to-end
 and the SMG gate without a browser. `tools/test-npc-loot.mjs` serves `game/`,
 launches headless Chrome through the DevTools protocol like
 `tools/capture.mjs`, and drives the frozen `?shot=street` and `?shot=blockade`
-scenes through `window.__neon`: pedestrian hitboxes, damage and death, the
-fall and eight-second corpse, panic flee and recovery, loot pickup, 30-second
-expiry and reset, the real `player.fireWeapon` path and officer death loot.
+scenes through `window.__neon`: the pedestrian chest hitbox, damage and death,
+the fall pose and corpse cleanup, panic flee and recovery, loot pickup and its
+30-second expiry, reset, the real `player.fireWeapon` path and officer death
+loot.
 Set `CHROME` to a Chrome or Chromium executable if the default lookup misses.
 
 ## Source map
@@ -339,6 +370,8 @@ Set `CHROME` to a Chrome or Chromium executable if the default lookup misses.
   Heat Run, the safehouse save/heal/clear-heat point and their street panels.
 - `game/src/loot.js` — the pure death-drop table: weights, $5 cash steps and
   the SMG unlock gate.
+- `game/src/pickups.js` — walk-over pickup rings, weapon/medkit/armor spawns,
+  one-shot death drops, 30-second expiry, payout and reset cleanup.
 - `game/src/player.js`, `humanoid.js` — movement, driving, chase camera,
   vehicle collision, hitscan weapons, aiming, damage and Rae's low-poly
   walk/run/aim cycle.
@@ -362,6 +395,9 @@ Set `CHROME` to a Chrome or Chromium executable if the default lookup misses.
 - `main.ts`, `serve.ts`, `vendor/makefun-game.ts` — entrypoint, development
   server and the bounty's dossier library.
 - `tools/capture.mjs` — the stdlib-only headless-Chrome screenshot driver.
+- `tools/capture-media.mjs` — the README media driver behind
+  `docs/media/overview.gif` and `docs/media/combat.jpg`; needs ffmpeg on
+  `PATH` or in `FFMPEG`.
 - `tools/test-npc-loot.mjs` — the stdlib-only headless-Chrome E2E for
   pedestrian death, panic and loot across the frozen street and blockade
   scenes.
