@@ -23,7 +23,7 @@ import { CLOCK_MINUTES_PER_SECOND, Environment, SHOT_CLOCK, parseTimeParam } fro
 import { TrafficSignals } from './traffic-signals.js';
 import { World } from './world.js';
 import { Player } from './player.js';
-import { Vehicles } from './vehicles.js';
+import { Vehicles } from './vehicle-fleet.js';
 import { Interactions } from './interactions.js';
 import { Traffic } from './traffic.js';
 import { MallLife } from './mall-life.js';
