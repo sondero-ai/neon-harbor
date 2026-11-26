@@ -3519,6 +3519,107 @@ const TESTS = [
         Math.abs(dry.speed) < 0.5 && Math.abs(dry.position.z - dryZ) < 0.5,
         JSON.stringify({ speed: dry.speed, z: dry.position.z }));
 
+      const traffic = neon?.debug?.traffic;
+
+      // The service checks left the player parked across pump 1 and the test
+      // cars on the pads; clear every one so both pumps are free for the NPCs.
+      if (player.driving) player.exitVehicle();
+      vehicles.remove(car);
+      vehicles.remove(poor);
+      vehicles.remove(dry);
+      player.teleport(-63, 27.3);
+
+      // Isolate the station: no ambient car may take a pump, and no crosser
+      // may hold the adjacent lane for the length of the 60 s deadlock run.
+      traffic.carTarget = 0;
+      for (const other of [...traffic.cars]) traffic.removeCar(other);
+      traffic.sidewalkTarget = 0;
+      traffic.beachTarget = 0;
+      for (const ped of traffic.peds) traffic.crowd.hide(ped.slot);
+      traffic.peds.length = 0;
+
+      // A flagged northbound car pulls in, pumps, and rejoins.
+      const flagged = traffic.spawnLaneCar('sedan', 'z', 1, -81, -30, 11, { fuel: 0.2 });
+      let pumpSlot = null;
+      for (let i = 0; i < 240 && !pumpSlot; i += 1) {
+        neon.advance(0.1);
+        pumpSlot = station.slots.find((entry) => entry.car === flagged && entry.phase === 'pump') ?? null;
+      }
+      check('test 27: a flagged car pulls in and stops at a pump',
+        Boolean(pumpSlot) && flagged.position.x < -88,
+        JSON.stringify({ mode: flagged.ai.mode, x: flagged.position.x, z: flagged.position.z }));
+      check('test 27: the pump wait is 4-6 seconds',
+        Boolean(pumpSlot) && pumpSlot.timer >= 4 && pumpSlot.timer <= 6,
+        JSON.stringify(pumpSlot ? { timer: pumpSlot.timer } : null));
+      neon.advance(3);
+      check('test 27: the car is still pumping after three seconds', flagged.ai.mode === 'pump');
+      // The pull-out loops around the kiosk; give it the real drive time and
+      // stop the moment it merges, so its measured tank is still the fresh fill.
+      for (let i = 0; i < 400 && flagged.ai.mode !== 'drive'; i += 1) neon.advance(0.1);
+      check('test 27: the pump fills the NPC tank and the car rejoins the lane',
+        flagged.fuel > 0.98 && flagged.ai.mode === 'drive' && Math.abs(flagged.position.x + 84.2) < 1.5,
+        JSON.stringify({ fuel: flagged.fuel, mode: flagged.ai.mode, x: flagged.position.x, z: flagged.position.z }));
+
+      // An unflagged car never stops.
+      const passing = traffic.spawnLaneCar('pickup', 'z', 1, -81, -30, 11, { fuel: 1 });
+      neon.advance(6);
+      check('test 27: an unflagged car passes the station',
+        passing.ai.mode === 'drive' && passing.position.z > -6 && Math.abs(passing.position.x + 84.2) < 1.5,
+        JSON.stringify({ mode: passing.ai.mode, x: passing.position.x, z: passing.position.z }));
+
+      // Fill both pumps, then a third flagged car must keep rolling.
+      const first = traffic.spawnLaneCar('sedan', 'z', 1, -81, -32, 11, { fuel: 0.2 });
+      const second = traffic.spawnLaneCar('muscle', 'z', 1, -81, -44, 12, { fuel: 0.2 });
+      for (let i = 0; i < 400; i += 1) {
+        neon.advance(0.1);
+        if (station.slots.every((slot) => slot.car)) break;
+      }
+      check('test 27: both pumps can be busy at once', station.slots.every((slot) => slot.car),
+        JSON.stringify(station.slots.map((slot) => Boolean(slot.car))));
+      const queued = traffic.spawnLaneCar('pickup', 'z', 1, -81, -30, 11, { fuel: 0.2 });
+      let queuedPassed = false;
+      for (let i = 0; i < 120 && !queuedPassed; i += 1) {
+        neon.advance(0.1);
+        queuedPassed = queued.position.z > -8;
+      }
+      check('test 27: a flagged car with both pumps busy keeps driving',
+        queuedPassed && !station.owns(queued),
+        JSON.stringify({ mode: queued.ai.mode, z: queued.position.z }));
+
+      // 60 simulated seconds: both pumps free themselves, nothing parks at the entry.
+      let entryStall = 0;
+      let worstStall = 0;
+      let secondPumped = false;
+      const entryCars = [first, second, queued];
+      for (let i = 0; i < 120; i += 1) {
+        neon.advance(0.5);
+        if (second.fuel > 0.9) secondPumped = true;
+        let stalled = false;
+        for (const car of entryCars) {
+          const distance = Math.hypot(car.position.x + 84.2, car.position.z + 18);
+          if (distance < 12 && Math.abs(car.speed) < 0.3) stalled = true;
+        }
+        entryStall = stalled ? entryStall + 0.5 : 0;
+        worstStall = Math.max(worstStall, entryStall);
+      }
+      check('test 27: the service lane never deadlocks for 60 seconds',
+        worstStall <= 8 && station.slots.every((slot) => slot.car === null),
+        JSON.stringify({ worstStall, slots: station.slots.map((slot) => Boolean(slot.car)) }));
+      check('test 27: the second pump also fills its car', secondPumped,
+        JSON.stringify({ fuel: second.fuel, mode: second.ai.mode, x: second.position.x, z: second.position.z }));
+
+      // Removing a pump car frees its slot for the next car.
+      const doomed = traffic.spawnLaneCar('sedan', 'z', 1, -81, -30, 11, { fuel: 0.2 });
+      let doomedSlot = null;
+      for (let i = 0; i < 240 && !doomedSlot; i += 1) {
+        neon.advance(0.1);
+        doomedSlot = station.slots.find((entry) => entry.car === doomed) ?? null;
+      }
+      traffic.removeCar(doomed);
+      check('test 27: removing a pump car frees its slot',
+        Boolean(doomedSlot) && doomedSlot.car === null && doomedSlot.phase === 'free',
+        JSON.stringify(doomedSlot ? { car: Boolean(doomedSlot.car), phase: doomedSlot.phase } : null));
+
       return results;
     },
   },

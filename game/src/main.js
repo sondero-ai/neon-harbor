@@ -163,8 +163,11 @@ class Game {
       this.gasStation.onToast = (toast) => {
         if (!this.hud.suppressToasts) this.hud.toast = toast;
       };
+      this.gasStation.traffic = this.traffic;
+      this.gasStation.vehicles = this.vehicles;
     }
     this.interactions.gasStation = this.gasStation;
+    this.traffic.gasStation = this.gasStation;
     this.pickups = new Pickups(this.scene, this.world, this.effects, {
       audio: this.audio,
       onPickup: (message) => {
@@ -548,6 +551,7 @@ class Game {
     this.mallLife?.reset();
     this.robbery?.reset();
     this.parking?.reset(this.environment.minutes);
+    this.gasStation?.reset();
     this.lowFuelWarned = false;
   }
 

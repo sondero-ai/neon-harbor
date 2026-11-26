@@ -15,6 +15,8 @@ import { quoteService } from './fuel.js';
 import { makeSignTexture, mergeGeometries } from './geo.js';
 import { addBox, addCylinder, basicMaterial, material } from './world-kit.js';
 
+const clamp = THREE.MathUtils.clamp;
+
 export const STATION_BOUNDS = { minX: -128, maxX: -88, minZ: -20, maxZ: 20 };
 export const STATION_LABEL = 'SOLANO FUEL';
 export const PUMP_POINTS = [
@@ -64,6 +66,8 @@ export class GasStation {
     this.slots = PUMP_SLOTS.map((slot) => ({ ...slot, car: null, phase: 'free', timer: 0 }));
     this.lights = [];
     this.onToast = null;
+    this.traffic = null;
+    this.vehicles = null;
 
     const group = new THREE.Group();
     group.name = 'solano-fuel';
@@ -340,6 +344,197 @@ export class GasStation {
       slot.phase = 'free';
       slot.timer = 0;
     }
+  }
+
+  // ---------------------------------------------------------------- NPC flow
+
+  /** True while this station is driving the car through its forecourt. */
+  owns(car) {
+    return ['pullin', 'pump', 'pullout'].includes(car?.ai?.mode);
+  }
+
+  approachFor(slot) {
+    if (slot.pump === 0) {
+      // Aim at the pad from the entry straight away: the final leg is long
+      // enough to line up on a diagonal, so the car never has to make a
+      // 90-degree turn inside its own minimum radius next to the slot.
+      return [
+        { x: -89, z: -19 },
+        { x: slot.x, z: slot.z },
+      ];
+    }
+    // Pump 1 is 22 m north of the entry; stay east of the east canopy columns
+    // until the open stretch, then take a long diagonal onto the pad.
+    return [
+      { x: -89, z: -19 },
+      { x: -90.4, z: -9 },
+      { x: -90.4, z: 4 },
+      { x: slot.x, z: slot.z },
+    ];
+  }
+
+  pulloutFor(slot) {
+    if (slot.pump === 0) {
+      return [
+        { x: -104, z: -11 },
+        { x: -111, z: -11 },
+        { x: -113, z: -3 },
+        { x: -113, z: 11 },
+        { x: -104, z: 16 },
+        { x: -92, z: 17 },
+        { x: -84.2, z: 18 },
+      ];
+    }
+    return [
+      { x: -104, z: 11 },
+      { x: -111, z: 11 },
+      { x: -113, z: 13 },
+      { x: -107, z: 17 },
+      { x: -92, z: 17.5 },
+      { x: -84.2, z: 18 },
+    ];
+  }
+
+  /**
+   * A northbound car on the adjacent lane with a low tank pulls in when the
+   * station is on its left, a slot is free and its cooldown has run out.
+   * With both pumps busy it keeps driving and waits out a cooldown.
+   */
+  maybeDivert(car, ai, dt) {
+    if (!car || !ai) return false;
+    if (ai.stationCooldown > 0) ai.stationCooldown = Math.max(0, ai.stationCooldown - dt);
+    if (ai.mode !== 'drive' || ai.axis !== 'z' || ai.line !== -81 || ai.direction !== 1) return false;
+    if (car.fuel >= 0.35) return false;
+    if (car.position.z <= -26 || car.position.z >= -14) return false;
+    if (ai.stationCooldown > 0) return false;
+    const slot = this.slots.find((entry) => !entry.car);
+    if (!slot) {
+      ai.stationCooldown = 20;
+      return false;
+    }
+    slot.car = car;
+    slot.phase = 'pullin';
+    slot.timer = 0;
+    ai.mode = 'pullin';
+    ai.stuckTime = 0;
+    ai.station = {
+      slot,
+      waypoints: this.approachFor(slot),
+      index: 0,
+      lastX: car.position.x,
+      lastZ: car.position.z,
+    };
+    return true;
+  }
+
+  /** Drive a station-owned car along its waypoints, pump, and merge back. */
+  updateCar(car, dt) {
+    const ai = car?.ai;
+    const station = ai?.station;
+    if (!ai || !station) return;
+    if (car.removed) {
+      this.releaseCar(car);
+      return;
+    }
+    const slot = station.slot;
+
+    if (ai.mode === 'pump') {
+      car.controls.throttle = 0;
+      car.controls.brake = 1;
+      car.controls.steer = 0;
+      car.controls.handbrake = false;
+      slot.timer = Math.max(0, slot.timer - dt);
+      if (slot.timer <= 0) {
+        car.fuel = 1;
+        ai.mode = 'pullout';
+        ai.stuckTime = 0;
+        station.waypoints = this.pulloutFor(slot);
+        station.index = 0;
+      }
+      return;
+    }
+
+    const waypoints = station.waypoints;
+    const lastIndex = waypoints.length - 1;
+    // A car wedged on a collider can still report a nonzero forward speed
+    // while its position does not change. Measure real travel instead, so the
+    // 12 s fallback always frees the slot a jammed car is holding.
+    const moved = Math.hypot(car.position.x - station.lastX, car.position.z - station.lastZ);
+    station.lastX = car.position.x;
+    station.lastZ = car.position.z;
+    let target = waypoints[station.index] ?? waypoints[lastIndex];
+    let dx = target.x - car.position.x;
+    let dz = target.z - car.position.z;
+    let distance = Math.hypot(dx, dz);
+    const reached = distance < (station.index === lastIndex ? 1.5 : 2);
+    if (reached && station.index < lastIndex) {
+      station.index += 1;
+      target = waypoints[station.index];
+      dx = target.x - car.position.x;
+      dz = target.z - car.position.z;
+      distance = Math.hypot(dx, dz);
+    }
+    const isLast = station.index === lastIndex;
+
+    if (ai.mode === 'pullin' && isLast && distance < 1.5 && Math.abs(car.speed) < 0.5) {
+      ai.mode = 'pump';
+      slot.phase = 'pump';
+      slot.timer = this.traffic?.rng ? this.traffic.rng.range(4, 6) : 5;
+      car.controls.throttle = 0;
+      car.controls.brake = 1;
+      car.controls.steer = 0;
+      car.controls.handbrake = false;
+      return;
+    }
+    if (ai.mode === 'pullout' && isLast && distance < 2) {
+      car.setPose(-84.2, 18, 0);
+      ai.mode = 'drive';
+      ai.stuckTime = 0;
+      this.releaseCar(car);
+      delete ai.station;
+      return;
+    }
+
+    let desired = distance < 4 ? 2.2 : 5;
+    if (ai.mode === 'pullin' && isLast && distance < 1.5) desired = 0;
+    const speed = car.speed;
+    if (speed < desired - 0.35) {
+      car.controls.throttle = clamp((desired - speed) * 0.3, 0.12, 1);
+      car.controls.brake = 0;
+    } else if (speed > desired + 0.5) {
+      car.controls.throttle = 0;
+      car.controls.brake = clamp((speed - desired) * 0.32, 0.15, 1);
+    } else {
+      car.controls.throttle = 0;
+      car.controls.brake = desired < 0.4 ? 0.35 : 0;
+    }
+    const error = Math.atan2(dx, dz) - car.yaw;
+    // The forecourt turns are far tighter than a lane change: at the road
+    // helper's usual 0.5 clamp the sedan's 0.58 rad steering limit works out
+    // to a ~9.5 m radius, which cannot fit between the islands and columns.
+    // A station car may use the full steering range while it manoeuvres.
+    car.controls.steer = clamp(Math.atan2(Math.sin(error), Math.cos(error)) * 2.4, -1, 1);
+    car.controls.handbrake = false;
+
+    if (moved / Math.max(dt, 1e-6) < 0.4) ai.stuckTime += dt;
+    else ai.stuckTime = 0;
+    if (ai.stuckTime > 12) {
+      this.releaseCar(car);
+      this.traffic?.removeCar(car);
+    }
+  }
+
+  /** Free the slot a car owns and detach the station data from its AI. */
+  releaseCar(car) {
+    if (!car) return;
+    for (const slot of this.slots) {
+      if (slot.car === car) {
+        slot.car = null;
+        slot.phase = 'free';
+        slot.timer = 0;
+      }
+    }
+    if (car.ai) car.ai.station = null;
   }
 }
 
