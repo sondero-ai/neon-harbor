@@ -52,7 +52,7 @@
 | Current | Target | Notes |
 | --- | --- | --- |
 | `tools/test-npc-loot.mjs` 3821 | runner ~450 + `tools/e2e/groups/*.mjs` 7 files | groups 1–28, four per file |
-| `game/src/world.js` 3071 | `world.js` + `world/sky.js`, `ground.js`, `city.js`, `landmarks.js`, `pier.js`, `props.js`, `query.js` | builders become `fn(world, ...)` |
+| `game/src/world.js` 3071 | `world.js` + `world/shared.js`, `sky.js`, `ground.js`, `city.js`, `landmarks.js`, `pier.js`, `props.js`, `query.js` | builders become `fn(world, ...)` |
 | `game/src/hud.js` 2278 | `hud.js` + `hud/panels.js` (mission/vitals/state/objective/crew/police/weapon), `hud/cards.js` (vehicle/radio/toast/dialogue/reward/failure/ending), `hud/minimap.js`, `hud/prompts.js` (crosshair/damage/down/wheel/prompt), `hud/draw-utils.js` | draw fns take `(ctx, state, helpers)` |
 | `game/src/main.js` 1739 | `main.js` + `main-menu.js` (screens/pause/quality), `main-radio.js` (controls/wheel), `main-hud-state.js` (hudState/respect/crew), `main-shots.js` (applyShot/staging) | optional final stage |
 | `game/src/police.js` 1710 | `police.js` + `police-units.js` (cruiser + officer classes), `police-air.js` (Air unit) | units move whole |
@@ -118,7 +118,9 @@ Expected: main still at 379 ok; the runner is roughly 400–600 lines and each g
 
 ### Stage 2: Split `world.js` (`refactor/world-modules`)
 
-**Files:** create `game/src/world/sky.js`, `ground.js`, `city.js`, `landmarks.js`, `pier.js`, `props.js`, `query.js`; modify `game/src/world.js`.
+**Files:** create `game/src/world/shared.js`, `sky.js`, `ground.js`, `city.js`, `landmarks.js`, `pier.js`, `props.js`, `query.js`; modify `game/src/world.js`.
+
+`shared.js` is an accepted extra: it holds the constants and helpers used by two or more world modules (`ROAD_HALF`, `BLOCK_HALF`, `DECK`, `WATER_Y`, `SUN_DIR`, `UP`, `CORE_SET`, `clamp`, `lerp`, `districtForBlock`, `segmentHit`) so no module imports `world.js` or duplicates them.
 
 **Pattern (pinned):**
 - Every builder becomes `export function buildX(world, ...args) { ... }` and replaces `this.` with `world.`.
@@ -126,7 +128,7 @@ Expected: main still at 379 ok; the runner is roughly 400–600 lines and each g
 - Modules import only leaf helpers (`geom.js`, `world-kit.js`, `random.js`, `config.js`, `world-kit`), never `world.js`.
 
 - [ ] **Step 1: Extract the leaf modules first** — `world/query.js` (pure collision/height/ray functions) and `world/sky.js` (sky textures, lights, environment), because other builders call `world.groundHeightAt`/`collides` only through the instance.
-- [ ] **Step 2: Extract the builders in this order** — `ground.js` (ground, markings, beach, ocean), `city.js` (city/blocks/towers/storefronts/roofs/market), `landmarks.js` (hotel, casa, motor row, radio block, plaza), `pier.js` (pier, lighthouse, boats), `props.js` (vegetation, streetlights, pools, signs, billboards, clouds).
+- [ ] **Step 2: Extract the builders in this order** — `ground.js` (ground, markings, beach, ocean), `city.js` (city/blocks/towers/storefronts/roofs/market), `landmarks.js` (hotel, casa, motor row, radio block, plaza), `pier.js` (pier, lighthouse, boats), `props.js` (beach dressing, vegetation, streetlights, pools, signs, billboards). Clouds live with the sky pass in `sky.js`.
 - [ ] **Step 3: Run the full verification after each extraction; the E2E suite loads the world in every group.**
 
 ```bash
