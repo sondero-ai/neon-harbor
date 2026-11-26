@@ -2641,6 +2641,80 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 20: ambient cars stay on the road grid',
+    shot: 'street',
+    body: function ambientRoadGrid() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const traffic = neon?.debug?.traffic;
+      const player = neon?.debug?.player;
+      const ROADS_X = [-135, -81, -27, 27, 81, 135, 189, 243, 297, 351];
+      const ROADS_Z = [-243, -189, -135, -81, -27, 27, 81, 135, 189, 243];
+      if (!traffic || !player) {
+        check('test 20: traffic and player debug handles exist', false, 'missing handles');
+        return results;
+      }
+      const rng = traffic.rng;
+      const saved = { chance: rng.chance, pick: rng.pick, sign: rng.sign, range: rng.range };
+      try {
+        // Axis z must take its line from the x roads. The first x road is
+        // -135; the first z road is -243, which is sand.
+        traffic.reset({ spawnBeach: false });
+        rng.chance = () => false;
+        rng.pick = (list) => list[0];
+        rng.sign = () => 1;
+        rng.range = (min, max) => (min + max) / 2;
+        const zCar = traffic.spawnAmbientCar(player, 0, 5000);
+        check(
+          'test 20: a z-axis car spawns on an x road, not the beach',
+          Boolean(zCar) && zCar.ai.axis === 'z' && ROADS_X.includes(zCar.ai.line) && zCar.position.x >= -142,
+          JSON.stringify(zCar ? { axis: zCar.ai.axis, line: zCar.ai.line, x: zCar.position.x, z: zCar.position.z } : null),
+        );
+
+        // Axis x must take its line from the z roads. 297 exists only on the
+        // x list, so the old mapping puts the car at z = 293.8, off the map.
+        traffic.reset({ spawnBeach: false });
+        rng.chance = () => true;
+        rng.pick = (list) => (list.includes(297) ? 297 : list[0]);
+        rng.sign = () => -1;
+        rng.range = (min, max) => (min + max) / 2;
+        const xCar = traffic.spawnAmbientCar(player, 0, 5000);
+        check(
+          'test 20: an x-axis car spawns on a z road, inside the city',
+          Boolean(xCar) && xCar.ai.axis === 'x' && ROADS_Z.includes(xCar.ai.line) && Math.abs(xCar.position.z) <= 250,
+          JSON.stringify(xCar ? { axis: xCar.ai.axis, line: xCar.ai.line, x: xCar.position.x, z: xCar.position.z } : null),
+        );
+
+        // A car already off the grid (old build, or pushed onto the sand) is
+        // removed on the next traffic tick instead of queueing at a phantom
+        // signal.
+        traffic.reset({ spawnBeach: false });
+        const stray = traffic.spawnLaneCar('sedan', 'z', 1, -189, 0, 10);
+        check(
+          'test 20: a stray beach car is listed before the tick',
+          Boolean(stray) && traffic.cars.includes(stray),
+          'stray did not spawn',
+        );
+        traffic.updateCars(0.016, 0, player);
+        check(
+          'test 20: the off-grid car is removed by updateCars',
+          Boolean(stray) && (!traffic.cars.includes(stray) || stray.removed === true),
+          stray ? `still listed=${traffic.cars.includes(stray)} removed=${stray.removed}` : 'stray missing',
+        );
+      } finally {
+        rng.chance = saved.chance;
+        rng.pick = saved.pick;
+        rng.sign = saved.sign;
+        rng.range = saved.range;
+      }
+      return results;
+    },
+  },
 ];
 
 async function main() {

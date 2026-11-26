@@ -447,7 +447,10 @@ export class Traffic {
     const pz = player.position.z;
     for (let attempt = 0; attempt < 24; attempt += 1) {
       const axis = this.rng.chance(0.5) ? 'x' : 'z';
-      const line = this.rng.pick(axis === 'x' ? ROADS_X : ROADS_Z);
+      // A car on axis 'x' drives along a z road line, and a car on axis 'z'
+      // drives along an x road line. Picking the other list put cars on the
+      // beach at x = -189 and -243, where they queued at phantom signals.
+      const line = this.rng.pick(axis === 'x' ? ROADS_Z : ROADS_X);
       const direction = this.rng.sign();
       const along = axis === 'x'
         ? this.rng.range(WORLD.cityMinX + 18, WORLD.cityMaxX - 18)
@@ -539,6 +542,14 @@ export class Traffic {
       if (car.driver !== 'ai') continue;
       const ai = car.ai;
       if (!ai) continue;
+      // Remove a car that is not on its road grid: an ambient spawn from an
+      // older build, or one knocked onto the sand. It would otherwise queue
+      // at a traffic signal that does not exist on the beach.
+      const laneSet = ai.axis === 'x' ? ROADS_Z : ROADS_X;
+      if (!laneSet.includes(ai.line) || car.position.x < WORLD.cityMinX - 1) {
+        this.removeCar(car);
+        continue;
+      }
       const along = ai.axis === 'x' ? car.position.x : car.position.z;
       const forwardX = Math.sin(car.yaw);
       const forwardZ = Math.cos(car.yaw);
