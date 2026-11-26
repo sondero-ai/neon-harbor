@@ -40,6 +40,9 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.wasm': 'application/wasm',
+  '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
 };
 
 function chromePath() {
@@ -103,6 +106,10 @@ function staticServer() {
         'content-length': stats.size,
         'cache-control': 'no-store',
       });
+      if (request.method === 'HEAD') {
+        response.end();
+        return;
+      }
       response.end(readFileSync(file));
     });
     server.once('error', reject);

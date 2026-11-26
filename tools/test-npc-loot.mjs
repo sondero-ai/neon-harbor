@@ -31,6 +31,9 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.wasm': 'application/wasm',
+  '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
 };
 
 function chromePath() {
@@ -94,6 +97,10 @@ function staticServer() {
         'content-length': stats.size,
         'cache-control': 'no-store',
       });
+      if (request.method === 'HEAD') {
+        response.end();
+        return;
+      }
       response.end(readFileSync(file));
     });
     server.once('error', reject);
@@ -1527,6 +1534,290 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 14: radio',
+    shot: 'street',
+    body: async function radio() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+      const neon = window.__neon;
+      const key = (type, code) => {
+        const event = new KeyboardEvent(type, { code, key: code, bubbles: true, cancelable: true });
+        window.dispatchEvent(event);
+        return event;
+      };
+      const tap = (code) => {
+        key('keydown', code);
+        neon.advance(0.1);
+        key('keyup', code);
+      };
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const waitFor = async (test, timeout = 6000) => {
+        const deadline = Date.now() + timeout;
+        while (Date.now() < deadline) {
+          if (test()) return true;
+          await sleep(100);
+        }
+        return false;
+      };
+
+      const missing = [];
+      if (!neon) missing.push('window.__neon');
+      if (!neon || !neon.radio) missing.push('__neon.radio');
+      if (!neon || !neon.debug || !neon.debug.radio || !neon.debug.radio.player) missing.push('__neon.debug.radio');
+      if (!neon || !neon.debug || !neon.debug.hud) missing.push('__neon.debug.hud');
+      if (!neon || !neon.debug || !neon.debug.audio) missing.push('__neon.debug.audio');
+      if (!neon || !neon.hudRadio) missing.push('__neon.hudRadio');
+      check('test 14: radio QA hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      // Create the context while the CDP evaluate's user gesture is fresh.
+      const audio = neon.debug.audio;
+      audio.unlock();
+      const stations = neon.debug.radio.stations;
+      const player = neon.debug.radio.player;
+      const initial = neon.radio;
+      check(
+        'test 14: Vega 105.1 track 0 is the default',
+        initial.stationId === 'vega'
+          && initial.station === 'Vega 105.1'
+          && initial.track === 'Vega Strip Money'
+          && initial.artist === 'Kade Voss'
+          && initial.index === 0
+          && initial.trackNumber === 1
+          && initial.trackCount === 3
+          && initial.enabled === true,
+        JSON.stringify(initial),
+      );
+      check(
+        'test 14: six stations carry three tracks each',
+        stations.length === 6 && stations.every((station) => station.tracks.length === 3),
+        JSON.stringify(stations.map((station) => `${station.id}:${station.tracks.length}`)),
+      );
+      const hud = neon.hudRadio;
+      check(
+        'test 14: the HUD reads the same radio state',
+        hud.stationId === initial.stationId
+          && hud.track === initial.track
+          && hud.artist === initial.artist
+          && hud.trackNumber === initial.trackNumber
+          && hud.trackCount === initial.trackCount
+          && hud.enabled === initial.enabled,
+        JSON.stringify(hud),
+      );
+
+      tap('KeyT');
+      check('test 14: T switches the radio off', neon.radio.enabled === false && neon.radio.mode === 'off', JSON.stringify(neon.radio));
+      tap('KeyT');
+      check('test 14: T switches the radio back on', neon.radio.enabled === true, JSON.stringify(neon.radio));
+      tap('BracketRight');
+      check(
+        'test 14: ] moves to the next station at track 0',
+        neon.radio.stationId === 'night-tide' && neon.radio.index === 0 && neon.radio.track === 'Harbor Lights',
+        JSON.stringify(neon.radio),
+      );
+      tap('BracketLeft');
+      check('test 14: [ moves back to Vega', neon.radio.stationId === 'vega', JSON.stringify(neon.radio));
+      tap('Period');
+      check(
+        'test 14: . advances the track',
+        neon.radio.index === 1 && neon.radio.track === 'Ledger Season' && neon.radio.artist === 'Nia Vex',
+        JSON.stringify(neon.radio),
+      );
+      tap('Comma');
+      check(
+        'test 14: , rewinds and wraps to track 0',
+        neon.radio.index === 0 && neon.radio.track === 'Vega Strip Money',
+        JSON.stringify(neon.radio),
+      );
+      const wasMuted = neon.audio.muted;
+      tap('KeyM');
+      const nowMuted = neon.audio.muted;
+      tap('KeyM');
+      check(
+        'test 14: M mutes and restores the master output',
+        nowMuted === !wasMuted && neon.audio.muted === wasMuted,
+        JSON.stringify({ wasMuted, nowMuted, after: neon.audio.muted }),
+      );
+      player.setStation(0, 2, { autoplay: false });
+      neon.advance(0.05);
+      tap('Period');
+      check(
+        'test 14: track keys wrap from the last track to the first',
+        neon.radio.stationId === 'vega' && neon.radio.index === 0,
+        JSON.stringify(neon.radio),
+      );
+      player.setStation(5, 0, { autoplay: false });
+      neon.advance(0.05);
+      tap('BracketRight');
+      check(
+        'test 14: station keys wrap from Foundry to Vega',
+        neon.radio.stationId === 'vega' && neon.radio.index === 0,
+        JSON.stringify(neon.radio),
+      );
+
+      const tab = key('keydown', 'Tab');
+      check('test 14: Tab is prevented from moving focus', tab.defaultPrevented === true, `defaultPrevented=${tab.defaultPrevented}`);
+      neon.advance(0.1);
+      check('test 14: holding Tab opens the wheel', neon.radio.wheel.open === true, JSON.stringify(neon.radio.wheel));
+      check(
+        'test 14: the wheel cursor starts on the live tune',
+        neon.radio.wheel.station === 0 && neon.radio.wheel.track === 0,
+        JSON.stringify(neon.radio.wheel),
+      );
+      key('keydown', 'ArrowRight');
+      neon.advance(0.1);
+      key('keyup', 'ArrowRight');
+      key('keydown', 'ArrowDown');
+      neon.advance(0.1);
+      key('keyup', 'ArrowDown');
+      check(
+        'test 14: arrows move the wheel cursor',
+        neon.radio.wheel.station === 1 && neon.radio.wheel.track === 1,
+        JSON.stringify(neon.radio.wheel),
+      );
+      key('keydown', 'Enter');
+      neon.advance(0.1);
+      key('keyup', 'Enter');
+      check(
+        'test 14: Enter tunes the wheel selection',
+        neon.radio.stationId === 'night-tide' && neon.radio.index === 1 && neon.radio.track === 'Neon Coastline',
+        JSON.stringify(neon.radio),
+      );
+      check('test 14: the wheel stays open until Tab is released', neon.radio.wheel.open === true, JSON.stringify(neon.radio.wheel));
+
+      const hudDebug = neon.debug.hud;
+      const clickTarget = hudDebug.wheelHits.find((hit) => hit.station === 5 && hit.track === 2);
+      check('test 14: the wheel exposes per-track click targets', Boolean(clickTarget), `${hudDebug.wheelHits.length} targets`);
+      if (clickTarget) {
+        document.getElementById('hud').dispatchEvent(new MouseEvent('click', {
+          clientX: clickTarget.x + clickTarget.width / 2,
+          clientY: clickTarget.y + clickTarget.height / 2,
+          bubbles: true,
+          cancelable: true,
+        }));
+        neon.advance(0.05);
+      }
+      check(
+        'test 14: a click tunes the clicked track',
+        neon.radio.stationId === 'foundry' && neon.radio.index === 2 && neon.radio.track === 'Graveyard Shift',
+        JSON.stringify(neon.radio),
+      );
+      key('keyup', 'Tab');
+      neon.advance(0.1);
+      check('test 14: releasing Tab closes the wheel', neon.radio.wheel.open === false, JSON.stringify(neon.radio.wheel));
+
+      player.setStation(4, 1, { autoplay: false });
+      neon.advance(0.05);
+      const saved = neon.saveGame();
+      check(
+        'test 14: the save carries station, track and on/off',
+        saved.radioStation === 'solano-soul' && saved.radioTrack === 1 && saved.radioEnabled === true,
+        JSON.stringify({ station: saved.radioStation, track: saved.radioTrack, enabled: saved.radioEnabled }),
+      );
+      player.setStation(0, 0, { autoplay: false });
+      neon.continueGame();
+      neon.advance(0.1);
+      check(
+        'test 14: Continue restores the saved station and track',
+        neon.radio.stationId === 'solano-soul'
+          && neon.radio.index === 1
+          && neon.radio.track === 'Beachside Cantina'
+          && neon.radio.enabled === true,
+        JSON.stringify(neon.radio),
+      );
+
+      const raw = JSON.parse(localStorage.getItem('neon-harbor.save.v1') || 'null');
+      if (raw) {
+        delete raw.radioStation;
+        delete raw.radioTrack;
+        delete raw.radioEnabled;
+        localStorage.setItem('neon-harbor.save.v1', JSON.stringify(raw));
+      }
+      neon.continueGame();
+      neon.advance(0.1);
+      check(
+        'test 14: an old save defaults to Vega, track 0, radio on',
+        Boolean(raw)
+          && neon.radio.stationId === 'vega'
+          && neon.radio.index === 0
+          && neon.radio.enabled === true,
+        JSON.stringify(neon.radio),
+      );
+
+      const audioRunning = await waitFor(() => neon.audio.state === 'running', 5000);
+      check('test 14: the first-gesture audio unlock reaches running', audioRunning, `state=${neon.audio.state}`);
+
+      const vegaFile = stations[0].tracks[0].file;
+      const tideFile = stations[1].tracks[0].file;
+      try {
+        stations[1].tracks[0].file = 'audio/radio/__missing__.ogg';
+        player.setEnabled(true, { autoplay: false });
+        player.setStation(1, 0);
+        const fellBack = await waitFor(() => neon.radio.fallback === true, 7000);
+        check(
+          'test 14: a missing file falls back to the station synth bed',
+          fellBack && neon.radio.mode === 'synth' && neon.radio.enabled === true,
+          JSON.stringify(neon.radio),
+        );
+        check(
+          'test 14: the fallback still reports the track metadata',
+          neon.radio.stationId === 'night-tide' && neon.radio.track === 'Harbor Lights' && neon.radio.artist === 'Sable Youth',
+          JSON.stringify(neon.radio),
+        );
+        check('test 14: the procedural sequencer is running', neon.audio.fallbackActive === true, JSON.stringify(neon.audio));
+
+        player.setStation(1, 1);
+        const recovered = await waitFor(() => neon.radio.fallback === false && neon.radio.mode === 'file' && neon.radio.playing === true, 7000);
+        check('test 14: the next real track leaves the fallback', recovered, JSON.stringify(neon.radio));
+
+        stations[0].tracks[0].file = 'audio/radio/__missing__.ogg';
+        player.setStation(0, 0);
+        const offAir = await waitFor(() => neon.radio.offAir === true && neon.radio.mode === 'offair', 7000);
+        check(
+          'test 14: a station with no fallback shows OFF AIR',
+          offAir && neon.radio.playing === false && neon.radio.fallback === false,
+          JSON.stringify(neon.radio),
+        );
+        check(
+          'test 14: OFF AIR still reports the track metadata',
+          neon.radio.station === 'Vega 105.1' && neon.radio.track === 'Vega Strip Money',
+          JSON.stringify(neon.radio),
+        );
+
+        stations[0].tracks[0].file = vegaFile;
+        player.setStation(0, 0);
+        const backOnAir = await waitFor(() => neon.radio.offAir === false && neon.radio.mode === 'file' && neon.radio.playing === true, 7000);
+        check('test 14: restoring the file brings the station back on air', backOnAir, JSON.stringify(neon.radio));
+
+        const beforeEnded = neon.radio.index;
+        player.onEnded(player.activeDeck);
+        neon.advance(0.1);
+        check(
+          'test 14: an ended track auto-advances within the station',
+          neon.radio.index === (beforeEnded + 1) % 3,
+          `${beforeEnded} -> ${neon.radio.index}`,
+        );
+      } finally {
+        stations[0].tracks[0].file = vegaFile;
+        stations[1].tracks[0].file = tideFile;
+      }
+
+      const files = stations.flatMap((station) => station.tracks.map((track) => track.file));
+      let present = 0;
+      let oggMime = 0;
+      for (const file of files) {
+        const response = await fetch(file, { method: 'HEAD', cache: 'no-store' });
+        if (response.ok) present += 1;
+        if ((response.headers.get('content-type') || '').includes('audio/ogg')) oggMime += 1;
+      }
+      check('test 14: all eighteen declared radio files are served', present === 18, `${present}/18`);
+      check('test 14: radio files are served as audio/ogg', oggMime === 18, `${oggMime}/18`);
+      return results;
+    },
+  },
 ];
 
 async function main() {
@@ -1584,7 +1875,11 @@ async function main() {
       } else if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') {
         errors.push(`console: ${message.params.args.map((arg) => arg.value ?? arg.description ?? arg.type).join(' ')}`);
       } else if (message.method === 'Log.entryAdded' && message.params.entry.level === 'error') {
-        errors.push(`log: ${message.params.entry.text} ${message.params.entry.url ?? ''}`);
+        const entry = message.params.entry;
+        // The radio test deliberately tunes a 404 sentinel to prove the
+        // missing-file fallback; that one request is expected to log.
+        if (String(entry.url ?? '').includes('/audio/radio/__missing__.ogg')) return;
+        errors.push(`log: ${entry.text} ${entry.url ?? ''}`);
       }
     });
     await new Promise((resolveOpen, rejectOpen) => {
