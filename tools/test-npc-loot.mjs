@@ -318,6 +318,98 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 3: player fire path',
+    shot: 'street',
+    body: function firePath() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const debug = neon && neon.debug;
+      const player = debug && debug.player;
+      const traffic = debug && debug.traffic;
+      const camera = debug && debug.camera;
+      const missing = [];
+      if (!neon || !neon.loot) missing.push('__neon.loot');
+      if (!traffic || typeof traffic.spawnPed !== 'function') missing.push('traffic.spawnPed');
+      if (!player || typeof player.fireWeapon !== 'function') missing.push('player.fireWeapon');
+      if (!camera || !camera.position) missing.push('__neon.debug.camera');
+      check('test 3: fire-path hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      const p = player;
+      const spawnX = p.position.x - Math.sin(p.cameraYaw) * 3;
+      const spawnZ = p.position.z - Math.cos(p.cameraYaw) * 3;
+      const ped = traffic.spawnPed({ x: spawnX, z: spawnZ });
+      check('test 3: pedestrian spawns down the aim', Boolean(ped), 'spawnPed returned null (no free crowd slot)');
+      if (!ped) return results;
+
+      p.cameraYaw = Math.atan2(-(ped.x - p.position.x), -(ped.z - p.position.z));
+      p.cameraPitch = -0.27;
+      // At the shot's 5.5 m orbit the -0.27 pitch puts the camera below the
+      // chest and the ray climbs over a target 3 m ahead. The pitch is level at
+      // the min orbit, so pin the distance there; the aim values stay exact.
+      p.cameraDistance = 3.1;
+      p.fireCooldown = 0;
+      p.updateView(camera, 1 / 60, true);
+
+      const healthBefore = ped.health;
+      const lootBefore = neon.loot.count;
+      p.fireWeapon(camera);
+      check(
+        'test 3: fireWeapon damages the pedestrian',
+        ped.health < healthBefore || ped.dead === true,
+        `health ${healthBefore} -> ${ped.health} dead=${ped.dead}`,
+      );
+
+      p.fireCooldown = 0;
+      p.fireWeapon(camera);
+      check('test 3: two pistol shots kill the pedestrian', ped.dead === true, `health=${ped.health} dead=${ped.dead}`);
+      check(
+        'test 3: the pedestrian death spawns loot',
+        neon.loot.count >= 1 && neon.loot.count > lootBefore,
+        `loot ${lootBefore} -> ${neon.loot.count}`,
+      );
+      return results;
+    },
+  },
+  {
+    name: 'test 4: officer fire path',
+    shot: 'blockade',
+    body: function officerFirePath() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const debug = neon && neon.debug;
+      const police = debug && debug.police;
+      const missing = [];
+      if (!neon || !neon.loot) missing.push('__neon.loot');
+      if (!police || !Array.isArray(police.officers)) missing.push('__neon.debug.police.officers');
+      if (!police || typeof police.applyPlayerHit !== 'function') missing.push('police.applyPlayerHit');
+      check('test 4: officer hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      const officer = police.officers.find((entry) => !entry.dead);
+      check('test 4: a live officer is staged', Boolean(officer), 'no live officer on the blockade');
+      if (!officer) return results;
+
+      const lootBefore = neon.loot.count;
+      police.applyPlayerHit({ officer, headshot: false }, 500);
+      check('test 4: the officer dies', officer.dead === true, `dead=${officer.dead} health=${officer.health}`);
+      check(
+        'test 4: the officer death spawns loot',
+        neon.loot.count > lootBefore,
+        `loot ${lootBefore} -> ${neon.loot.count}`,
+      );
+      return results;
+    },
+  },
 ];
 
 async function main() {

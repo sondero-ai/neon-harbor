@@ -154,6 +154,13 @@ class Game {
       },
     });
     this.player.missions = this.missions;
+    const lootFrom = (x, z, opts = {}) => this.pickups.spawnDeathLoot(x, z, {
+      ...opts,
+      smgOwned: this.player.weapons.smg.owned,
+    });
+    this.traffic.onPedDeath = (ped) => lootFrom(ped.x, ped.z);
+    this.police.onHumanDeath = lootFrom;
+    this.missions.onHumanDeath = lootFrom;
     this.activities = new Activities(this.scene, this.world, this.vehicles, this.player, this.police, this.effects, this.audio, {
       onToast: (toast) => {
         if (!this.hud.suppressToasts) this.hud.toast = toast;
@@ -1145,6 +1152,8 @@ try {
       player: game.player,
       camera: game.camera,
       pickups: game.pickups,
+      police: game.police,
+      missions: game.missions,
       world: game.world,
     },
     get police() {
