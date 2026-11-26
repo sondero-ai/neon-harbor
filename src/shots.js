@@ -1,0 +1,288 @@
+// Deterministic screenshot staging. A shot is not a separate little demo: it
+// places the real player, camera, traffic and HUD in a fixed composition, runs
+// a fixed number of simulation steps and stops. `?shot=start|street|drive|pier`
+// turns the page into one of these frozen frames; the seed is recorded but the
+// harbor already builds from the one seed in config.js.
+
+import { START_OBJECTIVE } from './config.js';
+
+export const SHOTS = {
+  start: {
+    name: 'start',
+    mode: 'title',
+    time: 4.2,
+    prewarm: 110,
+    titleCamera: {
+      position: [132, 64, 156],
+      target: [-210, 2, 42],
+      drift: [6.0, 1.4, 4.0],
+      speed: 0.03,
+    },
+  },
+  street: {
+    name: 'street',
+    mode: 'playing',
+    time: 2.4,
+    prewarm: 90,
+    player: {
+      x: -63,
+      z: 27.3,
+      facing: -Math.PI / 2,
+      cameraYaw: Math.PI / 2,
+      cameraPitch: 0.13,
+      distance: 5.5,
+    },
+    objective: START_OBJECTIVE,
+    toast: false,
+  },
+  blockade: {
+    name: 'blockade',
+    mode: 'playing',
+    time: 2.8,
+    prewarm: 44,
+    player: {
+      x: -54,
+      z: 27.3,
+      facing: Math.PI / 2,
+      cameraYaw: -Math.PI / 2,
+      cameraPitch: 0.11,
+      distance: 5.4,
+    },
+    police: {
+      wanted: 4,
+      units: [
+        { x: -44, z: 21.0, yaw: -Math.PI / 2, speed: 6, mode: 'pursue', callsign: 'UNIT 12', shootTimer: 0.35 },
+        { x: -18, z: 23.4, yaw: 0, mode: 'block', callsign: 'UNIT 07', shootTimer: 0.7 },
+        { x: -18, z: 31.2, yaw: 0, mode: 'block', callsign: 'UNIT 21', shootTimer: 0.9 },
+      ],
+      officers: [
+        { x: -23.8, z: 20.1, yaw: 0.2, callsign: 'UNIT 33', shootTimer: 0.3 },
+        { x: -23.8, z: 34.5, yaw: -0.2, callsign: 'UNIT 44', shootTimer: 0.6 },
+      ],
+    },
+    air: {
+      x: -30,
+      y: 13,
+      z: 27,
+      targetX: -54,
+      targetZ: 27.3,
+      rotor: 0.9,
+    },
+    objective: {
+      title: 'Break the Blockade',
+      sub: 'Harbor PD has Vega Strip locked down. Fight through or run.',
+      marker: { x: -6, z: 27 },
+      tag: 'HPD ROADBLOCK · VEGA STRIP',
+      progress: { label: 'UNITS', value: 4, max: 6 },
+      reward: 0,
+    },
+    missionCard: {
+      chapter: 'CH.2',
+      operation: 'STRIP HEAT',
+      title: 'HEAT CHECK',
+      objective: 'BREAK THE HARBOR PD BLOCKADE',
+      objectiveSub: 'Vega Strip is closed. Make a hole or lose them in the blocks.',
+      stage: 2,
+      stages: 4,
+      next: 'CLEAR THE INTERSECTION AND LOSE THE HEAT',
+      story: 'SOLANO STORY · 02/05',
+    },
+    dialogue: {
+      speaker: 'SGT. VALE',
+      role: 'HPD DISPATCH',
+      text: 'Roadblock is set, Solano. Put the weapon down and you walk out of this.',
+    },
+    health: 58,
+    armor: 12,
+    weapons: 'smg',
+    armed: true,
+    drama: true,
+    toast: false,
+  },
+  drive: {
+    name: 'drive',
+    mode: 'playing',
+    time: 2.2,
+    prewarm: 0,
+    drive: {
+      type: 'muscle',
+      color: 0xb93a34,
+      x: -60,
+      z: 30.2,
+      yaw: Math.PI / 2,
+      speed: 19,
+      cameraPitch: 0.12,
+    },
+    objective: START_OBJECTIVE,
+    toast: false,
+  },
+  chase: {
+    name: 'chase',
+    mode: 'playing',
+    time: 2.65,
+    prewarm: 26,
+    drive: {
+      type: 'muscle',
+      color: 0xb93a34,
+      x: -60,
+      z: 30.2,
+      yaw: Math.PI / 2,
+      speed: 22,
+      cameraPitch: 0.12,
+      cameraOrbit: 0.05,
+    },
+    chase: {
+      wanted: 4,
+      units: [
+        { x: -44, z: 20.8, yaw: -Math.PI / 2, speed: 10, mode: 'pursue', callsign: 'UNIT 12', shootTimer: 0.34 },
+        { x: -34, z: 19.8, yaw: -Math.PI / 2, speed: 8, mode: 'pursue', callsign: 'UNIT 07', shootTimer: 0.52 },
+        { x: -4, z: 27.0, yaw: 0, mode: 'block', callsign: 'UNIT 21', shootTimer: 0.8 },
+      ],
+      officers: [
+        { x: -31.5, z: 18.2, yaw: 0.4, callsign: 'UNIT 33', shootTimer: 0.3 },
+        { x: -28.5, z: 35.8, yaw: -0.4, callsign: 'UNIT 44', shootTimer: 0.7 },
+      ],
+    },
+    air: {
+      x: -18,
+      y: 14,
+      z: 23,
+      targetX: -54,
+      targetZ: 29,
+      rotor: 0.9,
+    },
+    missionCard: {
+      chapter: 'CH.2',
+      operation: 'STRIP HEAT',
+      title: 'HEAT CHECK',
+      objective: 'LOSE THE AIR UNIT BEFORE THE SAFEHOUSE',
+      objectiveSub: 'Air One has the Strip lit. Break the blockade and get clear.',
+      stage: 2,
+      stages: 4,
+      next: 'REACH THE SAFEHOUSE',
+      story: 'SOLANO STORY · 02/05',
+    },
+    dialogue: {
+      speaker: 'SGT. VALE',
+      role: 'HPD DISPATCH',
+      text: 'Air One has you in the light. Lose the Strip before the roadblock closes.',
+    },
+    weapons: 'smg',
+    condition: 0.78,
+    objective: {
+      title: 'Break the Blockade',
+      sub: 'Blast through the Harbor PD line, then lose the heat.',
+      marker: { x: 0, z: 27 },
+      reward: 0,
+    },
+    health: 64,
+    armor: 18,
+    toast: false,
+  },
+  mission: {
+    name: 'mission',
+    mode: 'playing',
+    stage: 'mission',
+    time: 2.9,
+    prewarm: 70,
+    player: {
+      x: 0,
+      z: 17.4,
+      facing: Math.PI,
+      cameraYaw: 0,
+      cameraPitch: 0.13,
+      distance: 5.7,
+    },
+    camera: {
+      position: [-2.9, 3.2, 22.7],
+      target: [0.4, 1.55, 8.9],
+    },
+    health: 68,
+    armor: 24,
+    toast: false,
+  },
+  heist: {
+    name: 'heist',
+    mode: 'playing',
+    stage: 'heist',
+    time: 3.2,
+    prewarm: 60,
+    player: {
+      x: -228,
+      z: 70,
+      facing: -Math.PI / 2,
+      cameraYaw: Math.PI / 2,
+      cameraPitch: 0.12,
+      distance: 5.5,
+    },
+    camera: {
+      position: [-223.4, 3.45, 72.9],
+      target: [-243.5, 2.0, 69.9],
+    },
+    police: {
+      wanted: 3,
+      units: [
+        { x: -171, z: 66.5, yaw: 0, mode: 'block', callsign: 'UNIT 12', shootTimer: 1.2 },
+        { x: -171, z: 73.5, yaw: 0, mode: 'block', callsign: 'UNIT 07', shootTimer: 1.4 },
+      ],
+      officers: [
+        { x: -177, z: 67.8, yaw: -Math.PI / 2, callsign: 'UNIT 33', shootTimer: 0.7 },
+        { x: -177, z: 72.2, yaw: -Math.PI / 2, callsign: 'UNIT 21', shootTimer: 0.9 },
+      ],
+    },
+    air: {
+      x: -258,
+      y: 14,
+      z: 78,
+      targetX: -232,
+      targetZ: 70,
+      rotor: 0.4,
+    },
+    missionCard: {
+      chapter: 'CH.5',
+      operation: 'LAST EXIT',
+      title: 'PIER 9 BURNING',
+      objective: 'CLEAR PIER 9 BEFORE THE FUEL LINE GOES',
+      objectiveSub: 'Aurelio has the whole deck. Work west and do not stop.',
+      stage: 2,
+      stages: 4,
+      next: 'PUSH TO AURELIO',
+      story: 'SOLANO STORY · 05/05',
+    },
+    dialogue: {
+      speaker: 'AURELIO',
+      role: 'SOLANO PATRIARCH',
+      text: 'The harbor always collects, Rae. Even from family.',
+    },
+    weapons: 'smg',
+    health: 74,
+    armor: 42,
+    toast: false,
+  },
+  pier: {
+    name: 'pier',
+    mode: 'playing',
+    time: 3.1,
+    prewarm: 90,
+    player: {
+      x: -250,
+      z: 70,
+      facing: Math.PI / 2,
+      cameraYaw: -Math.PI / 2,
+      cameraPitch: 0.12,
+      distance: 5.4,
+    },
+    objective: START_OBJECTIVE,
+    toast: false,
+  },
+};
+
+export function readShot(search = window.location.search) {
+  const params = new URLSearchParams(search);
+  const name = params.get('shot');
+  if (!name || !SHOTS[name]) return null;
+  return {
+    ...SHOTS[name],
+    seed: Number(params.get('seed')) || 1,
+  };
+}
