@@ -3,7 +3,9 @@
 // save are separate modules; this file is the wiring between them and the
 // moment-to-moment decisions: when the pointer is captured, when F/E hands the
 // player to a car, when a pause writes the save, and how a deterministic
-// screenshot becomes a frozen frame.
+// screenshot becomes a frozen frame. The screens, radio controls, HUD reads
+// and shot staging live in main-menu.js, main-radio.js, main-hud-state.js and
+// main-shots.js.
 
 import * as THREE from '../vendor/three.module.js';
 import {
@@ -12,10 +14,8 @@ import {
   NEW_GAME_CLOCK,
   PALETTE,
   PLAYER,
-  QUALITY_PRESETS,
   RADIO,
   START_OBJECTIVE,
-  districtAt,
   radioStationIndex,
 } from './config.js';
 import { CLOCK_MINUTES_PER_SECOND, Environment, parseTimeParam } from './environment.js';
@@ -37,10 +37,32 @@ import { AudioSystem } from './audio.js';
 import { RadioPlayer } from './radio.js';
 import { Police } from './police.js';
 import { Pickups } from './pickups.js';
-import { Missions, MISSION_COUNT, missionName } from './missions.js';
+import { Missions } from './missions.js';
 import { Activities } from './activities.js';
 import { LOW_FUEL } from './fuel.js';
 import { crewState, hudState, respectState } from './main-hud-state.js';
+import {
+  applyQualityVisuals,
+  backFromControls,
+  bindScreens,
+  bindVolumeSliders,
+  bindWindow,
+  enterTitle,
+  menuFocused,
+  pause,
+  refreshQualityLabel,
+  resize,
+  resume,
+  saveAndReturn,
+  setTitleCamera,
+  showControls,
+  syncAudioControls,
+  toggleQuality,
+  updateContinueButton,
+  updateLookHint,
+  updatePauseStats,
+  updateTitleCamera,
+} from './main-menu.js';
 import {
   applyRadioWheel,
   changeVolume,
@@ -55,7 +77,7 @@ import {
   toggleRadio,
   updateRadioWheel,
 } from './main-radio.js';
-import { DEFAULT_TITLE_VIEW, STEP, byId, formatCash, setHidden } from './main-shared.js';
+import { DEFAULT_TITLE_VIEW, STEP, byId, setHidden } from './main-shared.js';
 import {
   applyShot,
   applyStageShot,
@@ -269,6 +291,28 @@ class Game {
   crewState() { return crewState(this); }
   hudState() { return hudState(this); }
 
+  // Screens, quality and audio panels (main-menu.js)
+  bindScreens() { return bindScreens(this); }
+  bindVolumeSliders() { return bindVolumeSliders(this); }
+  syncAudioControls() { return syncAudioControls(this); }
+  bindWindow() { return bindWindow(this); }
+  applyQualityVisuals(resize = true) { return applyQualityVisuals(this, resize); }
+  refreshQualityLabel() { return refreshQualityLabel(this); }
+  resize() { return resize(this); }
+  menuFocused() { return menuFocused(this); }
+  updateContinueButton() { return updateContinueButton(this); }
+  updatePauseStats() { return updatePauseStats(this); }
+  updateLookHint() { return updateLookHint(this); }
+  enterTitle() { return enterTitle(this); }
+  pause() { return pause(this); }
+  resume() { return resume(this); }
+  showControls(from) { return showControls(this, from); }
+  backFromControls() { return backFromControls(this); }
+  saveAndReturn() { return saveAndReturn(this); }
+  toggleQuality() { return toggleQuality(this); }
+  setTitleCamera() { return setTitleCamera(this); }
+  updateTitleCamera() { return updateTitleCamera(this); }
+
   // Radio controls and the hold-Tab wheel (main-radio.js)
   radioToast(state, options) { return radioToast(this, state, options); }
   toggleRadio() { return toggleRadio(this); }
@@ -291,89 +335,6 @@ class Game {
   stageDriveShot(drive) { return stageDriveShot(this, drive); }
 
   // ---------------------------------------------------------------- setup
-
-  bindScreens() {
-    const click = (id, action) => {
-      const element = byId(id);
-      if (!element) return;
-      element.addEventListener('click', (event) => {
-        event.currentTarget.blur();
-        event.preventDefault();
-        this.audio.unlock();
-        this.audio.uiClick();
-        action();
-      });
-    };
-
-    click('btn-new', () => this.startNewGame());
-    click('btn-continue', () => this.startContinue());
-    click('btn-controls', () => this.showControls('title'));
-    click('btn-quality', () => this.toggleQuality());
-    click('btn-resume', () => this.resume());
-    click('btn-pause-controls', () => this.showControls('paused'));
-    click('btn-pause-quality', () => this.toggleQuality());
-    click('btn-save-title', () => this.saveAndReturn());
-    click('btn-controls-back', () => this.backFromControls());
-    click('title-mute', () => this.toggleMute());
-    click('pause-mute', () => this.toggleMute());
-    this.bindVolumeSliders();
-  }
-
-  bindVolumeSliders() {
-    for (const element of [this.ui.titleVolume, this.ui.pauseVolume]) {
-      if (!element) continue;
-      element.addEventListener('input', () => this.setVolumeLevel(Number(element.value) / 100));
-      element.addEventListener('pointerdown', () => this.audio.unlock());
-    }
-    this.syncAudioControls();
-  }
-
-  syncAudioControls() {
-    const percent = Math.round((this.audio?.volume ?? 0.72) * 100);
-    const muted = Boolean(this.audio?.muted);
-    const panels = [
-      [this.ui.titleVolume, this.ui.titleVolumeValue, this.ui.titleMute],
-      [this.ui.pauseVolume, this.ui.pauseVolumeValue, this.ui.pauseMute],
-    ];
-    for (const [slider, label, button] of panels) {
-      if (slider) slider.value = String(percent);
-      if (label) label.textContent = `${percent}%`;
-      if (button) {
-        button.textContent = muted ? 'Muted' : 'Mute';
-        button.setAttribute('aria-pressed', muted ? 'true' : 'false');
-      }
-    }
-  }
-
-  bindWindow() {
-    window.addEventListener('resize', () => this.resize());
-    window.addEventListener('blur', () => {
-      if (this.mode === 'playing' && !this.shot) this.pause();
-    });
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden && this.mode === 'playing' && !this.shot) this.pause();
-    });
-    document.addEventListener('pointerlockchange', () => this.updateLookHint());
-    window.addEventListener('beforeunload', () => {
-      if (this.mode === 'playing' && !this.shot) this.saveProgress();
-    });
-  }
-
-  applyQualityVisuals(resize = true) {
-    const preset = QUALITY_PRESETS[this.quality] ?? QUALITY_PRESETS.high;
-    const ratio = Math.min(window.devicePixelRatio || 1, preset.pixelRatio);
-    this.renderer.setPixelRatio(ratio);
-    this.renderer.shadowMap.enabled = preset.shadows;
-    if (this.world) this.world.setQuality(this.quality);
-    if (this.effects) this.effects.setQuality(this.quality);
-    if (resize) this.resize();
-  }
-
-  refreshQualityLabel() {
-    const text = this.quality === 'high' ? 'High' : 'Low';
-    if (this.ui.qualityNote) this.ui.qualityNote.textContent = text;
-    if (this.ui.pauseQualityNote) this.ui.pauseQualityNote.textContent = text;
-  }
 
   environmentTargets() {
     return {
@@ -400,80 +361,7 @@ class Game {
     return state;
   }
 
-  resize() {
-    const width = Math.max(1, window.innerWidth);
-    const height = Math.max(1, window.innerHeight);
-    this.camera.aspect = width / height;
-    this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height, true);
-    if (this.hud?.visible && this.lastHudState) this.hud.update(0, this.lastHudState);
-  }
-
   // ---------------------------------------------------------------- screens
-
-  menuFocused() {
-    const active = document.activeElement;
-    if (!active || active === document.body || active === this.canvas) return false;
-    return ['BUTTON', 'A', 'INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName);
-  }
-
-  updateContinueButton() {
-    const save = SaveStore.load();
-    const button = byId('btn-continue');
-    if (!button) return;
-    button.disabled = !save;
-    if (this.ui.continueNote) {
-      this.ui.continueNote.textContent = save
-        ? `${formatCash(save.cash)} · ${save.storyDone ? 'Story complete' : `M${Math.min(save.mission + 1, MISSION_COUNT)} · ${missionName(save.mission)}`}`
-        : 'No save yet';
-    }
-  }
-
-  updatePauseStats() {
-    if (this.ui.pauseCash) this.ui.pauseCash.textContent = formatCash(this.player.cash);
-    if (this.ui.pauseDistrict) this.ui.pauseDistrict.textContent = districtAt(this.player.position.x, this.player.position.z);
-    if (this.ui.pauseClock) this.ui.pauseClock.textContent = this.environment.clock;
-    if (this.ui.pauseMission) {
-      this.ui.pauseMission.textContent = this.missions.storyDone
-        ? 'Story complete'
-        : `${this.missions.index + 1}/${MISSION_COUNT} · ${missionName(this.missions.index)}`;
-    }
-  }
-
-  updateLookHint() {
-    if (!this.ui.lookHint) return;
-    this.ui.lookHint.hidden = !(
-      this.mode === 'playing'
-      && !this.input.locked
-      && !this.shotLocked
-      && !this.down
-      && !this.hud?.ending
-      && !this.radioWheel.open
-    );
-  }
-
-  enterTitle() {
-    this.mode = 'title';
-    setHidden(this.ui.title, false);
-    setHidden(this.ui.pause, true);
-    setHidden(this.ui.controls, true);
-    this.player.group.visible = false;
-    this.player.inputBlocked = true;
-    this.player.gun.visible = false;
-    this.hud.setVisible(false);
-    this.input.captureTab = false;
-    this.closeRadioWheel();
-    this.input.allowLock = false;
-    this.input.releaseLock();
-    this.input.consumeMouse();
-    this.audio.setEngine({ on: false, rpm: 0, load: 0, speed: 0 });
-    this.audio.setSiren(0, 0);
-    this.updateLookHint();
-    this.updateContinueButton();
-    this.syncAudioControls();
-    this.world.focusAt(this.titleView.target[0], this.titleView.target[2]);
-    this.setTitleCamera();
-  }
 
   enterPlaying({ lock = true, toast = false } = {}) {
     this.mode = 'playing';
@@ -690,92 +578,6 @@ class Game {
     };
     this.world.focusAt(this.player.position.x, this.player.position.z);
     this.saveProgress();
-  }
-
-  pause() {
-    if (this.mode !== 'playing') return;
-    this.mode = 'paused';
-    this.input.captureTab = false;
-    this.closeRadioWheel();
-    this.audio.setEngine({ on: false, rpm: 0, load: 0, speed: 0 });
-    this.audio.setSiren(0, 0);
-    this.input.allowLock = false;
-    this.input.releaseLock();
-    this.input.consumeMouse();
-    this.updatePauseStats();
-    this.syncAudioControls();
-    this.saveProgress();
-    setHidden(this.ui.pause, false);
-    this.updateLookHint();
-  }
-
-  resume() {
-    if (this.mode !== 'paused') return;
-    this.mode = 'playing';
-    setHidden(this.ui.pause, true);
-    this.input.captureTab = true;
-    this.radio.tick();
-    this.input.allowLock = true;
-    this.input.consumeMouse();
-    this.input.requestLock();
-    this.updateLookHint();
-  }
-
-  showControls(from) {
-    this.controlsReturn = from;
-    this.mode = 'controls';
-    setHidden(this.ui.title, true);
-    setHidden(this.ui.pause, true);
-    setHidden(this.ui.controls, false);
-    this.input.captureTab = false;
-    this.closeRadioWheel();
-    this.input.allowLock = false;
-    this.input.releaseLock();
-    this.updateLookHint();
-  }
-
-  backFromControls() {
-    setHidden(this.ui.controls, true);
-    if (this.controlsReturn === 'paused') {
-      this.mode = 'paused';
-      setHidden(this.ui.pause, false);
-    } else {
-      this.mode = 'title';
-      setHidden(this.ui.title, false);
-    }
-    this.updateLookHint();
-  }
-
-  saveAndReturn() {
-    this.saveProgress();
-    this.enterTitle();
-  }
-
-  toggleQuality() {
-    this.quality = this.quality === 'high' ? 'low' : 'high';
-    this.settings.quality = this.quality;
-    SaveStore.saveSettings(this.settings);
-    this.applyQualityVisuals(true);
-    this.refreshQualityLabel();
-  }
-
-  // ---------------------------------------------------------------- title camera
-
-  setTitleCamera() {
-    this.updateTitleCamera();
-  }
-
-  updateTitleCamera() {
-    const view = this.titleView;
-    const [x, y, z] = view.position;
-    const [dx, dy, dz] = view.drift;
-    const t = this.simTime * view.speed;
-    this.camera.position.set(
-      x + Math.sin(t) * dx,
-      y + Math.sin(t * 0.73 + 1.2) * dy,
-      z + Math.cos(t * 0.86) * dz,
-    );
-    this.camera.lookAt(view.target[0], view.target[1], view.target[2]);
   }
 
   // ---------------------------------------------------------------- loop
