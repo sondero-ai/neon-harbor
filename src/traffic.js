@@ -398,7 +398,10 @@ export class Traffic {
       [-174, 150], [-156, 130], [-226, -118], [-200, -132], [-176, -120], [-158, -96],
     ];
     for (let i = 0; i < Math.min(spots.length, BEACH_TARGET); i += 1) {
-      const [x, z] = spots[i];
+      // The sand now ends at the shoreline, so a spot within a metre of it
+      // walks in from the last dry metre instead of standing in the water.
+      const [spotX, z] = spots[i];
+      const x = Math.max(spotX, WORLD.shorelineX + 1);
       const ped = this.spawnPed({
         x,
         z,
@@ -471,6 +474,61 @@ export class Traffic {
     const index = this.cars.indexOf(car);
     if (index !== -1) this.cars.splice(index, 1);
     this.vehicles.remove(car);
+  }
+
+  /**
+   * Pull the AI driver out at the driver door and send them running for six
+   * seconds. Returns the new pedestrian, or null when the crowd has no slot
+   * or the door is blocked (the caller then skips the toast).
+   */
+  ejectDriver(car) {
+    if (!car || car.removed) return null;
+    const cos = Math.cos(car.yaw);
+    const sin = Math.sin(car.yaw);
+    // Driver's door: car-local left, just outside the bodywork, toward the
+    // front of the cabin.
+    const candidates = [
+      [-(car.halfWidth + 0.65), 0.35],
+      [car.halfWidth + 0.65, 0.35],
+      [-(car.halfWidth + 0.65), -0.6],
+    ];
+    let spot = null;
+    for (const [side, forward] of candidates) {
+      const x = car.position.x + cos * side + sin * forward;
+      const z = car.position.z - sin * side + cos * forward;
+      if (this.world.collides(x, z, 0.36)) continue;
+      if (this.vehicles.blocksPoint(x, z, 0.36, car)) continue;
+      spot = { x, z };
+      break;
+    }
+    if (!spot) return null;
+    const ped = this.spawnPed({
+      x: spot.x,
+      z: spot.z,
+      yaw: Math.atan2(car.position.x - spot.x, car.position.z - spot.z),
+      mode: 'idle',
+      armed: false,
+    });
+    if (!ped) return null;
+    // No block route to resume: this is a one-way run away from the car.
+    ped.blockX = 0;
+    ped.blockZ = 0;
+    ped.cornerIndex = 0;
+    ped.crossingAxis = null;
+    ped.nextBlockX = 0;
+    ped.nextBlockZ = 0;
+    ped.fleeResumeTarget = null;
+    ped.pause = 0;
+    ped.motion = 1;
+    ped.fleeTimer = PANIC_SECONDS;
+    ped.fleeFromX = car.position.x;
+    ped.fleeFromZ = car.position.z;
+    const dx = spot.x - car.position.x;
+    const dz = spot.z - car.position.z;
+    const length = Math.hypot(dx, dz) || 1;
+    ped.target = { x: spot.x + (dx / length) * 12, z: spot.z + (dz / length) * 12 };
+    ped.y = this.world.groundHeightAt(spot.x, spot.z);
+    return ped;
   }
 
   updateCars(dt, elapsed, player) {

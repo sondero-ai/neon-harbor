@@ -680,6 +680,61 @@ export class Vehicle {
     return Math.hypot(outsideX, outsideZ);
   }
 
+  /**
+   * Circle against the car's oriented box. Returns the penetration depth and a
+   * unit normal pointing from the car to the circle centre, in world space.
+   * A zero penetration means the circle is clear of the bodywork.
+   */
+  overlapCircle(x, z, radius) {
+    const dx = x - this.position.x;
+    const dz = z - this.position.z;
+    const cos = Math.cos(this.yaw);
+    const sin = Math.sin(this.yaw);
+    // Local x is the car's right side, local z is its forward axis.
+    const localX = dx * cos - dz * sin;
+    const localZ = dx * sin + dz * cos;
+    const closestX = clamp(localX, -this.halfWidth, this.halfWidth);
+    const closestZ = clamp(localZ, -this.halfLength, this.halfLength);
+    const offsetX = localX - closestX;
+    const offsetZ = localZ - closestZ;
+    const distance = Math.hypot(offsetX, offsetZ);
+    let penetration = 0;
+    let normalLocalX = 0;
+    let normalLocalZ = 0;
+    if (distance > 1e-6) {
+      if (distance >= radius) return { penetration: 0, nx: 0, nz: 0 };
+      penetration = radius - distance;
+      normalLocalX = offsetX / distance;
+      normalLocalZ = offsetZ / distance;
+    } else {
+      // The centre is inside the box: leave by the nearest face.
+      const left = localX + this.halfWidth;
+      const right = this.halfWidth - localX;
+      const back = localZ + this.halfLength;
+      const front = this.halfLength - localZ;
+      const least = Math.min(left, right, back, front);
+      if (least === left) {
+        normalLocalX = -1;
+        penetration = radius + left;
+      } else if (least === right) {
+        normalLocalX = 1;
+        penetration = radius + right;
+      } else if (least === back) {
+        normalLocalZ = -1;
+        penetration = radius + back;
+      } else {
+        normalLocalZ = 1;
+        penetration = radius + front;
+      }
+    }
+    // Rotate the local normal back into world space: +x is side, +z is forward.
+    return {
+      penetration,
+      nx: normalLocalX * cos + normalLocalZ * sin,
+      nz: -normalLocalX * sin + normalLocalZ * cos,
+    };
+  }
+
   collidesAt(x, z, world) {
     const cos = Math.cos(this.yaw);
     const sin = Math.sin(this.yaw);

@@ -50,6 +50,12 @@ export class Player {
     this.driving = null;
     this.nearVehicle = null;
     this.exitCooldown = 0;
+    // A car hit pushes Rae out of the bodywork, knocks her down for 0.9 s and
+    // shares one cooldown so a single impact never lands twice.
+    this.knockdown = 0;
+    this.vehicleHitCooldown = 0;
+    this.lastVehicleHit = null;
+    this.carjacked = false;
     this.driveOrbitYaw = 0;
     this.drivePitch = 0.13;
     this.driveLookHold = 0;
@@ -86,6 +92,9 @@ export class Player {
   resetToSpawn() {
     this.driving = null;
     this.nearVehicle = null;
+    this.knockdown = 0;
+    this.vehicleHitCooldown = 0;
+    this.humanoid.group.rotation.z = 0;
     this.group.visible = true;
     this.position.set(PLAYER.spawn.x, this.world.groundHeightAt(PLAYER.spawn.x, PLAYER.spawn.z), PLAYER.spawn.z);
     this.velocity.set(0, 0, 0);
@@ -102,6 +111,10 @@ export class Player {
   loadFromSave(save) {
     this.driving = null;
     this.nearVehicle = null;
+    this.knockdown = 0;
+    this.vehicleHitCooldown = 0;
+    this.carjacked = false;
+    this.humanoid.group.rotation.z = 0;
     this.group.visible = true;
     this.position.set(save.position.x, save.position.y, save.position.z);
     const ground = this.world.groundHeightAt(this.position.x, this.position.z);
@@ -231,6 +244,7 @@ export class Player {
   update(dt, input) {
     this.playSeconds += dt;
     if (this.exitCooldown > 0) this.exitCooldown -= dt;
+    if (this.vehicleHitCooldown > 0) this.vehicleHitCooldown = Math.max(0, this.vehicleHitCooldown - dt);
     const mouse = input.consumeMouse();
 
     if (this.dead) {
@@ -246,6 +260,14 @@ export class Player {
       this.aiming = false;
       this.humanoid.aiming = false;
       this.updateDriving(dt, input, mouse);
+      return;
+    }
+
+    if (this.knockdown > 0) {
+      this.updateKnockdown(dt);
+      this.nearVehicle = null;
+      this.applyTransform();
+      this.humanoid.update(dt, 0, !this.grounded);
       return;
     }
 
@@ -292,6 +314,7 @@ export class Player {
     }
 
     this.moveHorizontal(dt);
+    this.resolveVehicleContacts();
 
     this.velocity.y -= PLAYER.gravity * dt;
     this.position.y += this.velocity.y * dt;
@@ -489,6 +512,15 @@ export class Player {
     if (this.knifeModel) {
       const swing = this.meleeSwing > 0 ? 1 - this.meleeSwing / 0.28 : 0;
       this.knifeModel.rotation.x = -Math.sin(swing * Math.PI) * 1.15;
+      // The arm and hand follow the same swing, a beat behind the blade.
+      this.humanoid.melee = this.meleeSwing > 0 ? swing : 0;
+    }
+
+    if (this.knockdown > 0) {
+      this.aiming = false;
+      this.humanoid.aiming = false;
+      this.gun.visible = false;
+      return;
     }
 
     if (input.wasPressed('Digit1')) this.selectWeapon('pistol');
@@ -690,6 +722,9 @@ export class Player {
     this.damageFlash = 0;
     this.reloadTimer = 0;
     this.aiming = false;
+    this.knockdown = 0;
+    this.vehicleHitCooldown = 0;
+    this.carjacked = false;
     this.humanoid.aiming = false;
     this.humanoid.group.rotation.z = 0;
     this.group.visible = true;
@@ -697,6 +732,7 @@ export class Player {
   }
 
   handleVehicleInput(input) {
+    if (this.knockdown > 0 || this.dead) return;
     if (input.wasPressed('KeyF', 'KeyE')) {
       if (this.driving) {
         this.exitVehicle();
@@ -709,7 +745,12 @@ export class Player {
 
   enterVehicle(car) {
     if (!car || this.driving) return;
+    this.carjacked = false;
     if (car.type === 'police' && this.police) this.police.reportCarTheft(car);
+    // An AI civilian driver bails out at the door; a cruiser's crew does not.
+    if (car.type !== 'police' && (car.driver === 'ai' || Boolean(car.ai)) && this.traffic?.ejectDriver) {
+      this.carjacked = Boolean(this.traffic.ejectDriver(car));
+    }
     this.driving = car;
     car.driver = 'player';
     car.ai = null;
@@ -806,6 +847,138 @@ export class Player {
       } else {
         this.velocity.z = 0;
       }
+    }
+  }
+
+  // ------------------------------------------------------------ vehicle hits
+
+  /** Push Rae's centre out of the car body along the shortest exit. */
+  pushOutOfVehicle(hit) {
+    if (!hit || hit.penetration <= 0) return;
+    const amount = hit.penetration + 0.02;
+    const nextX = this.position.x + hit.nx * amount;
+    const nextZ = this.position.z + hit.nz * amount;
+    if (!this.world.collides(nextX, nextZ, PLAYER.radius)) {
+      this.position.x = nextX;
+      this.position.z = nextZ;
+      return;
+    }
+    // A wall behind the car: keep whichever single axis is free.
+    if (!this.world.collides(nextX, this.position.z, PLAYER.radius)) this.position.x = nextX;
+    else if (!this.world.collides(this.position.x, nextZ, PLAYER.radius)) this.position.z = nextZ;
+  }
+
+  /**
+   * A moving car that overlaps Rae always pushes her clear. Above ~2.5 m/s the
+   * same contact also lands one damage hit and a 0.9 s knockdown behind the
+   * shared vehicleHitCooldown; below that speed it is only a shove.
+   */
+  resolveVehicleContacts() {
+    if (!this.vehicles || this.driving || this.dead) return;
+    for (const car of this.vehicles.list) {
+      if (car.removed || car === this.driving) continue;
+      const dx = car.position.x - this.position.x;
+      const dz = car.position.z - this.position.z;
+      const reach = car.halfLength + PLAYER.radius + 1;
+      if (Math.abs(dx) > reach || Math.abs(dz) > reach) continue;
+      const speed = Math.abs(car.speed);
+      const closing = speed > 2.5 && this.vehicleHitCooldown <= 0;
+      const hit = car.overlapCircle(this.position.x, this.position.z, PLAYER.radius + (closing ? 0.3 : 0));
+      if (hit.penetration <= 0) continue;
+      this.pushOutOfVehicle(hit);
+      if (!closing) continue;
+      if (this.hitByVehicle(car, Math.min(30, 8 + speed * 0.8))) break;
+    }
+  }
+
+  /** The one impact path shared by civilian cars and police rams. */
+  hitByVehicle(car, damage = 16) {
+    if (!car || car.removed || this.dead || this.driving) return false;
+    if (this.vehicleHitCooldown > 0) return false;
+    const hit = car.overlapCircle(this.position.x, this.position.z, PLAYER.radius + 0.3);
+    let nx = hit.nx;
+    let nz = hit.nz;
+    if (hit.penetration > 0) {
+      this.pushOutOfVehicle(hit);
+    } else {
+      // A close police ram can land before the boxes touch: shove along the
+      // centre line so the player still clears the car.
+      const dx = this.position.x - car.position.x;
+      const dz = this.position.z - car.position.z;
+      const length = Math.hypot(dx, dz);
+      if (length > 1e-4) {
+        nx = dx / length;
+        nz = dz / length;
+        const nextX = this.position.x + nx * 0.4;
+        const nextZ = this.position.z + nz * 0.4;
+        if (!this.world.collides(nextX, nextZ, PLAYER.radius)) {
+          this.position.x = nextX;
+          this.position.z = nextZ;
+        }
+      }
+    }
+    const speed = Math.abs(car.speed);
+    const push = 4 + speed * 0.7;
+    this.velocity.set(nx * push, 3.4, nz * push);
+    this.grounded = false;
+    this.knockdown = 0.9;
+    this.vehicleHitCooldown = 1.25;
+    this.aiming = false;
+    this.humanoid.aiming = false;
+    this.gun.visible = false;
+    this.facing = Math.atan2(nx, nz);
+    this.humanoid.setFacing(this.facing);
+    const amount = Math.max(1, Number(damage) || 0);
+    this.lastVehicleHit = {
+      type: car.type,
+      name: car.name,
+      speed: Math.round(speed * 100) / 100,
+      damage: amount,
+      x: car.position.x,
+      z: car.position.z,
+    };
+    if (this.effects) {
+      this.effects.impact(new THREE.Vector3(car.position.x, this.position.y + 0.9, car.position.z), null, 'metal');
+      this.effects.shake(0.5);
+    }
+    if (this.audio) this.audio.impact(1.2);
+    // Route through the police director when it exists so a lethal ram still
+    // raises the wasted overlay.
+    if (this.police) this.police.damagePlayer(amount, car.position.x, car.position.z);
+    else this.applyDamage(amount, car.position.x, car.position.z);
+    return true;
+  }
+
+  updateKnockdown(dt) {
+    this.aiming = false;
+    this.humanoid.aiming = false;
+    // Never remain inside a body even while sliding: push out first, then let
+    // the knockback carry the body away.
+    this.resolveVehicleContacts();
+    const friction = Math.exp(-4.2 * dt);
+    this.velocity.x *= friction;
+    this.velocity.z *= friction;
+    this.moveHorizontal(dt);
+    this.velocity.y -= PLAYER.gravity * dt;
+    this.position.y += this.velocity.y * dt;
+    const ground = this.world.groundHeightAt(this.position.x, this.position.z);
+    if (this.position.y <= ground) {
+      this.position.y = ground;
+      this.velocity.y = 0;
+      this.grounded = true;
+    } else {
+      this.grounded = false;
+    }
+    this.speed = damp(this.speed, 0, 10, dt);
+    this.knockdown = Math.max(0, this.knockdown - dt);
+    this.humanoid.group.rotation.z = damp(this.humanoid.group.rotation.z, this.knockdown > 0 ? 1.18 : 0, 16, dt);
+    if (this.knockdown <= 0) {
+      this.knockdown = 0;
+      this.humanoid.group.rotation.z = 0;
+      this.velocity.x *= 0.2;
+      this.velocity.z *= 0.2;
+      // The 0.35 s post-hit grace stops an instant second hit.
+      this.vehicleHitCooldown = Math.max(this.vehicleHitCooldown, 0.35);
     }
   }
 
@@ -921,6 +1094,9 @@ export class Player {
     this.facing = facing;
     this.cameraYaw = cameraYaw;
     this.grounded = true;
+    this.knockdown = 0;
+    this.vehicleHitCooldown = 0;
+    this.humanoid.group.rotation.z = 0;
     this.applyTransform();
     this.snapCamera();
   }

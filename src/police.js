@@ -1386,9 +1386,9 @@ export class Police {
       const dx = player.position.x - car.position.x;
       const dz = player.position.z - car.position.z;
       if (dx * dx + dz * dz < 7.2 && Math.abs(car.speed) > 6) {
-        unit.ramCooldown = 1.4;
-        this.damagePlayer(18, car.position.x, car.position.z, 'STRUCK');
-        player.velocity.set(dx * 1.7, 3.2, dz * 1.7);
+        // The cruiser rams through the same player-side push-out as every
+        // civilian car: one shared cooldown, one damage hit, one knockdown.
+        if (player.hitByVehicle(car, 18)) unit.ramCooldown = 1.4;
         if (this.effects) this.effects.shake(0.7);
       }
     }
