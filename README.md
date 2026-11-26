@@ -78,9 +78,11 @@ driving detail is in [driving](docs/guide/driving.md).
   and a two-guard security response. [Mall and lot →](docs/guide/city.md#solano-mall-and-the-lot)
 - **Solano Fuel** — a four-nozzle forecourt on block (-108, 0) with a lit
   canopy, kiosk, air/water stand and a parallel service lane. Every car has a
-  fuel tank that drains as it drives; an empty tank cannot accelerate. Stop on
-  a pad and **E · SERVICE** refuels and repairs for cash, and about 22% of
-  ambient cars pull in when their tank is low. [Fuel and service →](docs/guide/driving.md#fuel-and-service)
+  fuel tank and a HUD gauge that drains as it drives; an empty tank cannot
+  accelerate. Stop on a pad and **E · SERVICE** refuels and repairs for cash —
+  $8 per 10% of the missing tank plus $150 scaled by body damage — and about
+  22% of ambient cars pull in when their tank is low.
+  [Fuel and service →](docs/guide/driving.md#fuel-and-service)
 - **Seven cars and carjacking** — arcade handling, drifting, skid marks, fuel
   tanks and a HUD gauge, lane-following traffic, a driver who bails out at the
   door when you steal a civilian car, and the mall lot's valet service.
