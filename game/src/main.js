@@ -1275,6 +1275,9 @@ try {
         driving: game.player.driving ? game.player.driving.name : null,
         speedKmh: game.player.driving ? game.player.driving.speedKmh : game.player.speedKmh,
         nearVehicle: game.player.nearVehicle ? game.player.nearVehicle.name : null,
+        knockdown: Math.round(game.player.knockdown * 1000) / 1000,
+        vehicleHitCooldown: Math.round(game.player.vehicleHitCooldown * 1000) / 1000,
+        lastVehicleHit: game.player.lastVehicleHit,
       };
     },
     get traffic() {

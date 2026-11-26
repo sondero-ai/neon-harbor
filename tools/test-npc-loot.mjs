@@ -1818,6 +1818,224 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 15: vehicle hit response',
+    shot: 'street',
+    body: function vehicleHits() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const debug = neon && neon.debug;
+      const player = debug && debug.player;
+      const vehicles = debug && debug.vehicles;
+      const traffic = debug && debug.traffic;
+      const police = debug && debug.police;
+      const missing = [];
+      if (!neon) missing.push('window.__neon');
+      if (!player || typeof player.hitByVehicle !== 'function') missing.push('player.hitByVehicle');
+      if (!vehicles || typeof vehicles.spawn !== 'function') missing.push('vehicles.spawn');
+      if (!vehicles || !vehicles.list) missing.push('vehicles.list');
+      if (!traffic || typeof traffic.reset !== 'function') missing.push('traffic.reset');
+      if (!police || typeof police.ramCheck !== 'function') missing.push('police.ramCheck');
+      const sample = vehicles && vehicles.list && vehicles.list[0];
+      if (!sample || typeof sample.overlapCircle !== 'function') missing.push('vehicle.overlapCircle');
+      check('test 15: vehicle-hit hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      const round = (value) => Math.round(value * 1000) / 1000;
+      const hv = vehicles;
+
+      // The circle/box normal, before any gameplay state is touched.
+      const probe = hv.spawn('sedan', { x: 0, z: 0, yaw: 0 });
+      const frontHit = probe.overlapCircle(0, probe.halfLength + 0.2, 0.5);
+      check(
+        'test 15: overlapCircle returns the front face penetration and normal',
+        Math.abs(frontHit.penetration - 0.3) < 1e-6
+          && Math.abs(frontHit.nx) < 1e-6
+          && Math.abs(frontHit.nz - 1) < 1e-6,
+        JSON.stringify(frontHit),
+      );
+      const insideHit = probe.overlapCircle(0, 0, 0.5);
+      check(
+        'test 15: a centre inside the box exits through the nearest face',
+        insideHit.penetration > 0.5 && (Math.abs(insideHit.nx) === 1 || Math.abs(insideHit.nz) === 1),
+        JSON.stringify(insideHit),
+      );
+      const clearHit = probe.overlapCircle(0, probe.halfLength + 2, 0.5);
+      check('test 15: a clear circle reports no penetration', clearHit.penetration === 0, JSON.stringify(clearHit));
+      hv.remove(probe);
+
+      // A quiet stretch of the 81 road, away from seeded lanes and parked cars.
+      traffic.reset({ spawnBeach: false });
+      for (const car of [...hv.list]) hv.remove(car);
+      police.clearWanted({ quiet: true });
+      police.clearUnits();
+      police.clearOfficers();
+      police.stageAir({ x: 640, y: 40, z: 640 });
+
+      const baseX = 81;
+      const baseZ = 0;
+      const resetTo = () => {
+        player.teleport(baseX, baseZ, Math.PI, 0);
+        player.health = 100;
+        player.armor = 0;
+        player.dead = false;
+        player.velocity.set(0, 0, 0);
+        return player.health;
+      };
+
+      // A fast AI car centred on the player: one hit, a push-out and a knockdown.
+      let health = resetTo();
+      const fast = hv.spawn('sedan', { x: baseX, z: baseZ, yaw: 0, driver: 'ai' });
+      fast.velocity.set(0, 0, 10);
+      neon.advance(1 / 60);
+      const afterFirst = player.health;
+      check(
+        'test 15: a 10 m/s overlap lands one damage hit',
+        afterFirst < health,
+        `health ${health} -> ${afterFirst}`,
+      );
+      check(
+        'test 15: the impact pushes the player out of the car body',
+        fast.overlapCircle(player.position.x, player.position.z, 0.46).penetration === 0,
+        JSON.stringify({ player: [round(player.position.x), round(player.position.z)], car: [fast.position.x, fast.position.z] }),
+      );
+      check(
+        'test 15: the hit sets the knockdown timer and the QA readout',
+        player.knockdown > 0 && neon.player.knockdown > 0 && neon.player.lastVehicleHit !== null,
+        JSON.stringify({ knockdown: player.knockdown, qa: neon.player }),
+      );
+      check(
+        'test 15: the last vehicle hit records the car and damage',
+        neon.player.lastVehicleHit
+          && neon.player.lastVehicleHit.type === 'sedan'
+          && neon.player.lastVehicleHit.damage === 16
+          && neon.player.lastVehicleHit.speed === 10,
+        JSON.stringify(neon.player.lastVehicleHit),
+      );
+
+      neon.advance(0.2);
+      const healthMid = player.health;
+      check(
+        'test 15: the knocked-down body tilts toward the fall pose',
+        player.knockdown > 0 && player.humanoid.group.rotation.z > 0.35,
+        `knockdown=${round(player.knockdown)} tilt=${round(player.humanoid.group.rotation.z)}`,
+      );
+      check(
+        'test 15: one impact never double-hits while the player is down',
+        healthMid === afterFirst && player.knockdown > 0,
+        `health ${afterFirst} -> ${healthMid}`,
+      );
+
+      // A second fast car during the cooldown pushes but cannot damage again.
+      hv.remove(fast);
+      const during = hv.spawn('sedan', { x: player.position.x, z: player.position.z, yaw: 0, driver: 'ai' });
+      during.velocity.set(0, 0, 8);
+      neon.advance(1 / 60);
+      check(
+        'test 15: the shared cooldown blocks a second hit',
+        player.health === healthMid,
+        `health ${healthMid} -> ${player.health}`,
+      );
+      check(
+        'test 15: the cooldown push still clears the car body',
+        during.overlapCircle(player.position.x, player.position.z, 0.46).penetration === 0,
+        JSON.stringify({ player: [round(player.position.x), round(player.position.z)] }),
+      );
+      hv.remove(during);
+
+      neon.advance(1.2);
+      check(
+        'test 15: the player stands up when the 0.9 s knockdown ends',
+        player.knockdown === 0 && player.humanoid.group.rotation.z === 0,
+        `knockdown=${player.knockdown} tilt=${player.humanoid.group.rotation.z}`,
+      );
+
+      // Movement and fire are ignored while down, then resume.
+      const standX = player.position.x;
+      const standZ = player.position.z;
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW', key: 'w', bubbles: true }));
+      neon.advance(0.4);
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW', key: 'w', bubbles: true }));
+      check(
+        'test 15: movement resumes after standing up',
+        Math.hypot(player.position.x - standX, player.position.z - standZ) > 0.5,
+        `moved=${round(Math.hypot(player.position.x - standX, player.position.z - standZ))}`,
+      );
+
+      // A fresh hit after the full cooldown lands again.
+      health = resetTo();
+      const second = hv.spawn('sedan', { x: baseX, z: baseZ, yaw: 0, driver: 'ai' });
+      second.velocity.set(0, 0, 9);
+      neon.advance(1 / 60);
+      check(
+        'test 15: a fresh hit after the cooldown lands',
+        player.health < health && player.knockdown > 0,
+        `health ${health} -> ${player.health}`,
+      );
+      hv.remove(second);
+
+      // Below 2.5 m/s the contact is only a shove.
+      health = resetTo();
+      const slow = hv.spawn('sedan', { x: baseX, z: baseZ, yaw: 0, driver: 'ai' });
+      slow.velocity.set(0, 0, 1.4);
+      neon.advance(1 / 60);
+      check(
+        'test 15: a slow overlap pushes out without damage or knockdown',
+        player.health === health
+          && player.knockdown === 0
+          && slow.overlapCircle(player.position.x, player.position.z, 0.46).penetration === 0,
+        JSON.stringify({ health: player.health, knockdown: player.knockdown }),
+      );
+      hv.remove(slow);
+
+      // The police ram branch must use the same hit path.
+      resetTo();
+      const cruiser = hv.spawn('police', { x: baseX, z: baseZ + 2.5, yaw: 0, driver: 'ai' });
+      cruiser.velocity.set(0, 0, 8);
+      const unit = { car: cruiser, ramCooldown: 0 };
+      police.ramCheck(unit, 0);
+      check(
+        'test 15: police.ramCheck routes through hitByVehicle',
+        unit.ramCooldown === 1.4
+          && player.knockdown > 0
+          && neon.player.lastVehicleHit !== null
+          && neon.player.lastVehicleHit.damage === 18
+          && neon.player.lastVehicleHit.type === 'police',
+        JSON.stringify({ cooldown: unit.ramCooldown, hit: neon.player.lastVehicleHit }),
+      );
+      check(
+        'test 15: the ram leaves the player outside the cruiser',
+        cruiser.overlapCircle(player.position.x, player.position.z, 0.46).penetration === 0,
+        JSON.stringify({ player: [round(player.position.x), round(player.position.z)] }),
+      );
+      hv.remove(cruiser);
+
+      // Ignore-fire while down: the knife cannot swing during the knockdown.
+      resetTo();
+      player.selectWeapon('knife');
+      player.fireCooldown = 0;
+      const rammer = hv.spawn('sedan', { x: baseX, z: baseZ, yaw: 0, driver: 'ai' });
+      rammer.velocity.set(0, 0, 10);
+      neon.advance(1 / 60);
+      player.fireCooldown = 0;
+      player.updateCombat(1 / 60, {
+        isMouseDown: () => false,
+        wasMousePressed: () => true,
+        wasPressed: () => false,
+      }, debug.camera);
+      check(
+        'test 15: fire input is ignored while knocked down',
+        player.knockdown > 0 && player.meleeSwing === 0 && player.fireCooldown === 0,
+        `knockdown=${round(player.knockdown)} swing=${player.meleeSwing} cooldown=${player.fireCooldown}`,
+      );
+      hv.remove(rammer);
+      return results;
+    },
+  },
 ];
 
 async function main() {
