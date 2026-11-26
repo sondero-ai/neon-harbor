@@ -17,9 +17,9 @@ const TAU = Math.PI * 2;
 export const LANE_OFFSET = 3.2;
 const STOP_LINE = 12.4;
 const CORNER = 17.4;
-const MAX_PEDS = 96;
-const SIDEWALK_TARGET = 48;
-const BEACH_TARGET = 22;
+const MAX_PEDS = 168;
+const SIDEWALK_TARGET = 64;
+const BEACH_TARGET = 28;
 const CAR_TARGET = 18;
 const PANIC_RADIUS = 14;
 const PANIC_SECONDS = 6;
@@ -106,6 +106,8 @@ const hairs = [0x24161c, 0x3b241c, 0x17141a, 0x6b4a2c, 0x8f8272, 0x4a2b33];class
     legGeometry.translate(0, -0.39, 0);
     const hatGeometry = new THREE.CylinderGeometry(0.15, 0.185, 0.1, 8);
     hatGeometry.translate(0, 0.05, 0);
+    // A shopping bag hangs from the right hand on the walk to the food court.
+    const bagGeometry = new THREE.BoxGeometry(0.22, 0.2, 0.12);
 
     const makeMaterial = (roughness, metalness = 0.02) => new THREE.MeshStandardMaterial({ roughness, metalness });
     const materials = {
@@ -115,6 +117,7 @@ const hairs = [0x24161c, 0x3b241c, 0x17141a, 0x6b4a2c, 0x8f8272, 0x4a2b33];class
       arm: makeMaterial(0.9),
       leg: makeMaterial(0.92),
       hat: makeMaterial(0.82),
+      bag: makeMaterial(0.8),
     };
 
     const parts = {
@@ -126,6 +129,7 @@ const hairs = [0x24161c, 0x3b241c, 0x17141a, 0x6b4a2c, 0x8f8272, 0x4a2b33];class
       legLeft: [legGeometry, materials.leg],
       legRight: [legGeometry, materials.leg],
       hat: [hatGeometry, materials.hat],
+      bag: [bagGeometry, materials.bag],
     };
 
     const zero = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -164,6 +168,7 @@ const hairs = [0x24161c, 0x3b241c, 0x17141a, 0x6b4a2c, 0x8f8272, 0x4a2b33];class
     this.meshes.head.setColorAt(slot, this._color.setHex(spec.skin));
     this.meshes.hair.setColorAt(slot, this._color.setHex(spec.hair));
     this.meshes.hat.setColorAt(slot, this._color.setHex(spec.hatColor));
+    this.meshes.bag.setColorAt(slot, this._color.setHex(spec.bagColor ?? 0x3a2a44));
     for (const mesh of Object.values(this.meshes)) mesh.instanceColor.needsUpdate = true;
   }
 
@@ -177,7 +182,8 @@ const hairs = [0x24161c, 0x3b241c, 0x17141a, 0x6b4a2c, 0x8f8272, 0x4a2b33];class
   write(ped) {
     if (!ped.active) return;
     const slot = ped.slot;
-    const bob = Math.abs(Math.sin(ped.phase)) * 0.034 * ped.motion;
+    const seated = Boolean(ped.sitting);
+    const bob = seated ? 0 : Math.abs(Math.sin(ped.phase)) * 0.034 * ped.motion;
     const scale = ped.scale;
     const fall = ped.fall ?? 0;
     this._euler.set(-fall * 1.45, ped.yaw, 0);
@@ -186,19 +192,26 @@ const hairs = [0x24161c, 0x3b241c, 0x17141a, 0x6b4a2c, 0x8f8272, 0x4a2b33];class
     this._scale.set(scale, scale, scale);
     this._base.compose(this._position, this._quaternion, this._scale);
 
-    const swing = Math.sin(ped.phase) * 0.6 * ped.motion;
+    const swing = seated ? 0 : Math.sin(ped.phase) * 0.6 * ped.motion;
     const arms = swing * 0.78;
-    this.writePart('torso', slot, 0, 0.84, 0, 0.04);
-    this.writePart('head', slot, 0, 1.36, 0, 0);
-    this.writePart('hair', slot, 0, 1.37, 0, 0);
-    this.writePart('legLeft', slot, 0.102, 0.83, 0, swing);
-    this.writePart('legRight', slot, -0.102, 0.83, 0, -swing);
-    this.writePart('armLeft', slot, 0.262, 1.3, 0, -arms);
-    this.writePart('armRight', slot, -0.262, 1.3, 0, arms);
+    // A seated body drops to chair height, thighs forward and hands on the
+    // knees. Standing keeps the original eight-part walk pose.
+    this.writePart('torso', slot, 0, seated ? 0.62 : 0.84, 0, 0.04);
+    this.writePart('head', slot, 0, seated ? 1.08 : 1.36, 0, 0);
+    this.writePart('hair', slot, 0, seated ? 1.09 : 1.37, 0, 0);
+    this.writePart('legLeft', slot, 0.102, seated ? 0.62 : 0.83, 0, seated ? -1.36 : swing);
+    this.writePart('legRight', slot, -0.102, seated ? 0.62 : 0.83, 0, seated ? -1.36 : -swing);
+    this.writePart('armLeft', slot, 0.262, seated ? 1.04 : 1.3, 0, seated ? -0.52 : -arms);
+    this.writePart('armRight', slot, -0.262, seated ? 1.04 : 1.3, 0, seated ? -0.52 : arms);
     if (ped.hat) {
-      this.writePart('hat', slot, 0, 1.61, 0, 0);
+      this.writePart('hat', slot, 0, seated ? 1.3 : 1.61, 0, 0);
     } else {
       this.meshes.hat.setMatrixAt(slot, this.zero);
+    }
+    if (ped.bag) {
+      this.writePart('bag', slot, -0.32, seated ? 0.7 : 0.82, 0.08, 0);
+    } else {
+      this.meshes.bag.setMatrixAt(slot, this.zero);
     }
     for (const mesh of Object.values(this.meshes)) mesh.instanceMatrix.needsUpdate = true;
   }
@@ -218,6 +231,7 @@ export class Traffic {
     this.vehicles = vehicles;
     this.player = player;
     this.police = null;
+    this.mallLife = null;
     this.onPedDeath = null;
     this.onArmedHostile = null;
     this.armedAlertShown = false;
@@ -396,6 +410,8 @@ export class Traffic {
       [-184, 96], [-154, 84], [-188, 70.5], [-203, 71.5],
       [-218, 120], [-192, 132], [-166, 118], [-230, 98], [-210, 140],
       [-174, 150], [-156, 130], [-226, -118], [-200, -132], [-176, -120], [-158, -96],
+      // Four extra pairs fill the raised 28-walker beach target.
+      [-229, 108], [-227, 152], [-225, -64], [-214, -152], [-184, -162], [-158, -44],
     ];
     for (let i = 0; i < Math.min(spots.length, BEACH_TARGET); i += 1) {
       // The sand now ends at the shoreline, so a spot within a metre of it
@@ -654,7 +670,7 @@ export class Traffic {
 
   // ---------------------------------------------------------------- pedestrians
 
-  spawnPed({ x, z, yaw = 0, mode = 'loop', target = null, anchor = null, phase = null, armed = null }) {
+  spawnPed({ x, z, yaw = 0, mode = 'loop', target = null, anchor = null, phase = null, armed = null, guard = false, bag = false }) {
     let slot = -1;
     for (let i = 0; i < MAX_PEDS; i += 1) {
       if (!this.peds.some((ped) => ped.active && ped.slot === i)) {
@@ -666,15 +682,24 @@ export class Traffic {
 
     // Only block-loop walkers carry a pistol; an explicit option from a shot or
     // a test always wins, and beach and crosswalk pedestrians stay unarmed.
-    const isArmed = armed === null ? mode === 'loop' && this.rng.chance(ARMED_CHANCE) : Boolean(armed);
+    // A security guard is always armed, hostile, hatted and in a dark uniform.
+    const isArmed = guard || (armed === null ? mode === 'loop' && this.rng.chance(ARMED_CHANCE) : Boolean(armed));
     const spec = {
       cloth: clothing[Math.floor(this.rng() * clothing.length) % clothing.length],
       pants: pants[Math.floor(this.rng() * pants.length) % pants.length],
       skin: skins[Math.floor(this.rng() * skins.length) % skins.length],
       hair: hairs[Math.floor(this.rng() * hairs.length) % hairs.length],
       hatColor: this.rng.pick([0x2d2a36, 0x7a3e35, 0x3f5a5e, 0xd6c6a4]),
+      bagColor: this.rng.pick([0x3a2a44, 0x24414a, 0x4a332e, 0x2f3a24]),
     };
-    if (isArmed) spec.cloth = ARMED_JACKET;
+    if (guard) {
+      spec.cloth = 0x252b36;
+      spec.pants = 0x141821;
+      spec.hair = 0x1a161c;
+      spec.hatColor = 0x10141b;
+    } else if (isArmed) {
+      spec.cloth = ARMED_JACKET;
+    }
     const ped = {
       active: true,
       slot,
@@ -686,7 +711,7 @@ export class Traffic {
       speed: this.rng.range(1.05, 1.55),
       phase: phase ?? this.rng.range(0, TAU),
       motion: 0.6,
-      health: 55,
+      health: guard ? 78 : 55,
       dead: false,
       deadTimer: 0,
       fall: 0,
@@ -695,11 +720,15 @@ export class Traffic {
       fleeFromZ: 0,
       fleeResumeTarget: null,
       armed: isArmed,
-      hostile: false,
+      hostile: guard,
       hostileDraw: 0,
       hostileTime: 0,
       shootTimer: 0,
-      mode,
+      guard: Boolean(guard),
+      bag: Boolean(bag),
+      sitting: false,
+      seat: null,
+      mode: guard ? 'guard' : mode,
       target: target ?? { x, z },
       anchor: anchor ?? { x, z },
       pause: 0,
@@ -710,7 +739,7 @@ export class Traffic {
       crossingAxis: null,
       nextBlockX: 0,
       nextBlockZ: 0,
-      hat: this.rng.chance(0.32),
+      hat: guard ? true : this.rng.chance(0.32),
     };
 
     if (mode === 'loop') {
@@ -759,9 +788,36 @@ export class Traffic {
     ped.target = { x: ped.blockX + corner[0], z: ped.blockZ + corner[1] };
   }
 
+  /** Stand a seated pedestrian up and free the chair for anyone else. */
+  releasePedSeat(ped) {
+    if (ped.seat && ped.seat.occupant === ped) ped.seat.occupant = null;
+    ped.seat = null;
+    ped.sitting = false;
+  }
+
   despawnPed(ped) {
+    this.releasePedSeat(ped);
     ped.active = false;
     this.crowd.hide(ped.slot);
+  }
+
+  /** Start every standing pedestrian near (x, z) fleeing for the panic time. */
+  panic(x, z, radius = PANIC_RADIUS) {
+    const radiusSq = radius * radius;
+    let count = 0;
+    for (const ped of this.peds) {
+      if (!ped.active || ped.dead) continue;
+      const dx = ped.x - x;
+      const dz = ped.z - z;
+      if (dx * dx + dz * dz >= radiusSq) continue;
+      this.releasePedSeat(ped);
+      if (!ped.fleeResumeTarget) ped.fleeResumeTarget = { x: ped.target.x, z: ped.target.z };
+      ped.fleeTimer = PANIC_SECONDS;
+      ped.fleeFromX = x;
+      ped.fleeFromZ = z;
+      count += 1;
+    }
+    return count;
   }
 
   // ---------------------------------------------------------------- combat
@@ -808,6 +864,7 @@ export class Traffic {
     ped.dead = true;
     ped.deadTimer = 8;
     ped.health = 0;
+    this.releasePedSeat(ped);
     // A corpse is not fleeing; stop it counting as panicked after death.
     ped.fleeTimer = 0;
     let witnesses = 0;
@@ -870,14 +927,17 @@ export class Traffic {
         ped.deadTimer -= dt;
         ped.fall = Math.min(1, ped.fall + dt / 0.45);
         ped.motion = 0;
+        this.releasePedSeat(ped);
         if (ped.deadTimer <= 0) this.despawnPed(ped);
         continue;
       }
       if (ped.armed && (ped.hostile || ped.hostileDraw > 0)) {
+        this.releasePedSeat(ped);
         this.updateArmedPed(ped, dt);
         continue;
       }
       if (ped.fleeTimer > 0) {
+        this.releasePedSeat(ped);
         ped.fleeTimer -= dt;
         const dx = ped.x - ped.fleeFromX;
         const dz = ped.z - ped.fleeFromZ;
@@ -907,6 +967,8 @@ export class Traffic {
           ped.pause = this.rng.range(1.2, 4.5);
           this.pickBeachTarget(ped);
         }
+      } else if (ped.mode === 'mall') {
+        moving = this.mallLife ? this.mallLife.updatePed(ped, dt) : false;
       } else if (ped.mode === 'idle' || ped.mode === 'walk') {
         moving = this.walkToward(ped, ped.speed, dt);
         if (!moving) {
@@ -933,12 +995,15 @@ export class Traffic {
     this.pedTimer -= dt;
     if (this.pedTimer <= 0 && this.player) {
       this.pedTimer = 0.5;
-      const sidewalkCount = this.peds.filter((ped) => ped.active && ped.mode !== 'beach').length;
+      const sidewalkCount = this.peds.filter((ped) => ped.active
+        && ped.mode !== 'beach' && ped.mode !== 'mall' && ped.mode !== 'guard').length;
       if (sidewalkCount < this.sidewalkTarget) {
         this.spawnAmbientPed(this.player);
       }
       for (const ped of this.peds) {
-        if (!ped.active || ped.mode === 'beach') continue;
+        // Mall shoppers despawn at their door, and security guards are a
+        // robbery actor rather than ambient sidewalk traffic.
+        if (!ped.active || ped.mode === 'beach' || ped.mode === 'mall' || ped.mode === 'guard') continue;
         if (Math.hypot(ped.x - this.player.position.x, ped.z - this.player.position.z) > 190) {
           this.despawnPed(ped);
         }
@@ -1006,6 +1071,7 @@ export class Traffic {
   }
 
   sendPedFleeing(ped, fromX, fromZ) {
+    this.releasePedSeat(ped);
     ped.hostile = false;
     ped.hostileDraw = 0;
     ped.hostileTime = 0;

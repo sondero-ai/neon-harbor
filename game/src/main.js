@@ -26,7 +26,9 @@ import { Player } from './player.js';
 import { Vehicles } from './vehicles.js';
 import { Interactions } from './interactions.js';
 import { Traffic } from './traffic.js';
+import { MallLife } from './mall-life.js';
 import { ParkingLot } from './parking.js';
+import { MallRobbery } from './robbery.js';
 import { Input } from './input.js';
 import { Hud } from './hud.js';
 import { SaveStore } from './save.js';
@@ -143,6 +145,8 @@ class Game {
     });
     this.traffic = new Traffic(this.scene, this.world, this.vehicles, this.player);
     this.player.traffic = this.traffic;
+    this.mallLife = new MallLife(this.traffic, this.world.mall, this.environment);
+    this.traffic.mallLife = this.mallLife;
     this.police = new Police(this.scene, this.world, this.vehicles, this.player, this.traffic, this.effects, this.audio, {
       onDown: (type) => this.beginDown(type),
     });
@@ -159,6 +163,18 @@ class Game {
         if (!this.hud.suppressToasts) this.hud.toast = { title: message, sub: 'COLLECTED', life: 2.2 };
       },
     });
+    this.robbery = new MallRobbery({
+      mall: this.world.mall,
+      player: this.player,
+      police: this.police,
+      traffic: this.traffic,
+      pickups: this.pickups,
+      audio: this.audio,
+      onToast: (toast) => {
+        if (!this.hud.suppressToasts) this.hud.toast = toast;
+      },
+    });
+    this.interactions.robbery = this.robbery;
     this.input = new Input(this.canvas);
     this.input.allowLock = false;
     this.hud = new Hud(this.ui.hud, this.world);
@@ -521,6 +537,8 @@ class Game {
     this.traffic.reset({ spawnBeach });
     this.spawnOpeningCars();
     this.traffic.seedAmbient(this.player, { spawnBeach });
+    this.mallLife?.reset();
+    this.robbery?.reset();
     this.parking?.reset(this.environment.minutes);
   }
 
@@ -1248,8 +1266,10 @@ class Game {
         if (input.wasPressed('Minus')) this.changeVolume(-0.08);
         if (input.wasPressed('Equal')) this.changeVolume(0.08);
         this.player.update(dt, input);
+        this.mallLife.update(dt, this.environment.minutes);
         this.traffic.update(dt, this.simTime);
         this.parking.update(dt, this.environment.minutes);
+        this.robbery.update(dt);
         this.police.update(dt, this.simTime);
         this.player.wanted = this.police.wanted;
         this.vehicles.update(dt, this.simTime);
@@ -1399,6 +1419,8 @@ try {
       pickups: game.pickups,
       interactions: game.interactions,
       parking: game.parking,
+      mallLife: game.mallLife,
+      robbery: game.robbery,
       police: game.police,
       missions: game.missions,
       world: game.world,
@@ -1524,6 +1546,17 @@ try {
         freeSeats: mall.seats.filter((seat) => !seat.occupant).length,
         doors: mall.doors.map((door) => door.name),
         register: mall.register,
+        shoppers: game.mallLife ? game.mallLife.activeShoppers.length : 0,
+        seated: mall.seats.filter((seat) => seat.occupant && seat.occupant !== 'player').length,
+      };
+    },
+    get robbery() {
+      const robbery = game.robbery;
+      return {
+        robbed: robbery.robbed,
+        guards: robbery.liveGuards.length,
+        cash: robbery.drop?.amount ?? 0,
+        wanted: game.police.wanted,
       };
     },
     get parking() {

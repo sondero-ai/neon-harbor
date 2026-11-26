@@ -1123,9 +1123,9 @@ const TESTS = [
       if (missing.length > 0) return results;
 
       check(
-        'test 10: the crowd targets are 96 / 48 / 22 / 18',
-        traffic.maxPeds === 96 && traffic.sidewalkTarget === 48
-          && traffic.beachTarget === 22 && traffic.carTarget === 18,
+        'test 10: the crowd targets are 168 / 64 / 28 / 18',
+        traffic.maxPeds === 168 && traffic.sidewalkTarget === 64
+          && traffic.beachTarget === 28 && traffic.carTarget === 18,
         JSON.stringify({
           maxPeds: traffic.maxPeds,
           sidewalk: traffic.sidewalkTarget,
@@ -1135,16 +1135,16 @@ const TESTS = [
       );
       check(
         'test 10: the instanced crowd capacity follows MAX_PEDS',
-        traffic.crowd.capacity === 96 && Object.keys(traffic.crowd.meshes).every(
-          (name) => traffic.crowd.meshes[name].instanceMatrix.count === 96,
+        traffic.crowd.capacity === 168 && Object.keys(traffic.crowd.meshes).every(
+          (name) => traffic.crowd.meshes[name].instanceMatrix.count === 168,
         ),
         `capacity=${traffic.crowd.capacity}`,
       );
 
       const beachAtStart = traffic.peds.filter((ped) => ped.active && ped.mode === 'beach').length;
       check(
-        'test 10: the beach crowd seeds all 22 walkers',
-        beachAtStart === 22,
+        'test 10: the beach crowd seeds all 28 walkers',
+        beachAtStart === 28,
         `beach=${beachAtStart}`,
       );
 
@@ -1158,23 +1158,23 @@ const TESTS = [
       const beach = active.filter((ped) => ped.mode === 'beach').length;
       const slots = new Set(active.map((ped) => ped.slot));
       check(
-        'test 10: the sidewalk crowd reaches its 48-walker target',
-        sidewalk >= 48,
+        'test 10: the sidewalk crowd reaches its 64-walker target',
+        sidewalk >= 64,
         `sidewalk=${sidewalk}`,
       );
       check(
-        'test 10: the beach crowd stays at 22 while the sidewalks fill',
-        beach === 22,
+        'test 10: the beach crowd stays at 28 while the sidewalks fill',
+        beach === 28,
         `beach=${beach}`,
       );
       check(
         'test 10: no two pedestrians share a crowd slot',
-        slots.size === active.length && active.every((ped) => ped.slot >= 0 && ped.slot < 96),
+        slots.size === active.length && active.every((ped) => ped.slot >= 0 && ped.slot < 168),
         `active=${active.length} slots=${slots.size}`,
       );
       check(
-        'test 10: the live crowd never exceeds the 96 slot cap',
-        active.length <= 96,
+        'test 10: the live crowd never exceeds the 168 slot cap',
+        active.length <= 168,
         `active=${active.length}`,
       );
       check(
@@ -2284,7 +2284,7 @@ const TESTS = [
       const beachPeds = traffic.peds.filter((ped) => ped.active && ped.mode === 'beach');
       check(
         'test 17: all beach walkers stand on the visible sand',
-        beachPeds.length === 22 && beachPeds.every((ped) => ped.x >= shorelineX + 1 - 1e-6),
+        beachPeds.length === 28 && beachPeds.every((ped) => ped.x >= shorelineX + 1 - 1e-6),
         `count=${beachPeds.length} minX=${round(Math.min(...beachPeds.map((ped) => ped.x)))}`,
       );
       return results;
@@ -3221,6 +3221,159 @@ const TESTS = [
         JSON.stringify(returned ? { type: returned.type, x: returned.position.x, z: returned.position.z } : null),
       );
       check('test 24: the valet slot is clear after the return', parking.valet === null);
+      return results;
+    },
+  },
+  {
+    name: 'test 25: mall life follows the clock',
+    shot: 'mall-interior',
+    body: function mallLife() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const traffic = neon?.debug?.traffic;
+      const life = neon?.debug?.mallLife;
+      const mall = neon?.debug?.world?.mall;
+      const missing = [];
+      if (!neon) missing.push('window.__neon');
+      if (!traffic) missing.push('traffic');
+      if (!life || typeof life.update !== 'function' || typeof life.updatePed !== 'function') missing.push('mallLife');
+      if (!mall) missing.push('world.mall');
+      check('test 25: mall-life hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (!life || !traffic || !mall) return results;
+
+      life.update(0.1, 18 * 60);
+      const dusk = traffic.peds.filter((ped) => ped.active && ped.mode === 'mall').length;
+      check('test 25: dusk brings at least 20 shoppers', dusk >= 20, `mall=${dusk}`);
+
+      const seated = traffic.peds.filter((ped) => ped.active && ped.mode === 'mall' && ped.sitting);
+      check('test 25: at least four shoppers are sitting', seated.length >= 4, `seated=${seated.length}`);
+      const seats = seated.map((ped) => ped.seat);
+      check(
+        'test 25: no two shoppers share a seat',
+        seats.every((seat, index) => Boolean(seat) && seats.indexOf(seat) === index)
+          && seats.every((seat) => seat.occupant && seat.occupant.sitting === true),
+        JSON.stringify(seats.map((seat) => ({ x: seat?.x, z: seat?.z }))),
+      );
+      const seatedInMall = seated.every((ped) => ped.seat.x > mall.bounds.minX && ped.seat.x < mall.bounds.maxX
+        && ped.seat.z > mall.bounds.minZ && ped.seat.z < mall.bounds.maxZ);
+      check('test 25: every occupied chair is inside the mall', seatedInMall);
+
+      life.update(0.1, 2 * 60);
+      const night = traffic.peds.filter((ped) => ped.active && ped.mode === 'mall').length;
+      check('test 25: 02:00 leaves at most six shoppers', night <= 6, `mall=${night}`);
+      check(
+        'test 25: no chair holds a stale occupant after the shrink',
+        mall.seats.every((seat) => !seat.occupant || seat.occupant === 'player' || seat.occupant.active === true),
+        JSON.stringify(mall.seats.filter((seat) => seat.occupant && seat.occupant !== 'player' && !seat.occupant.active).map((seat) => seat.x)),
+      );
+      return results;
+    },
+  },
+  {
+    name: 'test 26: the mall robbery',
+    shot: 'mall-interior',
+    body: function mallRobbery() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const world = neon?.debug?.world;
+      const player = neon?.debug?.player;
+      const traffic = neon?.debug?.traffic;
+      const police = neon?.debug?.police;
+      const pickups = neon?.debug?.pickups;
+      const robbery = neon?.debug?.robbery;
+      const interactions = neon?.debug?.interactions;
+      const env = neon?.debug?.environment;
+      const mall = world?.mall;
+      const missing = [];
+      if (!neon) missing.push('window.__neon');
+      if (!world || !mall) missing.push('world.mall');
+      if (!player) missing.push('player');
+      if (!traffic) missing.push('traffic');
+      if (!police) missing.push('police');
+      if (!pickups) missing.push('pickups');
+      if (!robbery || !interactions) missing.push('robbery/interactions');
+      if (!env || typeof env.setClock !== 'function') missing.push('environment');
+      check('test 26: robbery hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      const key = (type, code) => window.dispatchEvent(new KeyboardEvent(type, {
+        code,
+        key: code.replace('Key', '').toLowerCase(),
+        bubbles: true,
+        cancelable: true,
+      }));
+
+      env.setClock(18 * 60);
+      neon.advance(1 / 60);
+      player.teleport(mall.register.x + 1.3, mall.register.z, Math.PI / 2, -Math.PI / 2);
+      neon.advance(1 / 60);
+      check(
+        'test 26: standing at the jewelry counter prompts ROB',
+        interactions.prompt?.action === 'rob',
+        JSON.stringify(interactions.prompt),
+      );
+
+      key('keydown', 'KeyE');
+      neon.advance(1 / 60);
+      key('keyup', 'KeyE');
+      check('test 26: E starts the robbery once', robbery.robbed === true);
+      check('test 26: the robbery raises three wanted stars', police.wanted === 3, `wanted=${police.wanted}`);
+
+      const guards = traffic.peds.filter((ped) => ped.guard && ped.active && !ped.dead);
+      check('test 26: two security guards spawn', guards.length === 2, `guards=${guards.length}`);
+      check(
+        'test 26: both guards are armed and hostile',
+        guards.length === 2 && guards.every((guard) => guard.armed === true && guard.hostile === true),
+        JSON.stringify(guards.map((guard) => ({ armed: guard.armed, hostile: guard.hostile }))),
+      );
+      check(
+        'test 26: both guards are inside the mall',
+        guards.length === 2 && guards.every((guard) => guard.x > mall.bounds.minX && guard.x < mall.bounds.maxX
+          && guard.z > mall.bounds.minZ && guard.z < mall.bounds.maxZ),
+        JSON.stringify(guards.map((guard) => ({ x: guard.x, z: guard.z }))),
+      );
+
+      const drop = neon.loot.items.find((item) => item.kind === 'cash'
+        && Math.hypot(item.x - mall.register.x, item.z - mall.register.z) < 3.5);
+      check(
+        'test 26: the cash drop sits at the counter and holds $650-950',
+        Boolean(drop) && drop.amount >= 650 && drop.amount <= 950,
+        JSON.stringify({ drop: drop ?? null, items: neon.loot.items }),
+      );
+      check('test 26: nearby pedestrians flee', neon.pedestrians.fleeing >= 1, `fleeing=${neon.pedestrians.fleeing}`);
+
+      const frozenCash = drop?.amount ?? 0;
+      key('keydown', 'KeyE');
+      neon.advance(1 / 60);
+      key('keyup', 'KeyE');
+      const guardsAgain = traffic.peds.filter((ped) => ped.guard && ped.active && !ped.dead).length;
+      check(
+        'test 26: a second E does not rob again',
+        robbery.robbed === true && guardsAgain === 2 && neon.loot.items.filter((item) => item.kind === 'cash').length === 1,
+        JSON.stringify({ guards: guardsAgain, cash: neon.loot.items.filter((item) => item.kind === 'cash').length }),
+      );
+
+      neon.advance(2);
+      const insideUnits = neon.police.unitList.filter((unit) => unit.x > mall.bounds.minX && unit.x < mall.bounds.maxX
+        && unit.z > mall.bounds.minZ && unit.z < mall.bounds.maxZ);
+      check('test 26: no police cruiser parks inside the mall', insideUnits.length === 0, JSON.stringify(insideUnits));
+
+      const guard = guards[0];
+      const lootBefore = neon.loot.count;
+      if (guard && !guard.dead) traffic.applyPlayerHit({ ped: guard, headshot: false }, 500);
+      check(
+        'test 26: a dead guard drops loot like any armed pedestrian',
+        Boolean(guard) && guard.dead === true && neon.loot.count === lootBefore + 1,
+        JSON.stringify({ dead: guard?.dead, before: lootBefore, after: neon.loot.count }),
+      );
       return results;
     },
   },
