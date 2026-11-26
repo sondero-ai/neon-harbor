@@ -263,6 +263,16 @@ export class GasStation {
     canopySign.rotation.y = Math.PI / 2;
     group.add(canopySign);
 
+    // Lit fascias on the other approaches: cars enter from the south and leave
+    // north, so the name must read from both ends of the service lane. The
+    // south and north planes share the east sign's geometry and material.
+    for (const [z, ry] of [[CANOPY.minZ - 0.32, Math.PI], [CANOPY.maxZ + 0.32, 0]]) {
+      const fascia = new THREE.Mesh(canopySign.geometry, canopySign.material);
+      fascia.position.set(cx, 4.5, z);
+      fascia.rotation.y = ry;
+      group.add(fascia);
+    }
+
     const kioskSign = signMesh({
       title: STATION_LABEL,
       sub: 'KIOSK · OPEN 24H',

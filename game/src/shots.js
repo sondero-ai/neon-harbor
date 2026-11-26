@@ -311,16 +311,16 @@ export const SHOTS = {
     objective: START_OBJECTIVE,
     toast: false,
   },
-  // The Solano Fuel forecourt from the road: a car on the pad and one
-  // approaching from the southern end of the service lane.
+  // The Solano Fuel forecourt from the south crosswalk: the pump car and the
+  // low-fuel car approaching up the service lane are both in frame.
   station: {
     name: 'station',
     mode: 'playing',
     time: 2.7,
     prewarm: 70,
     player: {
-      x: -84, z: 2.4, facing: -Math.PI / 2, cameraYaw: Math.PI / 2,
-      cameraPitch: 0.14, distance: 6.8,
+      x: -85.8, z: -22, facing: -0.9, cameraYaw: 2.24,
+      cameraPitch: 0.2, distance: 8,
     },
     objective: START_OBJECTIVE,
     toast: false,

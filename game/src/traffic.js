@@ -561,7 +561,12 @@ export class Traffic {
     const pz = player.position.z;
     for (const car of [...this.cars]) {
       if (car.removed) continue;
-      if (car.driver !== 'ai') continue;
+      if (car.driver !== 'ai') {
+        // A player who carjacks a car at a pump must free that pad at once:
+        // its station AI is gone, so the state machine would never release it.
+        this.gasStation?.releaseCar(car);
+        continue;
+      }
       const ai = car.ai;
       if (!ai) continue;
       // Remove a car that is not on its road grid: an ambient spawn from an

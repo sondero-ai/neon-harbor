@@ -99,7 +99,7 @@ driving detail is in [driving](docs/guide/driving.md).
   WebAudio engine, sirens and guns, plus the Audio row in the title and pause
   menus. [HUD, audio and settings →](docs/guide/hud-audio.md)
 - **Dependency-free builds and tests** — four screenshots, an overview GIF, a
-  bounty dossier and 378 end-to-end checks.
+  bounty dossier and 379 end-to-end checks.
   [Building](docs/guide/building.md) · [Testing](docs/guide/testing.md)
 
 ## Screenshots
@@ -132,7 +132,7 @@ tools are described in [building](docs/guide/building.md).
 | [The radio](docs/guide/radio.md) | stations, tracks, controls, wheel, fallbacks, persistence |
 | [HUD, audio and settings](docs/guide/hud-audio.md) | every HUD card, audio layers, volume/mute, quality |
 | [Serving, capture and the entry build](docs/guide/building.md) | serve, screenshots, GIF, `main.ts`, caps |
-| [Testing and verification](docs/guide/testing.md) | fuel, loot, radio, 378 E2E checks, media checks |
+| [Testing and verification](docs/guide/testing.md) | fuel, loot, radio, 379 E2E checks, media checks |
 | [Source map](docs/guide/source-map.md) | every game, tool, test and docs path |
 | [Music credits](MUSIC.md) | all eighteen tracks, artists, durations, licence note |
 
@@ -147,12 +147,12 @@ and lyrics are in [docs/audio/suno-radio-prompts.md](docs/audio/suno-radio-promp
 node --test test/fuel.test.mjs      # 3 tests
 node --test test/loot.test.mjs      # 4 tests
 node --test test/radio.test.mjs     # 5 tests
-node tools/test-npc-loot.mjs        # 378 end-to-end checks
+node tools/test-npc-loot.mjs        # 379 end-to-end checks
 MAKEFUN_OUTPUT_DIR=out node main.ts --check
 ```
 
 The last run passed all five checks: 3/3 fuel tests, 4/4 loot tests, 5/5 radio
-tests, 378/378 E2E checks and `check PASS` for the entry caps. The exact
+tests, 379/379 E2E checks and `check PASS` for the entry caps. The exact
 commands, the twenty-eight E2E groups and the media dimensions are in
 [testing](docs/guide/testing.md). Build and capture instructions are in
 [building](docs/guide/building.md).

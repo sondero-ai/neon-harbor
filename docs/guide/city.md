@@ -180,8 +180,8 @@ around a corner slides along the wall instead of clipping through it.
 ## Performance
 
 A typical 1280×720 frame in this build uses about **400 draw calls** at the
-chase, **395** at the daylight roadblock, **215** in the mall interior, **348**
-on the title, **406** in the Pier 9 heist still and **227** at the Solano Fuel
+chase, **395** at the daylight roadblock, **215** in the mall interior, **350**
+on the title, **406** in the Pier 9 heist still and **251** at the Solano Fuel
 station; headless Chrome on the build machine averaged 5.6–7.5 ms per frame
 across the shots. The pre-living-city base measured 433 draw calls and 6.7 ms
 on the same harness. Static glows share one instanced billboard field

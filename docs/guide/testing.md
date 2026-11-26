@@ -12,7 +12,7 @@ end-to-end suite. Run them from the repository root.
 node --test test/fuel.test.mjs     # 3 tests
 node --test test/loot.test.mjs     # 4 tests
 node --test test/radio.test.mjs    # 5 tests
-node tools/test-npc-loot.mjs       # 378 E2E checks
+node tools/test-npc-loot.mjs       # 379 E2E checks
 MAKEFUN_OUTPUT_DIR=out node main.ts --check
 ```
 
@@ -38,12 +38,12 @@ Checks the six-station order, the three unique tracks each, every file path
 against the prompt pack, the OGG headers and the 36 MB audio budget, and that
 `MUSIC.md` credits every track and the 2026-11-26 generation date. No browser.
 
-### End to end (`tools/test-npc-loot.mjs`, 378 checks)
+### End to end (`tools/test-npc-loot.mjs`, 379 checks)
 
 The harness serves `game/`, launches headless Chrome, drives the frozen
 `?shot=` scenes (`street`, `blockade`, `pier`, `mall-interior` and `station`)
 through `window.__neon`, and prints one `ok`/`not ok` line per check. The last
-run printed `PASS: all checks passed` with 378 `ok` lines. The twenty-eight
+run printed `PASS: all checks passed` with 379 `ok` lines. The twenty-eight
 groups are:
 
 1. **pedestrians** — chest hitbox, damage and death, the fall state, corpse
@@ -130,8 +130,9 @@ groups are:
     the player SERVICE quote and cash debit, the refusal and LOW FUEL toasts,
     an empty tank refusing throttle, a flagged NPC pull-in/pump/pull-out and
     rejoin, an unflagged pass, both pumps busy, a third flagged car skipping,
-    pump 1 filling its car, 60 simulated seconds with no lane deadlock and
-    removing a pump car freeing its slot.
+    pump 1 filling its car, 60 simulated seconds with no lane deadlock,
+    removing a pump car freeing its slot and a player carjack releasing the
+    pad it was on.
 28. **the station shot** — the registered `?shot=station` playing scene, a
     low-tank car staged on pad 0, a low-fuel car staged on the approach and
     live draw calls.
@@ -182,7 +183,7 @@ resolution and at 300 px; check for clipped text, overlaps and legibility.
 
 The capture reported the same draw calls on two consecutive runs: **400** at
 the chase, **395** at the daylight roadblock, **215** in the mall interior,
-**348** on the title, **406** in the heist still and **227** at the Solano Fuel
+**350** on the title, **406** in the heist still and **251** at the Solano Fuel
 station. The station's number is the real `?shot=station` page, not a target
 set in advance.
 
@@ -197,9 +198,7 @@ set in advance.
 - The station NPCs are tested on the `?shot=street` page with ambient traffic
   and pedestrians removed, so group 27 proves the forecourt flow itself, not
   every possible crowd interaction on the road.
-- The `?shot=station` camera is pinned west from `x = -84,z = 2.4`; the pump-0
-  car therefore sits partly behind the right HUD column in `station.jpg`, and
-  the approach car is outside that frame. Both are staged and checked live;
-  a different camera would be a composition change.
-- A station-owned car taken by the player keeps its pump slot reserved until
-  the station or the city resets; `reset()` clears every slot.
+- The `?shot=station` camera stands on the south crosswalk looking north-west,
+  so the pump-0 car and the approaching pickup are both in frame; the south
+  canopy fascia carries the lit name for that approach. The approach car's
+  rear is partly behind the left HUD column, and the hall is never entered.

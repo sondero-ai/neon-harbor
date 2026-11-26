@@ -3620,6 +3620,19 @@ const TESTS = [
         Boolean(doomedSlot) && doomedSlot.car === null && doomedSlot.phase === 'free',
         JSON.stringify(doomedSlot ? { car: Boolean(doomedSlot.car), phase: doomedSlot.phase } : null));
 
+      // Carjacking a station car frees its pad instead of reserving it forever.
+      const stolen = traffic.spawnLaneCar('sedan', 'z', 1, -81, -30, 11, { fuel: 0.2 });
+      let stolenSlot = null;
+      for (let i = 0; i < 240 && !stolenSlot; i += 1) {
+        neon.advance(0.1);
+        stolenSlot = station.slots.find((entry) => entry.car === stolen) ?? null;
+      }
+      player.enterVehicle(stolen);
+      neon.advance(1 / 60);
+      check('test 27: carjacking a pump car frees its slot',
+        Boolean(stolenSlot) && stolenSlot.car === null && player.driving === stolen,
+        JSON.stringify(stolenSlot ? { car: Boolean(stolenSlot.car), driving: player.driving === stolen } : null));
+
       return results;
     },
   },
