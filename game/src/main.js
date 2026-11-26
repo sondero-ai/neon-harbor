@@ -548,6 +548,7 @@ class Game {
       z: 21.2,
       yaw: -Math.PI / 2,
       color: 0x8c2f2f,
+      fuel: 0.62,
     });
     muscle.setDriver(null);
     const sedan = this.vehicles.spawn('sedan', {
@@ -555,6 +556,7 @@ class Game {
       z: 32.7,
       yaw: Math.PI / 2,
       color: 0xd9c9ad,
+      fuel: 0.88,
     });
     sedan.setDriver(null);
     const cruiser = this.vehicles.spawn('police', {
