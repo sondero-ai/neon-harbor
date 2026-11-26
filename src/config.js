@@ -64,7 +64,10 @@ export const CAMERA = {
   heightOffset: 0.82,
   lookHeight: 1.42,
   pitch: 0.17,
-  minPitch: -0.18,
+  // The camera orbits the chest at heightOffset 0.82, so a pitch of about
+  // -0.27 is the first angle that looks level; -0.18 never let the player aim
+  // above the street. The ground clip in clipCamera settles the real limit.
+  minPitch: -0.9,
   maxPitch: 1.02,
   sensitivity: 0.00225,
   damping: 11,
