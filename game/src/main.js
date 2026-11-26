@@ -18,7 +18,7 @@ import {
   districtAt,
   radioStationIndex,
 } from './config.js';
-import { CLOCK_MINUTES_PER_SECOND, Environment, SHOT_CLOCK, parseTimeParam } from './environment.js';
+import { CLOCK_MINUTES_PER_SECOND, Environment, parseTimeParam } from './environment.js';
 import { TrafficSignals } from './traffic-signals.js';
 import { World } from './world.js';
 import { Player } from './player.js';
@@ -56,6 +56,13 @@ import {
   updateRadioWheel,
 } from './main-radio.js';
 import { DEFAULT_TITLE_VIEW, STEP, byId, formatCash, setHidden } from './main-shared.js';
+import {
+  applyShot,
+  applyStageShot,
+  poseArmedPlayer,
+  stageChaseDrama,
+  stageDriveShot,
+} from './main-shots.js';
 
 const MAX_STEPS = 5;
 
@@ -275,6 +282,13 @@ class Game {
   toggleMute() { return toggleMute(this); }
   setVolumeLevel(value, options) { return setVolumeLevel(this, value, options); }
   changeVolume(delta) { return changeVolume(this, delta); }
+
+  // Deterministic shot staging (main-shots.js)
+  applyShot(shot) { return applyShot(this, shot); }
+  applyStageShot(shot) { return applyStageShot(this, shot); }
+  poseArmedPlayer(shot) { return poseArmedPlayer(this, shot); }
+  stageChaseDrama() { return stageChaseDrama(this); }
+  stageDriveShot(drive) { return stageDriveShot(this, drive); }
 
   // ---------------------------------------------------------------- setup
 
@@ -762,225 +776,6 @@ class Game {
       z + Math.cos(t * 0.86) * dz,
     );
     this.camera.lookAt(view.target[0], view.target[1], view.target[2]);
-  }
-
-  // ---------------------------------------------------------------- deterministic shots
-
-  applyShot(shot) {
-    this.shot = shot;
-    // A capture should look the same on a machine that last played on low.
-    if (this.quality !== 'high') {
-      this.quality = 'high';
-      this.applyQualityVisuals(true);
-      this.refreshQualityLabel();
-    }
-    this.simTime = shot.time ?? 0;
-    this.environment.setClock(this.timeOverride ?? SHOT_CLOCK);
-    this.environment.apply(this.environmentTargets(), { force: true });
-    this.hud.suppressToasts = true;
-    this.hud.toast = null;
-    const steps = Math.max(0, shot.prewarm ?? 0);
-
-    if (shot.mode === 'title') {
-      this.titleView = shot.titleCamera ?? DEFAULT_TITLE_VIEW;
-      this.enterTitle();
-      // A screenshot must not change with whatever save the machine happens to
-      // hold, so the title capture always shows the fresh-slot menu.
-      const continueButton = byId('btn-continue');
-      if (continueButton) continueButton.disabled = true;
-      if (this.ui.continueNote) this.ui.continueNote.textContent = 'No save yet';
-      for (let i = 0; i < steps; i += 1) this.tick(STEP);
-    } else {
-      this.down = null;
-      this.police.resetAfterDown();
-      this.pickups.reset();
-      this.missions.prepareShot();
-      this.activities.suspended = true;
-      this.hud.reward = null;
-      this.hud.ending = null;
-      this.enterPlaying({ lock: false, toast: shot.toast === true });
-      this.objective = shot.objective ?? START_OBJECTIVE;
-      if (this.objective.marker) {
-        this.world.setObjectiveMarker(this.objective.marker.x, this.objective.marker.z);
-      }
-      this.player.health = PLAYER.health;
-      this.player.armor = PLAYER.armor;
-      this.player.cash = PLAYER.cash;
-      this.player.wanted = 0;
-      this.player.mission = 0;
-      this.player.playSeconds = 0;
-      this.player.dead = false;
-      this.player.inputBlocked = false;
-      this.player.humanoid.group.rotation.z = 0;
-      this.player.gun.visible = false;
-      if (shot.drive) {
-        this.police.clearUnits();
-        this.vehicles.clear();
-        this.traffic.reset({ spawnBeach: false });
-        this.stageDriveShot(shot.drive);
-        if (shot.chase) this.police.stageChase(shot.chase, this.player.driving);
-        this.player.updateCamera(this.camera, 0, true);
-        for (let i = 0; i < steps; i += 1) this.tick(STEP);
-        if (Number.isFinite(shot.health)) this.player.health = shot.health;
-        if (Number.isFinite(shot.armor)) this.player.armor = shot.armor;
-        this.player.damageFlash = 0;
-        if (shot.chase) this.stageChaseDrama();
-        this.hud.lastHealth = this.player.health;
-        this.hud.lastArmor = this.player.armor;
-        this.hud.healthFlash = 0;
-        this.hud.armorFlash = 0;
-      } else {
-        const pose = shot.player;
-        this.player.teleport(pose.x, pose.z, pose.facing, pose.cameraYaw);
-        this.player.cameraPitch = pose.cameraPitch;
-        this.player.cameraDistance = pose.distance;
-        this.resetCityLife({ spawnBeach: shot.stage !== 'heist' });
-        if (shot.police) this.police.stageChase(shot.police, this.player);
-        this.player.updateCamera(this.camera, 0, true);
-        for (let i = 0; i < steps; i += 1) this.tick(STEP);
-      }
-      if (shot.stage) this.applyStageShot(shot);
-      // These final poses are applied after the simulation steps so the
-      // screenshot is deterministic: the helicopter, dialogue and bodywork
-      // stay exactly where the shot asked for them.
-      if (shot.air) this.police.stageAir(shot.air);
-      if (shot.dialogue) this.missions.subtitle = { ...shot.dialogue, life: 999 };
-      if (shot.station) this.gasStation?.stageShot(shot.station);
-      if (Number.isFinite(shot.health)) this.player.health = shot.health;
-      if (Number.isFinite(shot.armor)) this.player.armor = shot.armor;
-      this.hud.lastHealth = this.player.health;
-      this.hud.lastArmor = this.player.armor;
-      this.hud.healthFlash = 0;
-      this.hud.armorFlash = 0;
-      if (shot.weapons === 'smg') {
-        this.player.weapons.smg.owned = true;
-        this.player.weapons.smg.ammo = 32;
-        this.player.weapons.smg.reserve = 96;
-        this.player.weaponKey = 'smg';
-        this.player.syncGunModel();
-      }
-      if (Number.isFinite(shot.condition) && this.player.driving) {
-        this.player.driving.condition = shot.condition;
-      }
-      if (shot.armed) this.poseArmedPlayer(shot);
-      if (shot.drama) this.stageChaseDrama();
-    }
-
-    this.shotLocked = true;
-    this.lastHudState = this.hudState();
-    if (this.hud.visible) this.hud.update(0, this.lastHudState);
-    this.updateLookHint();
-    this.renderer.render(this.scene, this.camera);
-  }
-
-  applyStageShot(shot) {
-    this.missions.stageShot(shot.stage);
-    this.objective = this.missions.objective;
-    this.world.setObjectiveMarker(this.objective.marker.x, this.objective.marker.z);
-    if (this.world.objectiveMarker) this.world.objectiveMarker.group.visible = false;
-    if (Number.isFinite(shot.health)) this.player.health = shot.health;
-    if (Number.isFinite(shot.armor)) this.player.armor = shot.armor;
-    this.player.aiming = false;
-    this.player.humanoid.aiming = true;
-    this.player.gun.visible = true;
-    this.player.facing = shot.player?.facing ?? this.player.cameraYaw - Math.PI;
-    this.player.humanoid.setFacing(this.player.facing);
-    for (let i = 0; i < 20; i += 1) this.player.humanoid.update(1 / 60, 0, false);
-    this.player.humanoid.aiming = false;
-    if (shot.camera) {
-      const [x, y, z] = shot.camera.position;
-      this.camera.position.set(x, y, z);
-      this.camera.fov = CAMERA.fov;
-      this.camera.updateProjectionMatrix();
-      this.camera.lookAt(shot.camera.target[0], shot.camera.target[1], shot.camera.target[2]);
-    } else {
-      this.player.updateCamera(this.camera, 0, true);
-    }
-    this.effects.update(0.45, this.camera);
-    this.missions.stageShotDrama(shot.stage);
-    this.player.aiming = true;
-    this.player.damageFlash = 0.34;
-    this.hud.lastHealth = this.player.health;
-    this.hud.lastArmor = this.player.armor;
-    this.hud.healthFlash = 0;
-    this.hud.armorFlash = 0;
-  }
-
-  poseArmedPlayer(shot) {
-    const facing = shot.player?.facing ?? this.player.facing;
-    this.player.aiming = true;
-    this.player.humanoid.aiming = true;
-    this.player.gun.visible = true;
-    this.player.facing = facing;
-    this.player.humanoid.setFacing(facing);
-    for (let i = 0; i < 20; i += 1) this.player.humanoid.update(1 / 60, 0, false);
-    this.player.humanoid.aiming = false;
-    this.player.aiming = false;
-    this.player.gun.visible = true;
-    this.player.damageFlash = 0.34;
-    this.hud.lastHealth = this.player.health;
-    this.hud.lastArmor = this.player.armor;
-    this.hud.healthFlash = 0;
-    this.hud.armorFlash = 0;
-  }
-
-  stageChaseDrama() {
-    let best = null;
-    let bestFacing = -Infinity;
-    for (const unit of this.police.units) {
-      if (!unit.car || unit.car.removed) continue;
-      const car = unit.car;
-      const dx = this.player.position.x - car.position.x;
-      const dz = this.player.position.z - car.position.z;
-      const length = Math.hypot(dx, dz) || 1;
-      const facing = (Math.sin(car.yaw) * dx + Math.cos(car.yaw) * dz) / length;
-      if (facing > bestFacing) {
-        bestFacing = facing;
-        best = car;
-      }
-    }
-    if (!best) return;
-    const forwardX = Math.sin(best.yaw);
-    const forwardZ = Math.cos(best.yaw);
-    const muzzle = new THREE.Vector3(
-      best.position.x + forwardX * (best.halfLength + 0.35),
-      best.position.y + 1.08,
-      best.position.z + forwardZ * (best.halfLength + 0.35),
-    );
-    this.effects.smokePuff(best.position.x + forwardX * 1.4, best.position.y + 0.9, best.position.z + forwardZ * 1.4, {
-      scale: 2.2,
-      life: 2.2,
-      color: 0x5c5156,
-      rise: 1.2,
-    });
-    this.effects.update(0.42, null);
-    this.effects.tracer(muzzle, new THREE.Vector3(this.player.position.x, this.player.position.y + 0.9, this.player.position.z), 0xffd08a);
-    this.effects.muzzle(muzzle.x, muzzle.y, muzzle.z, 0xffd79a);
-    this.player.damageFlash = 0.55;
-  }
-
-  stageDriveShot(drive) {
-    const car = this.vehicles.spawn(drive.type ?? 'muscle', {
-      x: drive.x,
-      z: drive.z,
-      yaw: drive.yaw,
-      color: drive.color,
-    });
-    this.player.enterVehicle(car);
-    const speed = drive.speed ?? 18;
-    car.velocity.set(Math.sin(drive.yaw) * speed, 0, Math.cos(drive.yaw) * speed);
-    car.controls.throttle = 0;
-    car.controls.brake = 0;
-    car.controls.steer = 0;
-    car.controls.handbrake = false;
-    this.player.drivePitch = drive.cameraPitch ?? 0.13;
-    this.player.driveOrbitYaw = drive.cameraOrbit ?? 0;
-    this.player.driveLookHold = 0;
-    this.player.syncFromVehicle();
-    this.effects.registerVehicle(car);
-    this.traffic.stageDrive(car);
-    this.world.focusAt(car.position.x, car.position.z);
-    this.player.updateView(this.camera, 0, true);
   }
 
   // ---------------------------------------------------------------- loop
