@@ -372,6 +372,9 @@ class Game {
   }
 
   startNewGame() {
+    // Leaving the title (or a QA new game from a shot page) ends capture mode,
+    // so the clock and simulation run normally from here.
+    this.shot = null;
     this.hud.suppressToasts = false;
     this.hud.reward = null;
     this.hud.ending = null;
@@ -415,6 +418,7 @@ class Game {
   startContinue() {
     const save = SaveStore.load();
     if (!save) return;
+    this.shot = null;
     this.hud.suppressToasts = false;
     this.hud.reward = null;
     this.hud.ending = null;
@@ -1270,6 +1274,14 @@ try {
           game.signals.update(Number(elapsed) || 0, true);
           return game.signals.state;
         },
+      };
+    },
+    get city() {
+      return {
+        blocks: game.world.blocks,
+        buildings: game.world.buildings.length,
+        streetlights: game.world.streetlightCount,
+        beacons: game.world.beacons.length,
       };
     },
     get story() {

@@ -1396,6 +1396,137 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 13: living clock',
+    shot: 'street',
+    body: function livingClock() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const env = neon && neon.debug && neon.debug.environment;
+      const debug = neon && neon.debug;
+      const missing = [];
+      if (!env || typeof env.setClock !== 'function') missing.push('environment.setClock');
+      if (!debug || !debug.renderer || !debug.effects || !debug.vehicles || !debug.signals) {
+        missing.push('environment targets');
+      }
+      if (!neon || !neon.city || !neon.time) missing.push('__neon.city/__neon.time');
+      check('test 13: clock hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      check(
+        'test 13: the expanded city is 81 blocks',
+        neon.city.blocks === 81,
+        `blocks=${neon.city.blocks}`,
+      );
+      const shotTime = neon.time;
+      check(
+        'test 13: a capture pins 23:41 night at the two-second minute',
+        shotTime.clock === '23:41' && shotTime.period === 'night' && shotTime.rate === 0.5,
+        JSON.stringify({ clock: shotTime.clock, period: shotTime.period, rate: shotTime.rate }),
+      );
+
+      const apply = () => env.apply({
+        scene: neon.scene,
+        renderer: debug.renderer,
+        world: debug.world,
+        effects: debug.effects,
+        vehicles: debug.vehicles,
+        signals: debug.signals,
+      }, { force: true });
+      const world = debug.world;
+      const cases = [
+        [6 * 60, 'dawn'],
+        [12 * 60, 'day'],
+        [18 * 60, 'dusk'],
+        [23 * 60, 'night'],
+      ];
+      const rows = [];
+      for (const [minutes, want] of cases) {
+        env.setClock(minutes);
+        apply();
+        const time = neon.time;
+        rows.push({
+          minutes,
+          want,
+          period: time.period,
+          window: time.palette.window,
+          street: time.palette.street,
+          stars: time.palette.stars,
+          sun: time.palette.sunIntensity,
+          sky: world.skyA.material.map === world.skyTextures[want],
+        });
+      }
+      const rowFor = (name) => rows.find((row) => row.want === name);
+      check(
+        'test 13: all four periods come from the clock',
+        rows.every((row) => row.period === row.want),
+        JSON.stringify(rows.map((row) => `${row.minutes}:${row.period}`)),
+      );
+      check(
+        'test 13: each period swaps in its own sky texture',
+        rows.every((row) => row.sky === true),
+        JSON.stringify(rows.map((row) => row.sky)),
+      );
+      check(
+        'test 13: day is bright with no lamps or stars',
+        rowFor('day').sun > 2 && rowFor('day').window <= 0.2
+          && rowFor('day').street === 0 && rowFor('day').stars === 0,
+        JSON.stringify(rowFor('day')),
+      );
+      check(
+        'test 13: night is full window light, stars and moon',
+        rowFor('night').window === 1 && rowFor('night').stars >= 0.85
+          && neon.time.palette.moon === 1,
+        JSON.stringify({ ...rowFor('night'), moon: neon.time.palette.moon }),
+      );
+      check(
+        'test 13: dawn and dusk are partial-light states',
+        rowFor('dawn').window > 0.4 && rowFor('dawn').window < 0.8
+          && rowFor('dusk').window > 0.4 && rowFor('dusk').window < 0.9,
+        JSON.stringify({ dawn: rowFor('dawn').window, dusk: rowFor('dusk').window }),
+      );
+
+      neon.newGame();
+      const startClock = neon.time.clock;
+      neon.advance(30);
+      const advanced = neon.time.clock;
+      neon.saveGame();
+      env.setClock(12 * 60);
+      apply();
+      const beforeContinue = neon.time.clock;
+      neon.continueGame();
+      const restored = neon.time.clock;
+      check(
+        'test 13: a New Game starts at 18:00',
+        startClock === '18:00',
+        `start=${startClock}`,
+      );
+      check(
+        'test 13: thirty real seconds move the clock fifteen minutes',
+        advanced === '18:15',
+        `advanced=${advanced}`,
+      );
+      check(
+        'test 13: Continue restores the saved minute',
+        beforeContinue === '12:00' && restored === '18:15',
+        JSON.stringify({ beforeContinue, restored }),
+      );
+
+      const dayBefore = neon.time.day;
+      env.setClock(23 * 60 + 50);
+      neon.advance(30);
+      check(
+        'test 13: crossing midnight rolls the day counter',
+        neon.time.clock === '00:05' && neon.time.day === dayBefore + 1,
+        JSON.stringify({ clock: neon.time.clock, day: neon.time.day, dayBefore }),
+      );
+      return results;
+    },
+  },
 ];
 
 async function main() {

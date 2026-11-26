@@ -165,7 +165,9 @@ export function parseTimeParam(search = window.location.search) {
 }
 
 export function clockString(minutes) {
-  const total = Math.floor(wrap(minutes)) % DAY_MINUTES;
+  // The clock accrues 0.00833 min per tick; rounding keeps a full 30 s of real
+  // time reading as fifteen minutes instead of 14:59.99.
+  const total = Math.round(wrap(minutes)) % DAY_MINUTES;
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 

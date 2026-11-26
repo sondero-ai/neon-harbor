@@ -156,6 +156,7 @@ export class World {
     this.boats = [];
     this.landmarks = {};
     this.rng = makeRng(SEED ^ 0x4a17);
+    this.blocks = BLOCK_CENTERS_X.length * BLOCK_CENTERS_Z.length;
     this.glowField = new GlowField(scene);
     this.streetGlowIndices = [];
     this.pierGlowIndices = [];
