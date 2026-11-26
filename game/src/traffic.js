@@ -546,7 +546,10 @@ export class Traffic {
       // older build, or one knocked onto the sand. It would otherwise queue
       // at a traffic signal that does not exist on the beach.
       const laneSet = ai.axis === 'x' ? ROADS_Z : ROADS_X;
-      if (!laneSet.includes(ai.line) || car.position.x < WORLD.cityMinX - 1) {
+      const offGrid = !laneSet.includes(ai.line) || car.position.x < WORLD.cityMinX - 1;
+      const blockedZone = typeof this.world.vehicleBlocked === 'function'
+        && this.world.vehicleBlocked(car.position.x, car.position.z, false);
+      if (offGrid || blockedZone) {
         this.removeCar(car);
         continue;
       }
@@ -832,9 +835,19 @@ export class Traffic {
   pickBeachTarget(ped) {
     const anchorOnPier = this.world.groundHeightAt(ped.anchor.x, ped.anchor.z) > 1;
     if (anchorOnPier) {
+      // The deck is now full of solid props. Re-roll a target that lands in
+      // the shack, a bench, a barrel, a crate or a railing rather than
+      // steering a walker into it.
+      for (let attempt = 0; attempt < 24; attempt += 1) {
+        const x = clamp(ped.anchor.x + this.rng.range(-7, 7), WORLD.pier.minX + 3, WORLD.pier.maxX - 3);
+        const z = clamp(ped.anchor.z + this.rng.range(-3.5, 3.5), WORLD.pier.z - WORLD.pier.halfWidth + 2, WORLD.pier.z + WORLD.pier.halfWidth - 2);
+        if (this.world.collides(x, z, 0.3)) continue;
+        ped.target = { x, z };
+        return;
+      }
       ped.target = {
-        x: clamp(ped.anchor.x + this.rng.range(-7, 7), WORLD.pier.minX + 3, WORLD.pier.maxX - 3),
-        z: clamp(ped.anchor.z + this.rng.range(-3.5, 3.5), WORLD.pier.z - WORLD.pier.halfWidth + 2, WORLD.pier.z + WORLD.pier.halfWidth - 2),
+        x: clamp(ped.anchor.x, WORLD.pier.minX + 3, WORLD.pier.maxX - 3),
+        z: clamp(ped.anchor.z, WORLD.pier.z - WORLD.pier.halfWidth + 2, WORLD.pier.z + WORLD.pier.halfWidth - 2),
       };
       return;
     }

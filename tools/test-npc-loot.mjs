@@ -2715,6 +2715,131 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 21: pier is pedestrian-only',
+    shot: 'pier',
+    body: function pierOnly() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const world = neon?.debug?.world;
+      const vehicles = neon?.debug?.vehicles;
+      const police = neon?.debug?.police;
+      const traffic = neon?.debug?.traffic;
+      const player = neon?.debug?.player;
+      const missions = neon?.debug?.missions;
+      const deck = { minX: -316, maxX: -172, z: 70, halfWidth: 9, rampMinX: -172, rampMaxX: -156 };
+      const missing = [];
+      if (!neon) missing.push('window.__neon');
+      if (!world || typeof world.collides !== 'function') missing.push('world.collides');
+      if (!world || typeof world.vehicleBlocked !== 'function') missing.push('world.vehicleBlocked');
+      if (!vehicles || typeof vehicles.spawn !== 'function') missing.push('vehicles.spawn');
+      if (!police || typeof police.spawnCruiserAt !== 'function') missing.push('police.spawnCruiserAt');
+      if (!traffic || typeof traffic.pickBeachTarget !== 'function') missing.push('traffic.pickBeachTarget');
+      if (!missions) missing.push('__neon.debug.missions');
+      if (!neon || !neon.shots) missing.push('__neon.shots');
+      check('test 21: pier hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (!world || typeof world.collides !== 'function' || typeof world.vehicleBlocked !== 'function') return results;
+
+      check('test 21: the bait shack centre is solid', world.collides(-188, 66, 0.3) === true, 'shack is walk-through');
+      for (const x of [-298, -274, -250, -226, -202]) {
+        check(`test 21: the bench at x ${x} is solid`, world.collides(x, 63.1, 0.3) === true, 'bench is walk-through');
+      }
+      for (const x of [-282, -255, -228, -201]) {
+        check(`test 21: the barrel at x ${x} is solid`, world.collides(x, 76.9, 0.3) === true, 'barrel is walk-through');
+      }
+      const crates = world.pierCrates ?? [];
+      check('test 21: the pier registers its twelve crates', crates.length === 12, `crates=${crates.length}`);
+      let crateSolid = crates.length === 12;
+      for (const crate of crates) {
+        if (world.collides(crate.x, crate.z, 0.3) !== true) crateSolid = false;
+      }
+      check('test 21: every crate is solid', crateSolid, JSON.stringify(crates.map((crate) => ({ x: crate.x, z: crate.z }))));
+      check('test 21: the north railing is solid', world.collides(-280, deck.z + deck.halfWidth - 0.4, 0.3) === true, 'railing is walk-through');
+      check('test 21: the south railing is solid', world.collides(-280, deck.z - deck.halfWidth + 0.4, 0.3) === true, 'railing is walk-through');
+      check('test 21: the open deck centre stays clear', world.collides(-280, 70, 0.3) === false, 'a prop sits on the open deck');
+
+      check('test 21: the deck blocks vehicles', world.vehicleBlocked(-280, 70, false) === true);
+      check('test 21: the deck blocks a player-driven car too', world.vehicleBlocked(-280, 70, true) === true);
+      check('test 21: the ramp blocks vehicles', world.vehicleBlocked(-164, 70, false) === true);
+      check('test 21: a city road is drivable', world.vehicleBlocked(-135, 27, false) === false);
+      check('test 21: sand blocks AI vehicles', world.vehicleBlocked(-200, 0, false) === true);
+      check('test 21: sand stays drivable for the player', world.vehicleBlocked(-200, 0, true) === false);
+
+      if (vehicles && typeof vehicles.spawn === 'function') {
+        const sedan = vehicles.spawn('sedan', { x: -164, z: 70, yaw: Math.PI / 2 });
+        check('test 21: a sedan on the ramp cannot reach the deck', sedan.collidesAt(-280, 70, world) === true, 'collidesAt(deck) is false');
+        check('test 21: the same sedan can drive a city road', sedan.collidesAt(-135, 27, world) === false, 'collidesAt(road) is true');
+        vehicles.remove(sedan);
+      }
+
+      if (police && typeof police.spawnCruiserAt === 'function') {
+        const officersBefore = police.officers.filter((officer) => !officer.removed).length;
+        police.clearUnits();
+        police.clearOfficers();
+        police.staged = true;
+        police.wanted = 3;
+        const unit = police.spawnCruiserAt(-235, 20, 0, 'pursue', 'UNIT 99');
+        const distance = player ? Math.hypot(-250 - player.position.x, 70 - player.position.z) : 0;
+        police.update(0.5, 5);
+        const officersAfter = police.officers.filter((officer) => !officer.removed).length;
+        check(
+          'test 21: a cruiser blocked at the shoreline force-dismounts its officers',
+          Boolean(unit) && unit.deployed === true && officersAfter > 0,
+          `deployed=${unit?.deployed} officers ${officersBefore} -> ${officersAfter} distance=${distance.toFixed(1)}`,
+        );
+        police.staged = false;
+      }
+
+      if (missions?.pierHeist) {
+        const positions = [
+          ...missions.pierHeist.crates.map((entry) => ({ kind: 'crate', x: entry[0], z: entry[1] })),
+          ...missions.pierHeist.spawns.map((entry) => ({ kind: 'enemy', x: entry.x, z: entry.z })),
+        ];
+        const blocked = positions.filter((entry) => world.collides(entry.x, entry.z, 0.3));
+        check(
+          'test 21: every heist crate and enemy stands clear of the pier colliders',
+          positions.length >= 18 && blocked.length === 0,
+          JSON.stringify(blocked),
+        );
+      } else {
+        check('test 21: the pier heist positions are exposed', false, 'missions.pierHeist missing');
+      }
+
+      if (traffic && typeof traffic.pickBeachTarget === 'function') {
+        const ped = traffic.spawnPed({ x: -280, z: 70, yaw: 0, mode: 'beach', anchor: { x: -280, z: 70 } });
+        let bad = null;
+        if (!ped) bad = 'spawnPed returned null';
+        for (let i = 0; i < 50 && ped && !bad; i += 1) {
+          traffic.pickBeachTarget(ped);
+          const inside = ped.target.x >= deck.minX + 3 && ped.target.x <= deck.maxX - 3
+            && Math.abs(ped.target.z - deck.z) <= deck.halfWidth - 2;
+          if (!inside || world.collides(ped.target.x, ped.target.z, 0.3)) {
+            bad = JSON.stringify(ped.target);
+          }
+        }
+        check('test 21: fifty pier wander targets all land on the open deck', bad === null, String(bad || ''));
+        if (ped) traffic.despawnPed(ped);
+      }
+
+      if (neon?.shots?.heist?.police?.units) {
+        const units = neon.shots.heist.police.units;
+        const bad = units.filter((unit) => world.vehicleBlocked(unit.x, unit.z, false));
+        check(
+          'test 21: the heist shot cruisers sit off the blocked pier',
+          units.length === 2 && bad.length === 0,
+          JSON.stringify(bad),
+        );
+      }
+
+      const strayCars = vehicles ? vehicles.list.filter((car) => car.driver === 'ai' && (car.position.x < -142 || world.vehicleBlocked(car.position.x, car.position.z, false))) : [];
+      check('test 21: no ambient car starts on the sand or the pier', strayCars.length === 0, JSON.stringify(strayCars.map((car) => ({ x: car.position.x, z: car.position.z }))));
+      return results;
+    },
+  },
 ];
 
 async function main() {

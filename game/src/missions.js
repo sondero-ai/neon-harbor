@@ -15,6 +15,26 @@ const TRIGGER_RADIUS = 3.3;
 const SAFEHOUSE = { x: -71.5, z: 36.6 };
 const MOTOR_SHOP = { x: 162, z: 18.2 };
 
+// Pier 9 staging. The deck is pedestrian-only and its props are solid, so the
+// heist crate and enemies stand on the open planks rather than in the shack,
+// the benches or a sampled crate. The E2E suite validates every point against
+// world.colliders.
+const PIER_HEIST_CRATES = [
+  [-185, 70, 1.2], [-193, 75, 1.0], [-201, 62, 1.05], [-209, 77, 0.9],
+  [-218, 64, 1.15], [-226, 75, 1.0], [-236, 63, 0.9], [-242, 77, 1.2],
+  [-249, 66, 1.0], [-255, 74, 0.9],
+];
+const PIER_HEIST_SPAWNS = [
+  { x: -196, z: 66, health: 115 },
+  { x: -199, z: 70, health: 115 },
+  { x: -212, z: 69, health: 120 },
+  { x: -221, z: 65, health: 115 },
+  { x: -228, z: 75, health: 125 },
+  { x: -238, z: 68, health: 120 },
+  { x: -246, z: 73, health: 125 },
+  { x: -254, z: 70, health: 280, boss: true, name: 'Aurelio', damage: 13, speed: 2.2 },
+];
+
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const pad2 = (value) => String(value).padStart(2, '0');
 const distance2 = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
@@ -462,6 +482,9 @@ export class Missions {
     this.retryGrace = 0;
     this.materials = buildThugMaterials();
     this.flameTexture = makeFlameTexture();
+    // Read-only staging data for the E2E suite: every point must stay clear of
+    // the pier's solid props.
+    this.pierHeist = { crates: PIER_HEIST_CRATES, spawns: PIER_HEIST_SPAWNS };
     this.objective = null;
     this.setIdleObjective();
   }
@@ -801,23 +824,8 @@ export class Missions {
     this.player.grantWeapon('smg', 160);
     this.player.weapons.smg.reserve = Math.max(this.player.weapons.smg.reserve, 96);
     this.player.selectWeapon('smg');
-    const crates = [
-      [-188, 65, 1.2], [-193, 75, 1.0], [-201, 62, 1.05], [-209, 77, 0.9],
-      [-218, 64, 1.15], [-226, 75, 1.0], [-236, 63, 0.9], [-242, 77, 1.2],
-      [-249, 66, 1.0], [-255, 74, 0.9],
-    ];
-    for (const [x, z, scale] of crates) this.addCrate(x, z, scale);
-    const spawns = [
-      { x: -196, z: 66, health: 115 },
-      { x: -204, z: 74, health: 115 },
-      { x: -212, z: 69, health: 120 },
-      { x: -221, z: 65, health: 115 },
-      { x: -228, z: 75, health: 125 },
-      { x: -238, z: 68, health: 120 },
-      { x: -246, z: 73, health: 125 },
-      { x: -254, z: 70, health: 280, boss: true, name: 'Aurelio', damage: 13, speed: 2.2 },
-    ];
-    for (const spec of spawns) this.enemies.push(new Thug(this.scene, this.world, this.materials, spec, this.enemies.length));
+    for (const [x, z, scale] of PIER_HEIST_CRATES) this.addCrate(x, z, scale);
+    for (const spec of PIER_HEIST_SPAWNS) this.enemies.push(new Thug(this.scene, this.world, this.materials, spec, this.enemies.length));
     this.active.needed = this.enemies.length;
     this.setObjective({
       title: 'Clear Pier 9',

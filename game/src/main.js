@@ -28,7 +28,7 @@ import { Traffic } from './traffic.js';
 import { Input } from './input.js';
 import { Hud } from './hud.js';
 import { SaveStore } from './save.js';
-import { readShot } from './shots.js';
+import { SHOTS, readShot } from './shots.js';
 import { Effects } from './effects.js';
 import { AudioSystem } from './audio.js';
 import { RadioPlayer } from './radio.js';
@@ -1319,6 +1319,11 @@ try {
     },
     get shot() {
       return game.shot?.name ?? null;
+    },
+    // The staged shot table, read-only, so the E2E suite can validate a frozen
+    // composition (cruiser placement, crowd targets) without a screenshot.
+    get shots() {
+      return SHOTS;
     },
     get player() {
       return {

@@ -751,10 +751,12 @@ export class Vehicle {
       [this.halfWidth, -this.halfLength * 0.82],
       [-this.halfWidth, -this.halfLength * 0.82],
     ];
+    const isPlayer = this.driver === 'player';
     for (const [side, forward] of probes) {
       const px = x + forwardX * forward + sideX * side;
       const pz = z + forwardZ * forward + sideZ * side;
       if (world.collides(px, pz, 0.2)) return true;
+      if (typeof world.vehicleBlocked === 'function' && world.vehicleBlocked(px, pz, isPlayer)) return true;
     }
     return false;
   }

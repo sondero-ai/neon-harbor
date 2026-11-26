@@ -1890,9 +1890,26 @@ export class World {
       }
     }
 
+    // The pier is pedestrian-only, so every prop, bench, barrel, crate and
+    // railing gets a real collider. Pedestrians, officers and mission enemies
+    // all resolve against the same list, and Vehicle.collidesAt refuses the
+    // whole deck through World.vehicleBlocked.
+    const pierCollider = (cx, cz, width, depth, height = 1.2) => {
+      this.colliders.push({
+        kind: 'prop',
+        minX: cx - width / 2,
+        maxX: cx + width / 2,
+        minZ: cz - depth / 2,
+        maxZ: cz + depth / 2,
+        minY: 0,
+        maxY: DECK.deckY + height,
+      });
+    };
+
     // Crates, benches, barrels and a small bait shack.
     const propParts = [];
     const propRng = makeRng(0xc4a7);
+    this.pierCrates = [];
     for (let i = 0; i < 12; i += 1) {
       const x = propRng.range(DECK.minX + 8, DECK.maxX - 12);
       const side = propRng.chance(0.5) ? -1 : 1;
@@ -1902,6 +1919,8 @@ export class World {
       if (propRng.chance(0.35)) {
         addBox(propParts, size * 0.8, size * 0.8, size * 0.8, x + 0.2, DECK.deckY + size * 1.35, z - 0.1, 0x6f4a35, { ry: propRng.range(0, 1) });
       }
+      this.pierCrates.push({ x, z, size });
+      pierCollider(x, z, size, size, size + 0.4);
     }
     for (let i = 0; i < 5; i += 1) {
       const x = DECK.minX + 18 + i * 24;
@@ -1909,11 +1928,13 @@ export class World {
       addBox(propParts, 2.2, 0.16, 0.62, x, DECK.deckY + 0.55, z, 0x603f2f);
       addBox(propParts, 0.14, 0.5, 0.5, x - 0.8, DECK.deckY + 0.27, z, 0x3f2b22);
       addBox(propParts, 0.14, 0.5, 0.5, x + 0.8, DECK.deckY + 0.27, z, 0x3f2b22);
+      pierCollider(x, z, 2.2, 0.62, 0.8);
     }
     for (let i = 0; i < 4; i += 1) {
       const x = DECK.minX + 34 + i * 27;
       const z = DECK.z + DECK.halfWidth - 2.1;
       addCylinder(propParts, 0.42, 0.48, 1.1, 9, x, DECK.deckY + 0.55, z, 0x76513b);
+      pierCollider(x, z, 0.9, 0.9, 1.1);
     }
     const shackX = -188;
     const shackZ = DECK.z - 4;
@@ -1921,6 +1942,17 @@ export class World {
     addBox(propParts, 6.8, 0.25, 4.8, shackX, DECK.deckY + 2.72, shackZ, 0x3d2c26);
     addBox(propParts, 2.8, 1.05, 0.06, shackX + 0.6, DECK.deckY + 1.6, shackZ + 2.12, 0xffb45f);
     addBox(propParts, 0.06, 1.05, 2.2, shackX - 3.1, DECK.deckY + 1.6, shackZ, 0xffc47a);
+    pierCollider(shackX, shackZ, 6.2, 4.2, 2.6);
+
+    // Thin railing strips: the visual rail is already there; these keep the
+    // player and the crowd on the planks instead of walking through the posts.
+    const deckRailMinX = DECK.minX + 2;
+    const deckRailMaxX = DECK.maxX - 1;
+    for (const side of [-1, 1]) {
+      pierCollider((deckRailMinX + deckRailMaxX) / 2, DECK.z + side * (DECK.halfWidth - 0.4), deckRailMaxX - deckRailMinX, 0.24, 1.2);
+      pierCollider((DECK.rampMinX + DECK.rampMaxX) / 2, DECK.z + side * (DECK.rampHalfWidth - 0.35), DECK.rampMaxX - DECK.rampMinX, 0.22, 1.2);
+    }
+
     const pierProps = new THREE.Mesh(
       mergeGeometries(propParts),
       material(0xffffff, { vertexColors: true, roughness: 0.85 }),
@@ -2774,6 +2806,18 @@ export class World {
     return x > DECK.maxX - 0.2
       && x < DECK.rampMaxX + 0.2
       && Math.abs(z - DECK.z) <= DECK.rampHalfWidth + 0.15;
+  }
+
+  /**
+   * Vehicle-only terrain rule. The pier deck and its ramp are pedestrian-only
+   * for every vehicle; AI cars are also kept off the sand, while a player car
+   * may still be driven onto the beach. Vehicles consult this through
+   * `Vehicle.collidesAt`, never through the pedestrian collider list.
+   */
+  vehicleBlocked(x, z, isPlayer = false) {
+    if (this.onPierDeck(x, z) || this.onRamp(x, z)) return true;
+    if (x < WORLD.cityMinX && !isPlayer) return true;
+    return false;
   }
 
   groundHeightAt(x, z) {

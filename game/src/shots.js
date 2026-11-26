@@ -221,9 +221,11 @@ export const SHOTS = {
     },
     police: {
       wanted: 3,
+      // Cruisers hold the city-side approach: the pier deck and ramp are
+      // closed to vehicles, so the officers (below) are the ones on the planks.
       units: [
-        { x: -171, z: 66.5, yaw: 0, mode: 'block', callsign: 'UNIT 12', shootTimer: 1.2 },
-        { x: -171, z: 73.5, yaw: 0, mode: 'block', callsign: 'UNIT 07', shootTimer: 1.4 },
+        { x: -138, z: 66.5, yaw: 0, mode: 'block', callsign: 'UNIT 12', shootTimer: 1.2 },
+        { x: -138, z: 73.5, yaw: 0, mode: 'block', callsign: 'UNIT 07', shootTimer: 1.4 },
       ],
       officers: [
         { x: -177, z: 67.8, yaw: -Math.PI / 2, callsign: 'UNIT 33', shootTimer: 0.7 },
