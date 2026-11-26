@@ -1,8 +1,9 @@
-// Neon Harbor's audio is entirely synthesised: no samples are fetched, so the
-// game stays a static file and still has an engine, three original radio loops,
-// a two-tone siren, gunfire, impacts, a horn and UI blips. The context is only
-// created on the first real gesture, which keeps autoplay warnings out of the
-// headless screenshots and keeps the shot renders silent.
+// Neon Harbor's engine, siren, weapons, impacts and UI are synthesised. The
+// radio itself is a two-deck OGG player in radio.js; this file keeps the three
+// procedural beds (synthwave, chiptune, surf) as the per-station fallback when
+// a file cannot load. The context is only created on the first real gesture,
+// which keeps autoplay warnings out of the headless screenshots and keeps the
+// shot renders silent.
 
 const MASTER_VOLUME = 0.72;
 
@@ -49,12 +50,15 @@ export class AudioSystem {
     this.volume = MASTER_VOLUME;
     this.engine = null;
     this.engineState = { on: false, rpm: 0 };
-    this.radio = { enabled: true, index: 0 };
-    this.radioNodes = null;
-    this.radioBus = null;
-    this.radioTimer = 0;
-    this.radioStep = 0;
-    this.nextNote = 0;
+    // The procedural sequencer is a fallback bed, not a station owner: the
+    // RadioPlayer decides when a missing file should land here.
+    this.fallbackBus = null;
+    this.fallbackTimer = 0;
+    this.fallbackStep = 0;
+    this.fallbackNextNote = 0;
+    this.fallbackStyle = null;
+    this.fallbackBpm = 100;
+    this.onRunning = null;
     this.siren = null;
     this.sirenLevel = 0;
     this.sirenClock = 0;
@@ -107,7 +111,7 @@ export class AudioSystem {
   startWhenRunning() {
     if (!this.ctx || this.ctx.state !== 'running') return;
     this.setEngine(this.engineState);
-    if (this.radio.enabled && !this.radioBus) this.startRadio();
+    if (typeof this.onRunning === 'function') this.onRunning();
   }
 
   makeNoise(seconds) {
@@ -183,62 +187,59 @@ export class AudioSystem {
     this.engine.gain.gain.setTargetAtTime(on ? 0.09 + load * 0.08 + Math.min(0.05, speed * 0.0015) : 0, now, 0.14);
   }
 
-  // -------------------------------------------------------------- radio
+  // -------------------------------------------------------------- radio fallback
 
-  setRadio(enabled, index = this.radio.index) {
-    this.radio.enabled = Boolean(enabled);
-    this.radio.index = ((index % 3) + 3) % 3;
-    if (!this.ctx) return;
-    if (!this.radio.enabled) {
-      this.stopRadio();
-      return;
-    }
-    if (this.ctx.state === 'running') this.startRadio();
+  get fallbackActive() {
+    return Boolean(this.fallbackBus);
   }
 
-  startRadio() {
-    if (!this.ctx || !this.radio.enabled || this.ctx.state !== 'running') return;
-    this.stopRadio();
+  /** Start the procedural bed for a station that has no playable file. */
+  startFallback(style, bpm = 100) {
+    if (!this.ctx || this.ctx.state !== 'running' || !STATION_MUSIC[style]) return false;
+    if (this.fallbackBus && this.fallbackStyle === style) return true;
+    this.stopFallback();
     const ctx = this.ctx;
     const bus = ctx.createGain();
     bus.gain.value = 0;
     bus.connect(this.master);
     bus.gain.setTargetAtTime(0.7, ctx.currentTime, 0.25);
-    this.radioBus = bus;
-    this.radioStep = 0;
-    this.nextNote = ctx.currentTime + 0.15;
-    this.radioTimer = window.setInterval(() => this.scheduleRadio(), 90);
-    this.scheduleRadio();
+    this.fallbackBus = bus;
+    this.fallbackStyle = style;
+    this.fallbackBpm = Math.max(40, Math.min(220, Number(bpm) || 100));
+    this.fallbackStep = 0;
+    this.fallbackNextNote = ctx.currentTime + 0.15;
+    this.fallbackTimer = window.setInterval(() => this.scheduleFallback(), 90);
+    this.scheduleFallback();
+    return true;
   }
 
-  stopRadio() {
-    if (this.radioTimer) {
-      window.clearInterval(this.radioTimer);
-      this.radioTimer = 0;
+  stopFallback() {
+    if (this.fallbackTimer) {
+      window.clearInterval(this.fallbackTimer);
+      this.fallbackTimer = 0;
     }
-    if (this.radioBus && this.ctx) {
-      const bus = this.radioBus;
+    if (this.fallbackBus && this.ctx) {
+      const bus = this.fallbackBus;
       bus.gain.setTargetAtTime(0, this.ctx.currentTime, 0.08);
       window.setTimeout(() => bus.disconnect(), 700);
-      this.radioBus = null;
     }
+    this.fallbackBus = null;
+    this.fallbackStyle = null;
   }
 
-  scheduleRadio() {
-    if (!this.ctx || !this.radioBus) return;
-    const station = ['synthwave', 'chiptune', 'surf'][this.radio.index] ?? 'synthwave';
-    const music = STATION_MUSIC[station];
-    const bpm = [96, 118, 132][this.radio.index] ?? 100;
-    const stepDuration = 60 / bpm / 4;
-    while (this.nextNote < this.ctx.currentTime + 0.32) {
-      this.playRadioStep(music, this.radioStep, this.nextNote, stepDuration);
-      this.nextNote += stepDuration;
-      this.radioStep = (this.radioStep + 1) % 64;
+  scheduleFallback() {
+    if (!this.ctx || !this.fallbackBus) return;
+    const music = STATION_MUSIC[this.fallbackStyle] ?? STATION_MUSIC.synthwave;
+    const stepDuration = 60 / this.fallbackBpm / 4;
+    while (this.fallbackNextNote < this.ctx.currentTime + 0.32) {
+      this.playRadioStep(music, this.fallbackStep, this.fallbackNextNote, stepDuration);
+      this.fallbackNextNote += stepDuration;
+      this.fallbackStep = (this.fallbackStep + 1) % 64;
     }
   }
 
   playRadioStep(music, step, time, stepDuration) {
-    const bus = this.radioBus;
+    const bus = this.fallbackBus;
     if (!bus) return;
     const bar = Math.floor(step / 16) % 4;
     const local = step % 16;
@@ -596,7 +597,8 @@ export class AudioSystem {
   }
 
   dispose() {
-    this.stopRadio();
+    this.stopFallback();
+    this.onRunning = null;
     window.removeEventListener('pointerdown', this._unlock);
     window.removeEventListener('keydown', this._unlock);
     if (this.ctx) this.ctx.close().catch(() => {});

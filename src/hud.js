@@ -3,7 +3,7 @@
 // a handful of bars, and one very cheap arrow. Everything here is presentation:
 // player.js supplies the numbers, main.js decides when the HUD is on screen.
 
-import { BLOCK_CENTERS_X, BLOCK_CENTERS_Z, PALETTE, ROADS_X, ROADS_Z, WORLD } from './config.js';
+import { BLOCK_CENTERS_X, BLOCK_CENTERS_Z, PALETTE, RADIO, ROADS_X, ROADS_Z, WORLD } from './config.js';
 
 const DISPLAY = '"Bahnschrift SemiCondensed", "Bahnschrift", "Arial Narrow", sans-serif';
 const UI = '"Bahnschrift", "Segoe UI", sans-serif';
@@ -396,9 +396,40 @@ export class Hud {
     this.healthFlash = 0;
     this.armorFlash = 0;
     this.hitFlash = 0;
+    this.wheelOpen = false;
+    this.wheelHits = [];
+    this.onWheelPick = null;
     this.map = this.buildMinimap();
     this.resize();
     window.addEventListener('resize', () => this.resize());
+    // The wheel is the only HUD surface that takes clicks; CSS keeps the
+    // canvas transparent to the pointer everywhere else.
+    this.canvas.addEventListener('click', (event) => {
+      if (!this.wheelOpen || typeof this.onWheelPick !== 'function') return;
+      const hit = this.wheelHitTest(event.clientX, event.clientY);
+      if (hit) {
+        event.preventDefault();
+        this.onWheelPick(hit);
+      }
+    });
+  }
+
+  setWheelInteractive(open) {
+    this.wheelOpen = Boolean(open);
+    this.canvas.classList.toggle('wheel-open', this.wheelOpen);
+    if (!this.wheelOpen) this.wheelHits = [];
+  }
+
+  wheelHitTest(clientX, clientY) {
+    const x = clientX;
+    const y = clientY;
+    for (let i = this.wheelHits.length - 1; i >= 0; i -= 1) {
+      const hit = this.wheelHits[i];
+      if (x >= hit.x && x <= hit.x + hit.width && y >= hit.y && y <= hit.y + hit.height) {
+        return { station: hit.station, track: hit.track };
+      }
+    }
+    return null;
   }
 
   buildMinimap() {
@@ -593,6 +624,7 @@ export class Hud {
     if (state.fail) this.drawFailure(ctx, state.fail);
     if (state.down) this.drawDown(ctx, state.down);
     if (this.ending) this.drawEnding(ctx, this.ending);
+    if (state.radio?.wheel?.open) this.drawRadioWheel(ctx, state);
   }
 
   drawMissionCard(ctx, state) {
@@ -1606,35 +1638,39 @@ export class Hud {
   }
 
   drawRadio(ctx, state) {
+    const radio = state.radio ?? {};
+    const enabled = radio.enabled !== false;
+    const offAir = radio.offAir === true;
+    const fallback = radio.fallback === true;
+    const status = !enabled ? 'RADIO OFF' : offAir ? 'OFF AIR' : fallback ? 'SYNTH' : 'ON AIR';
+    const statusColor = !enabled ? 'rgba(247,232,210,0.4)' : offAir ? CORAL : fallback ? GOLD : TEAL;
     const right = this.width - 44;
     const y = this.height - 155;
-    drawPanel(ctx, this.width - 28 - 228, y - 32, 228, 46, {
+    drawPanel(ctx, this.width - 28 - 228, y - 32, 228, 58, {
       cut: 8,
       fill: 'rgba(9,6,16,0.65)',
       stroke: 'rgba(247,232,210,0.13)',
-      accent: 'rgba(63,224,207,0.55)',
+      accent: statusColor,
     });
-    const enabled = state.radio?.enabled !== false;
-    const bars = 4;
-    for (let i = 0; i < bars; i += 1) {
-      const level = enabled ? 0.35 + 0.65 * (0.5 + Math.sin(this.time * (2.4 + i * 0.8) + i) * 0.5) : 0.1;
-      const barHeight = 4 + level * 10;
-      ctx.fillStyle = `rgba(63,224,207,${enabled ? 0.4 + level * 0.5 : 0.18})`;
-      ctx.fillRect(right - 86 + i * 5, y - 18 - barHeight, 2.5, barHeight);
-    }
+    label(ctx, (enabled ? (radio.station || 'Vega 105.1') : 'RADIO OFF').toUpperCase(), this.width - 252, y - 10, {
+      size: 10,
+      color: enabled ? TEAL : 'rgba(247,232,210,0.4)',
+      spacing: '1.4px',
+      weight: 700,
+    });
+    label(ctx, `${status} · ${radio.trackNumber ?? 1}/${radio.trackCount ?? 3}`, right, y - 10, {
+      size: 10,
+      color: statusColor,
+      spacing: '0.8px',
+      align: 'right',
+      weight: 800,
+    });
     label(
       ctx,
-      (enabled ? (state.radio?.station || 'NIGHT TIDE 88.3') : 'RADIO OFF').toUpperCase(),
+      enabled ? `${radio.artist ?? ''} — ${radio.track ?? ''}` : 'PRESS T TO TUNE IN',
       right,
-      y - 10,
-      { size: 10, color: enabled ? TEAL : 'rgba(247,232,210,0.4)', spacing: '1.8px', align: 'right', weight: 700 },
-    );
-    label(
-      ctx,
-      enabled ? (state.radio?.track || 'Sable Youth — Harbor Lights') : 'PRESS T TO TUNE IN',
-      right,
-      y + 5,
-      { size: 10.5, color: 'rgba(247,232,210,0.46)', spacing: '0.4px', align: 'right', weight: 500 },
+      y + 6,
+      { size: 10.5, color: 'rgba(247,232,210,0.5)', spacing: '0.3px', align: 'right', weight: 600 },
     );
   }
 
@@ -1946,27 +1982,185 @@ export class Hud {
 
     const radio = state.radio ?? {};
     const enabled = radio.enabled !== false;
-    label(ctx, enabled ? String(radio.station ?? 'Night Tide 88.3').toUpperCase() : 'RADIO OFF', x + 14, y + 145, {
+    const offAir = radio.offAir === true;
+    const fallback = radio.fallback === true;
+    const status = !enabled ? 'RADIO OFF' : offAir ? 'OFF AIR' : fallback ? 'SYNTH' : 'ON AIR';
+    const statusColor = !enabled ? 'rgba(247,232,210,0.44)' : offAir ? CORAL : fallback ? GOLD : TEAL;
+    const count = `${radio.trackNumber ?? 1}/${radio.trackCount ?? 3}`;
+    const stationText = truncateText(ctx, enabled ? String(radio.station ?? 'Vega 105.1').toUpperCase() : 'RADIO OFF', width - 106, `800 11px ${UI}`);
+    label(ctx, stationText, x + 14, y + 145, {
       size: 11,
       color: enabled ? GOLD : 'rgba(247,232,210,0.44)',
       spacing: '1px',
       weight: 800,
     });
-    label(ctx, enabled ? (radio.track ?? 'Sable Youth — Harbor Lights') : 'PRESS T TO TUNE IN', x + 14, y + 157, {
+    label(ctx, `${status} · ${count}`, x + width - 14, y + 145, {
+      size: 10,
+      color: statusColor,
+      spacing: '0.6px',
+      align: 'right',
+      weight: 800,
+    });
+    const line = enabled
+      ? `${radio.artist ?? ''} — ${radio.track ?? ''}`.replace(/^ — /, '')
+      : 'PRESS T TO TUNE IN · HOLD TAB';
+    label(ctx, truncateText(ctx, line, width - 28, `600 10.5px ${UI}`), x + 14, y + 157, {
       size: 10.5,
       color: enabled ? 'rgba(247,232,210,0.66)' : 'rgba(63,224,207,0.6)',
       spacing: '0.3px',
       weight: 600,
     });
-    if (enabled) {
-      const bars = 4;
-      for (let i = 0; i < bars; i += 1) {
-        const pulse = 0.35 + 0.65 * (0.5 + Math.sin(this.time * (2.4 + i * 0.8) + i) * 0.5);
-        const barHeight = 3 + pulse * 8;
-        ctx.fillStyle = `rgba(63,224,207,${0.35 + pulse * 0.45})`;
-        ctx.fillRect(x + width - 36 + i * 5, y + 146 - barHeight, 2.5, barHeight);
+  }
+
+  drawRadioWheel(ctx, state) {
+    const radio = state.radio;
+    const wheel = radio.wheel;
+    const stations = RADIO.stations;
+    const panelWidth = Math.min(this.width - 96, 1120);
+    const panelHeight = Math.min(this.height - 120, 420);
+    const panelX = (this.width - panelWidth) / 2;
+    const panelY = (this.height - panelHeight) / 2;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(6,4,12,0.76)';
+    ctx.fillRect(0, 0, this.width, this.height);
+    drawPanel(ctx, panelX, panelY, panelWidth, panelHeight, {
+      cut: 16,
+      fill: 'rgba(9,6,16,0.96)',
+      stroke: 'rgba(247,232,210,0.28)',
+      accent: 'rgba(255,201,92,0.9)',
+    });
+    label(ctx, 'NEON HARBOR RADIO', panelX + 24, panelY + 30, {
+      size: 18,
+      color: CREAM,
+      spacing: '3px',
+      weight: 900,
+      font: DISPLAY,
+    });
+    label(ctx, 'HOLD TAB · RELEASE TO CLOSE', panelX + panelWidth - 24, panelY + 30, {
+      size: 10,
+      color: CREAM_DIM,
+      spacing: '1.4px',
+      align: 'right',
+      weight: 800,
+    });
+    const mode = !radio.enabled ? 'RADIO OFF' : radio.offAir ? 'OFF AIR' : radio.fallback ? 'SYNTH FALLBACK' : radio.playing ? 'ON AIR' : 'STANDBY';
+    label(ctx, `${stations.length} STATIONS · ${mode}`, panelX + 24, panelY + 48, {
+      size: 10,
+      color: radio.offAir ? CORAL : radio.fallback ? GOLD : TEAL,
+      spacing: '1.2px',
+      weight: 700,
+    });
+
+    const top = panelY + 64;
+    const pad = 18;
+    const gap = 10;
+    const columnWidth = (panelWidth - pad * 2 - gap * (stations.length - 1)) / stations.length;
+    const columnHeight = panelHeight - 64 - 52;
+    this.wheelHits = [];
+    stations.forEach((station, index) => {
+      const columnX = panelX + pad + index * (columnWidth + gap);
+      const current = index === radio.stationIndex;
+      const cursorStation = index === wheel.station;
+      drawPanel(ctx, columnX, top, columnWidth, columnHeight, {
+        cut: 10,
+        fill: current ? 'rgba(22,15,34,0.96)' : 'rgba(9,6,16,0.82)',
+        stroke: cursorStation ? station.color : current ? 'rgba(247,232,210,0.34)' : 'rgba(247,232,210,0.14)',
+        accent: station.color,
+      });
+      label(ctx, truncateText(ctx, station.station.toUpperCase(), columnWidth - (current ? 64 : 24), `800 12px ${UI}`), columnX + 12, top + 24, {
+        size: 12,
+        color: current || cursorStation ? station.color : CREAM,
+        spacing: '0.6px',
+        weight: 800,
+      });
+      label(ctx, truncateText(ctx, station.genre.toUpperCase(), columnWidth - 24, `600 10px ${UI}`), columnX + 12, top + 40, {
+        size: 10,
+        color: CREAM_DIM,
+        spacing: '0.7px',
+        weight: 600,
+      });
+      if (current) {
+        label(ctx, 'TUNED', columnX + columnWidth - 12, top + 24, {
+          size: 10,
+          color: station.color,
+          spacing: '0.6px',
+          align: 'right',
+          weight: 800,
+        });
       }
-    }
+      this.wheelHits.push({ x: columnX, y: top, width: columnWidth, height: 64, station: index, track: 0 });
+      station.tracks.forEach((track, trackIndex) => {
+        const rowY = top + 54 + trackIndex * 54;
+        const active = current && trackIndex === radio.trackIndex;
+        const picked = cursorStation && trackIndex === wheel.track;
+        if (active) {
+          ctx.fillStyle = 'rgba(255,201,92,0.1)';
+          ctx.fillRect(columnX + 6, rowY, columnWidth - 12, 46);
+        }
+        if (picked) {
+          ctx.fillStyle = 'rgba(247,232,210,0.06)';
+          ctx.fillRect(columnX + 6, rowY, columnWidth - 12, 46);
+          ctx.strokeStyle = station.color;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(columnX + 6.5, rowY + 0.5, columnWidth - 13, 45);
+        }
+        label(ctx, `0${trackIndex + 1}`, columnX + 12, rowY + 14, {
+          size: 10,
+          color: picked || active ? station.color : 'rgba(247,232,210,0.42)',
+          spacing: '0.4px',
+          font: MONO,
+          weight: 700,
+        });
+        label(ctx, truncateText(ctx, track.title.toUpperCase(), columnWidth - 34, `700 11px ${UI}`), columnX + 30, rowY + 14, {
+          size: 11,
+          color: picked || active ? CREAM : 'rgba(247,232,210,0.76)',
+          spacing: '0.2px',
+          weight: 700,
+        });
+        label(ctx, truncateText(ctx, track.artist.toUpperCase(), columnWidth - 34, `600 10px ${UI}`), columnX + 30, rowY + 31, {
+          size: 10,
+          color: 'rgba(247,232,210,0.46)',
+          spacing: '0.2px',
+          weight: 600,
+        });
+        this.wheelHits.push({ x: columnX + 6, y: rowY, width: columnWidth - 12, height: 46, station: index, track: trackIndex });
+      });
+    });
+
+    const footY = panelY + panelHeight - 18;
+    label(ctx, '← →  STATION', panelX + 24, footY, {
+      size: 10,
+      color: CREAM_DIM,
+      spacing: '1px',
+      weight: 700,
+    });
+    label(ctx, '↑ ↓  TRACK', panelX + 168, footY, {
+      size: 10,
+      color: CREAM_DIM,
+      spacing: '1px',
+      weight: 700,
+    });
+    label(ctx, 'ENTER  TUNE', panelX + 290, footY, {
+      size: 10,
+      color: GOLD,
+      spacing: '1px',
+      weight: 800,
+    });
+    label(ctx, 'CLICK A TRACK', panelX + 410, footY, {
+      size: 10,
+      color: 'rgba(247,232,210,0.42)',
+      spacing: '1px',
+      weight: 700,
+    });
+    label(ctx, `${radio.station.toUpperCase()} · ${radio.track.toUpperCase()} — ${radio.artist.toUpperCase()}`, panelX + panelWidth - 24, footY, {
+      size: 10,
+      color: TEAL,
+      spacing: '0.8px',
+      align: 'right',
+      weight: 700,
+    });
+    ctx.restore();
   }
 
   drawPrompt(ctx, state) {

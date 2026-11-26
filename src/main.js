@@ -16,6 +16,7 @@ import {
   RADIO,
   START_OBJECTIVE,
   districtAt,
+  radioStationIndex,
   streetAt,
 } from './config.js';
 import { CLOCK_MINUTES_PER_SECOND, Environment, SHOT_CLOCK, parseTimeParam } from './environment.js';
@@ -30,6 +31,7 @@ import { SaveStore } from './save.js';
 import { readShot } from './shots.js';
 import { Effects } from './effects.js';
 import { AudioSystem } from './audio.js';
+import { RadioPlayer } from './radio.js';
 import { Police } from './police.js';
 import { Pickups } from './pickups.js';
 import { Missions, MISSION_COUNT, missionName } from './missions.js';
@@ -90,14 +92,17 @@ class Game {
     this.objective = START_OBJECTIVE;
     this.titleView = DEFAULT_TITLE_VIEW;
     this.lastHudState = null;
-    this.radioEnabled = true;
-    this.radioIndex = 0;
     this.down = null;
     this.audio = new AudioSystem();
     this.settings.volume = Number.isFinite(this.settings.volume) ? this.settings.volume : 0.72;
     this.audio.setVolume(this.settings.volume);
     this.audio.muted = Boolean(this.settings.muted);
     if (this.audio.master) this.audio.master.gain.value = this.audio.muted ? 0 : this.audio.volume;
+    this.radio = new RadioPlayer(this.audio);
+    this.audio.onRunning = () => this.radio.tick();
+    // The hold-Tab wheel selection; the station/track it shows before Enter or
+    // a click is only a cursor, never the live tune.
+    this.radioWheel = { open: false, station: this.radio.stationIndex, track: this.radio.trackIndex, lock: false };
 
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
@@ -181,7 +186,7 @@ class Game {
       missionActive: () => Boolean(this.missions.active),
     });
     this.objective = this.missions.objective;
-    this.audio.setRadio(this.radioEnabled, this.radioIndex);
+    this.hud.onWheelPick = (hit) => this.pickRadioWheel(hit);
     this.environment.apply(this.environmentTargets(), { force: true });
 
     this.bindScreens();
@@ -281,6 +286,9 @@ class Game {
     state.storyDone = this.missions.storyDone;
     state.clockMinutes = this.environment.minutes;
     state.day = this.environment.day;
+    state.radioStation = this.radio.station.id;
+    state.radioTrack = this.radio.trackIndex;
+    state.radioEnabled = this.radio.enabled;
     SaveStore.write(state);
     this.updateContinueButton();
     return state;
@@ -328,7 +336,14 @@ class Game {
 
   updateLookHint() {
     if (!this.ui.lookHint) return;
-    this.ui.lookHint.hidden = !(this.mode === 'playing' && !this.input.locked && !this.shotLocked && !this.down && !this.hud?.ending);
+    this.ui.lookHint.hidden = !(
+      this.mode === 'playing'
+      && !this.input.locked
+      && !this.shotLocked
+      && !this.down
+      && !this.hud?.ending
+      && !this.radioWheel.open
+    );
   }
 
   enterTitle() {
@@ -340,6 +355,8 @@ class Game {
     this.player.inputBlocked = true;
     this.player.gun.visible = false;
     this.hud.setVisible(false);
+    this.input.captureTab = false;
+    this.closeRadioWheel();
     this.input.allowLock = false;
     this.input.releaseLock();
     this.input.consumeMouse();
@@ -363,10 +380,14 @@ class Game {
       this.hud.lastDistrict = '';
       this.hud.toast = null;
     }
-    this.audio.setRadio(this.radioEnabled, this.radioIndex);
+    this.input.captureTab = true;
+    this.input.radioWheelOpen = false;
     this.input.allowLock = lock;
     this.input.consumeMouse();
     this.world.focusAt(this.player.position.x, this.player.position.z);
+    // A frozen ?shot= page stays silent: no autoplay attempt, no file loads.
+    if (!this.shot) this.radio.start();
+    this.radio.tick();
     this.updateLookHint();
     if (lock) this.input.requestLock();
   }
@@ -411,6 +432,8 @@ class Game {
     this.player.cameraDistance = CAMERA.distance;
     this.resetCityLife();
     this.player.updateCamera(this.camera, 0, true);
+    this.radio.setStation(radioStationIndex(RADIO.defaultStation), RADIO.defaultTrack ?? 0, { autoplay: false });
+    this.radio.setEnabled(true, { autoplay: false });
     this.enterPlaying({ toast: true });
     this.saveProgress();
   }
@@ -438,6 +461,8 @@ class Game {
     this.resetCityLife();
     if (save.wanted > 0) this.police.setWanted(save.wanted, { silent: true });
     this.player.updateCamera(this.camera, 0, true);
+    this.radio.setStation(radioStationIndex(save.radioStation), save.radioTrack, { autoplay: false });
+    this.radio.setEnabled(save.radioEnabled, { autoplay: false });
     this.enterPlaying({ toast: true });
   }
 
@@ -474,34 +499,112 @@ class Game {
     cruiser.setDriver(null);
   }
 
-  radioState() {
-    const station = RADIO.stations[this.radioIndex] ?? RADIO.stations[0];
-    return { station: station.station, track: station.track, enabled: this.radioEnabled, index: this.radioIndex };
+  radioToast(state, { off = false } = {}) {
+    if (this.hud.suppressToasts) return;
+    if (off) {
+      this.hud.toast = { title: 'Radio Off', sub: 'PRESS T TO TUNE IN', life: 2.0 };
+      return;
+    }
+    const status = state.offAir ? 'OFF AIR' : state.fallback ? 'SYNTH' : 'ON AIR';
+    this.hud.toast = {
+      title: state.station,
+      sub: `${state.trackNumber}/${state.trackCount} · ${state.track.toUpperCase()} — ${state.artist.toUpperCase()} · ${status}`,
+      life: 2.6,
+    };
   }
 
   toggleRadio() {
-    this.radioEnabled = !this.radioEnabled;
     this.audio.unlock();
-    this.audio.setRadio(this.radioEnabled, this.radioIndex);
+    const wasEnabled = this.radio.enabled;
+    const state = this.radio.toggle();
     this.audio.radioSwitch();
-    if (!this.hud.suppressToasts) {
-      const station = this.radioState();
-      this.hud.toast = this.radioEnabled
-        ? { title: station.station, sub: station.track.toUpperCase(), life: 2.6 }
-        : { title: 'Radio Off', sub: 'PRESS T TO TUNE IN', life: 2.0 };
-    }
+    this.radioToast(state, { off: wasEnabled });
   }
 
   cycleStation(direction) {
-    this.radioIndex = (this.radioIndex + direction + RADIO.stations.length) % RADIO.stations.length;
-    this.radioEnabled = true;
     this.audio.unlock();
-    this.audio.setRadio(true, this.radioIndex);
+    if (!this.radio.enabled) this.radio.setEnabled(true, { autoplay: false });
+    const moved = this.radio.nextStation(direction);
     this.audio.radioSwitch();
-    const station = this.radioState();
-    if (!this.hud.suppressToasts) {
-      this.hud.toast = { title: station.station, sub: station.track.toUpperCase(), life: 2.6 };
+    if (!moved) {
+      if (!this.hud.suppressToasts) this.hud.toast = { title: 'All Stations Off Air', sub: 'NO PLAYABLE RADIO', life: 2.0 };
+      return;
     }
+    this.radioToast(this.radio.state);
+  }
+
+  cycleTrack(direction) {
+    this.audio.unlock();
+    if (!this.radio.enabled) this.radio.setEnabled(true, { autoplay: false });
+    this.radio.nextTrack(direction);
+    this.audio.radioSwitch();
+    this.radioToast(this.radio.state);
+  }
+
+  // ---------------------------------------------------------------- radio wheel
+
+  updateRadioWheel(input) {
+    const canOpen = this.mode === 'playing' && !this.down && !this.hud.ending;
+    const held = canOpen && input.isDown('Tab');
+    if (held && !this.radioWheel.open) this.openRadioWheel();
+    else if (!held && this.radioWheel.open) this.closeRadioWheel();
+    if (this.radioWheel.open) {
+      const wheel = this.radioWheel;
+      const stations = RADIO.stations;
+      const stationCount = stations.length;
+      if (input.wasPressed('ArrowLeft')) wheel.station = (wheel.station + stationCount - 1) % stationCount;
+      if (input.wasPressed('ArrowRight')) wheel.station = (wheel.station + 1) % stationCount;
+      wheel.track = Math.min(wheel.track, stations[wheel.station].tracks.length - 1);
+      const trackCount = stations[wheel.station].tracks.length;
+      if (input.wasPressed('ArrowUp')) wheel.track = (wheel.track + trackCount - 1) % trackCount;
+      if (input.wasPressed('ArrowDown')) wheel.track = (wheel.track + 1) % trackCount;
+      if (input.wasPressed('Enter', 'NumpadEnter')) {
+        this.applyRadioWheel();
+        input.consumePressed('Enter', 'NumpadEnter');
+      }
+    }
+    // Movement axes read this flag, so the wheel can use the arrow keys without
+    // walking Rae around the block.
+    input.radioWheelOpen = this.radioWheel.open;
+  }
+
+  openRadioWheel() {
+    this.audio.unlock();
+    this.radioWheel.open = true;
+    this.radioWheel.station = this.radio.stationIndex;
+    this.radioWheel.track = this.radio.trackIndex;
+    this.radioWheel.lock = this.input.locked;
+    this.input.wheelLockRestore = this.radioWheel.lock;
+    if (this.radioWheel.lock) this.input.releaseLock();
+    this.input.radioWheelOpen = true;
+    this.hud.setWheelInteractive(true);
+    this.updateLookHint();
+    this.audio.uiClick();
+  }
+
+  closeRadioWheel() {
+    if (!this.radioWheel.open) return;
+    this.radioWheel.open = false;
+    this.radioWheel.lock = false;
+    this.input.radioWheelOpen = false;
+    this.input.wheelLockRestore = false;
+    this.hud.setWheelInteractive(false);
+    this.updateLookHint();
+  }
+
+  applyRadioWheel() {
+    this.audio.unlock();
+    const wheel = this.radioWheel;
+    const state = this.radio.setStation(wheel.station, wheel.track);
+    this.audio.radioSwitch();
+    this.radioToast(state);
+  }
+
+  pickRadioWheel(hit) {
+    if (!this.radioWheel.open || !hit) return;
+    this.radioWheel.station = hit.station;
+    this.radioWheel.track = hit.track;
+    this.applyRadioWheel();
   }
 
   toggleMute() {
@@ -510,7 +613,12 @@ class Game {
     this.settings.muted = muted;
     SaveStore.saveSettings(this.settings);
     if (!this.hud.suppressToasts) {
-      this.hud.toast = { title: muted ? 'Audio Muted' : 'Audio On', sub: muted ? 'PRESS M TO RESTORE' : 'NIGHT TIDE MIX', life: 2.0 };
+      const state = this.radio.state;
+      this.hud.toast = {
+        title: muted ? 'Audio Muted' : 'Audio On',
+        sub: muted ? 'PRESS M TO RESTORE' : `${state.station} · ${state.track}`.toUpperCase(),
+        life: 2.0,
+      };
     }
   }
 
@@ -545,6 +653,7 @@ class Game {
 
   beginDown(type) {
     if (this.down) return;
+    this.closeRadioWheel();
     this.missions.handleDown(type);
     this.activities.handleDown(type);
     const duration = type === 'busted' ? 3.1 : 3.3;
@@ -603,6 +712,8 @@ class Game {
   pause() {
     if (this.mode !== 'playing') return;
     this.mode = 'paused';
+    this.input.captureTab = false;
+    this.closeRadioWheel();
     this.audio.setEngine({ on: false, rpm: 0, load: 0, speed: 0 });
     this.audio.setSiren(0, 0);
     this.input.allowLock = false;
@@ -618,7 +729,8 @@ class Game {
     if (this.mode !== 'paused') return;
     this.mode = 'playing';
     setHidden(this.ui.pause, true);
-    this.audio.setRadio(this.radioEnabled, this.radioIndex);
+    this.input.captureTab = true;
+    this.radio.tick();
     this.input.allowLock = true;
     this.input.consumeMouse();
     this.input.requestLock();
@@ -631,6 +743,8 @@ class Game {
     setHidden(this.ui.title, true);
     setHidden(this.ui.pause, true);
     setHidden(this.ui.controls, false);
+    this.input.captureTab = false;
+    this.closeRadioWheel();
     this.input.allowLock = false;
     this.input.releaseLock();
     this.updateLookHint();
@@ -728,10 +842,16 @@ class Game {
       };
     }
     const police = this.police.hudState;
+    const radio = this.radio.state;
     return {
       player,
       objective: this.objective,
-      radio: this.radioState(),
+      radio: {
+        ...radio,
+        wheel: this.radioWheel.open
+          ? { open: true, station: this.radioWheel.station, track: this.radioWheel.track }
+          : { open: false },
+      },
       clock: this.environment.clock,
       day: this.environment.day,
       period: this.environment.period,
@@ -1041,9 +1161,13 @@ class Game {
         if (wasDriving !== this.player.driving) {
           this.announceVehicle(this.player.driving, wasDriving);
         }
+        this.updateRadioWheel(input);
+        this.radio.tick();
         if (input.wasPressed('KeyT')) this.toggleRadio();
         if (input.wasPressed('BracketLeft')) this.cycleStation(-1);
         if (input.wasPressed('BracketRight')) this.cycleStation(1);
+        if (input.wasPressed('Comma')) this.cycleTrack(-1);
+        if (input.wasPressed('Period')) this.cycleTrack(1);
         if (input.wasPressed('KeyM')) this.toggleMute();
         if (input.wasPressed('Minus')) this.changeVolume(-0.08);
         if (input.wasPressed('Equal')) this.changeVolume(0.08);
@@ -1195,6 +1319,9 @@ try {
       vehicles: game.vehicles,
       effects: game.effects,
       signals: game.signals,
+      audio: game.audio,
+      hud: game.hud,
+      radio: { player: game.radio, stations: RADIO.stations },
     },
     get police() {
       const hud = game.police.hudState;
@@ -1222,11 +1349,26 @@ try {
         melee: state.melee,
       };
     },
+    get radio() {
+      const state = game.radio.state;
+      return {
+        ...state,
+        wheel: {
+          open: game.radioWheel.open,
+          station: game.radioWheel.station,
+          track: game.radioWheel.track,
+        },
+      };
+    },
+    get hudRadio() {
+      return game.lastHudState?.radio ?? game.hudState().radio;
+    },
     get audio() {
       return {
         ready: game.audio.ready,
         state: game.audio.ctx?.state ?? null,
-        radio: { ...game.audio.radio },
+        fallback: game.audio.fallbackStyle,
+        fallbackActive: game.audio.fallbackActive,
         siren: Math.round(game.audio.sirenLevel * 100) / 100,
         volume: Math.round(game.audio.volume * 100) / 100,
         muted: game.audio.muted,
