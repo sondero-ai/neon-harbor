@@ -659,7 +659,7 @@ git add README.md docs/
 git commit -m "Document NPC death, loot, and the game test tools"
 ```
 
-- [ ] **Step 5: Merge and deploy**
+- [x] **Step 5: Merge and deploy**
 
 ```bash
 git switch night-final
@@ -681,7 +681,7 @@ until `built`). The Actions workflow will also trigger and fail with the
 known billing lock; that is expected and does not block the legacy Pages
 build.
 
-- [ ] **Step 6: Verify the live site**
+- [x] **Step 6: Verify the live site**
 
 - `curl -s https://sondero-ai.github.io/neon-harbor/src/loot.js` shows the
   module.
@@ -690,7 +690,7 @@ build.
   Task 4 pass against the live URL.
 - Take one screenshot of a dead pedestrian with its loot ring.
 
-- [ ] **Step 7: Update the hosting memory**
+- [x] **Step 7: Update the hosting memory**
 
 Update `~/.claude/projects/.../memory/neon-harbor-hosting.md` with the new
 commit, the NPC/loot feature and the new test commands.
