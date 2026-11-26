@@ -8,7 +8,8 @@
 
 Neon Harbor is an original third-person open-world crime game for the desktop
 browser. It runs from plain static files with no build step, no package
-install and no network request after the page loads. The setting is a coastal
+install and no third-party network request after the page loads; the radio
+tracks are local files served from the same folder. The setting is a coastal
 city with a living clock: nine by nine blocks of low-rise storefronts and
 downtown towers, the brick market lanes of Old Town, the rail yards and
 smokestacks of the Foundry, a wide beach, a long pier, a working lighthouse,
@@ -19,8 +20,8 @@ You play courier **Rae Solano**, back in the harbor to settle a family debt.
 The build is the whole first chapter: a seeded city, a third-person camera
 that stays out of walls, seven drivable vehicle classes, grid traffic and
 pedestrians, a five-star police response, two hitscan weapons, five story
-missions with dialogue and combat, free-roam jobs, three synthesised radio
-stations, a canvas HUD and a local save.
+missions with dialogue and combat, free-roam jobs, six radio stations with
+eighteen original tracks, a canvas HUD and a local save.
 
 Pedestrians are shootable: they fall where they die, the crowd around them
 panics, and every human NPC death — pedestrian, mission enemy or police
@@ -45,7 +46,8 @@ no video files.
 ## Play
 
 Node 22.18 or newer serves the folder; the game itself is HTML, CSS, ES
-modules and a WebGL canvas. There is no build step and no network use.
+modules and a WebGL canvas. There is no build step and no third-party network
+use: the radio OGG files load from `game/audio/radio/` on the same server.
 
 ```bash
 node serve.ts --port 8080
@@ -65,8 +67,10 @@ same mouse drag looks around. **Enter** confirms the focused menu action.
   pistol, **2** the Kestrel SMG once it has been picked up, and **3** the
   street knife.
 - **Mouse** looks around; the **wheel** pulls the foot camera in or out.
-- **T** switches the radio on or off, **`[`** and **`]`** change stations, and
-  **M** mutes. **`-`** and **`=`** trim the master volume.
+- **T** switches the radio on or off, **`[`** and **`]`** change stations,
+  **`,`** and **`.`** change tracks, and **M** mutes. Hold **Tab** for the
+  station wheel: the arrows pick a station and track, **Enter** tunes it, or
+  click a track. **`-`** and **`=`** trim the master volume.
 - Walk into a coral story marker to start the next mission. **Enter** retries
   a failed mission, and walking back into its marker does the same.
 - The **safehouse** on the Vega Strip heals, recharges armor, clears heat and
@@ -78,10 +82,39 @@ same mouse drag looks around. **Enter** confirms the focused menu action.
   moves between high (shadows, full pixel ratio) and low (no shadows, lighter
   pixel ratio) without a reload.
 
+## Radio and music
+
+Six stations and eighteen original tracks, all local OGG files under
+`game/audio/radio/`. Vega 105.1 is the default. The station, track and on/off
+state persist with the save; volume and mute persist with the quality setting.
+
+| Station | Genre | Tracks |
+| --- | --- | --- |
+| Vega 105.1 | hip-hop / rap | Vega Strip Money, Ledger Season, Harbor Flow |
+| Night Tide 88.3 | synthwave | Harbor Lights, Neon Coastline, Foggy Harbor Dawn |
+| KNRV 104.7 | chiptune | Level E-1, Rainy Bitstorm, Night Arcade Dash |
+| The Breakwater 97.1 | surf rock | Salt and Sparks, Boardwalk Chase, Midnight Undertow |
+| Solano Soul 92.1 | funk / neo-soul | Ledger Blue, Beachside Cantina, Family Cut |
+| Foundry FM 99.5 | darkwave / EBM | Rust and Rain, Foundry Floor, Graveyard Shift |
+
+Station and track changes crossfade over 0.8 s, a track auto-advances at its
+end and wraps within its station, and the hold-**Tab** wheel shows all six
+stations and their three tracks in one overlay. The HUD radio card reports the
+station, the track and artist, `1/3` and `ON AIR`; `SYNTH` means the station's
+procedural bed is playing instead of a file, and a station with neither shows
+`OFF AIR`. The procedural fallback exists for Night Tide 88.3 (synthwave),
+KNRV 104.7 (chiptune) and The Breakwater 97.1 (surf); the other three need
+their files and otherwise show `OFF AIR`.
+
+The tracks were generated with Suno on 2026-11-26. `MUSIC.md` lists every
+track, artist, duration and whether it is vocal, plus the licence note the
+operator must confirm before publishing. `docs/audio/suno-radio-prompts.md`
+keeps the generation prompts and lyrics.
+
 **New Game** starts on Vega Strip at 18:00 on day four, in the last light,
 beside a parked Riptide and facing the water. **Continue** returns to the last
 pause or save, including the story index, cash, health, armor, weapons, ammo,
-position, the time of day and any heat that was still on you.
+position, the time of day, the radio and any heat that was still on you.
 
 ## The Solano story
 
@@ -303,7 +336,8 @@ response roster with named callsigns, roles and distances, the five-slot weapon
 strip (Solano 9, Kestrel SMG, the always-carried street knife at slot 3 with
 `--` ammo and a `STREET KNIFE · CQC` footer, and locked rifle and RPG slots),
 and the vehicle card with model, class, tune, a large speed readout, condition
-and damage percentages, gear, engine load and the Night Tide 88.3 radio line. A
+and damage percentages, gear, engine load and the station radio line (station,
+artist, track, `1/3`, and `ON AIR`, `SYNTH`, `OFF AIR` or `RADIO OFF`). A
 top-centre `AIR 1 · SPOTLIGHT` banner tracks the helicopter's range; the bottom
 centre keeps the live objective, progress or countdown, the context prompt, a
 dynamic crosshair (a fixed small reticle for the knife) and hit marker. Street
@@ -317,11 +351,12 @@ until you take it again.
 engine hum tracking rpm, load and speed, a two-tone siren whose level follows
 the nearest cruiser or officer, pistol and SMG reports, impacts, explosions,
 the horn, reload clicks, pickup chimes, hurt and wasted/busted stings, and menu
-blips. Three original station loops — synthwave, chiptune and surf — are
-sequenced live from the same oscillator kit: Night Tide 88.3 (Sable Youth —
-“Harbor Lights”), KNRV 104.7 and The Breakwater 97.1. The context is created on the first real pointer or
-keyboard gesture; no audio files and no network requests are involved. Volume
-and mute persist with the quality setting.
+blips. The two-deck player in `radio.js` crossfades the local OGG tracks
+through the same WebAudio master, while the synthwave, chiptune and surf beds
+in `audio.js` remain the per-station fallback when a file cannot load. The
+context is created on the first real pointer or keyboard gesture; no
+third-party requests are involved. Volume and mute persist with the quality
+setting.
 
 ## Screenshots
 
@@ -393,20 +428,27 @@ The dossier lists the game's source, then `game/index.html` and the module
 import graph, then the remaining source in path order. The two minified
 three.js builds and the one-line `three.module.js` shim are vendored files and
 are listed by path and size rather than shown as source. There are no other
-libraries, no generated bundles and no binary assets in `game/`.
+libraries or generated bundles. The only binary assets in `game/` are the
+eighteen radio OGG files, about 32.4 MiB, which the build check counts against
+the 48 MiB game cap.
 
 ## Testing
 
-Two dependency-free checks cover the death and loot systems; run both from the
-repository root:
+Three dependency-free checks cover loot, the radio data and the live game; run
+them from the repository root:
 
 ```bash
 node --test test/loot.test.mjs     # pure loot table
+node --test test/radio.test.mjs    # station data, OGG files and Music credits
 node tools/test-npc-loot.mjs       # headless Chrome end-to-end
 ```
 
 `test/loot.test.mjs` pins the death-drop weights, the $5 cash steps and bounds,
-and the SMG gate without a browser. `tools/test-npc-loot.mjs` serves `game/`,
+and the SMG gate without a browser. `test/radio.test.mjs` checks the six
+station order, the three unique tracks each, every file path against the
+prompt pack, the OGG headers and 36 MB audio budget, and that `MUSIC.md`
+credits every track and the 2026-11-26 generation date.
+`tools/test-npc-loot.mjs` serves `game/`,
 launches headless Chrome through the DevTools protocol like
 `tools/capture.mjs`, and drives the frozen `?shot=street` and `?shot=blockade`
 scenes through `window.__neon`: the pedestrian chest hitbox, damage and death,
@@ -415,7 +457,7 @@ recovery, loot pickup and its 30-second expiry, reset, the real
 `player.fireWeapon` path and officer death loot, the murder-heat 911 delay and
 its police-witness shortcut, the knife's slot-3 selection, 1.5 m lethal reach
 and silent gunfire-free kill, the armed witness's draw, first shot and
-45 m give-up, plus three groups added with the living city:
+45 m give-up, plus the groups added with the living city and the radio:
 
 - **crowd density** — the 96/48/22/18 targets, all 22 beach walkers seeded, no
   two pedestrians sharing a slot, the 48-walker sidewalk fill, and a free slot
@@ -429,14 +471,23 @@ and silent gunfire-free kill, the armed witness's draw, first shot and
 - **living clock** — the 81 blocks, the pinned 23:41 night, all four periods
   and their sky textures, the day/night palette levels, a fifteen-minute
   advance over thirty real seconds, the saved minute restored by Continue and
-  the day rollover at midnight.
+  the day rollover at midnight;
+- **radio** — the Vega 105.1 default, six stations with three tracks each, the
+  HUD reading the same state, every key and track/station wrap, `M` mute, the
+  hold-Tab wheel with arrow selection and per-track clicks, the saved station
+  and track restored by Continue, an old save falling back to Vega track 0,
+  the procedural SYNTH fallback for a missing file, `OFF AIR` for a station
+  with no fallback, auto-advance at track end, and all eighteen OGG files
+  served as `audio/ogg`. Audio output itself cannot be heard headless; the
+  checks assert the player state, the file responses and the sequencer bus.
 
 The suite prints one `ok`/`not ok` line per check and exits non-zero on a
-failure; the last run passed all 140 checks.
+failure; the last run passed all 176 checks.
 
 ```bash
 node --test test/loot.test.mjs     # pure loot table
-node tools/test-npc-loot.mjs       # headless Chrome end-to-end, 140 checks
+node --test test/radio.test.mjs    # station data and audio assets
+node tools/test-npc-loot.mjs       # headless Chrome end-to-end, 176 checks
 MAKEFUN_OUTPUT_DIR=out node main.ts --check   # entry caps, one summary line
 ```
 
@@ -447,7 +498,8 @@ Set `CHROME` to a Chrome or Chromium executable if the default lookup misses.
 - `game/index.html` — page, title/pause/controls markup, CSS, boot-error
   reporter.
 - `game/src/main.js` — boot, fixed-step loop, screen state machine, quality,
-  save wiring, vehicle entry/exit, radio state and deterministic shot staging.
+  save wiring, vehicle entry/exit, radio input and the hold-Tab station wheel,
+  `__neon.radio` and deterministic shot staging.
 - `game/src/world.js` — nine-by-nine city generation, Old Town and the
   Foundry, the market square, ground/collision/camera queries, beach, pier,
   lighthouse, ocean, the four sky textures, sun and moon, lights, signs, the
@@ -485,20 +537,27 @@ Set `CHROME` to a Chrome or Chromium executable if the default lookup misses.
 - `game/src/effects.js` — sparks, smoke, flashes, tracers, explosions, skid
   marks, vehicle lights, screen shake and hurt accumulation.
 - `game/src/audio.js` — the WebAudio engine, sirens, guns, impacts, horn, UI
-  blips, stings and three live radio sequencers.
+  blips, stings and the three procedural synthwave/chiptune/surf fallback beds.
+- `game/src/radio.js` — the two-deck OGG player: crossfade, auto-advance,
+  station/track wrap, master volume and mute, missing-file fallback and OFF AIR.
 - `game/src/hud.js` — the Canvas 2D HUD: mission card, vitals, state card,
   minimap and blips, crew panel, portrait dialogue, police response roster,
-  Air 1 banner, five-slot weapon strip, vehicle/radio card, objective and
-  street-job panels, crosshair, rewards and failure/down/ending screens.
-- `game/src/input.js` — keyboard, mouse, wheel, pointer lock and mouse edges.
+  Air 1 banner, five-slot weapon strip, vehicle/radio card, hold-Tab station
+  wheel, objective and street-job panels, crosshair, rewards and
+  failure/down/ending screens.
+- `game/src/input.js` — keyboard, mouse, wheel, pointer lock, mouse edges and
+  the Tab-wheel focus capture.
 - `game/src/save.js` — guarded localStorage save, story/mission index, weapons,
-  clock minute and day, quality, volume and mute settings.
+  clock minute and day, radio station/track/on-off, quality, volume and mute.
 - `game/src/random.js`, `config.js` — seeded RNG, the city dimensions and road
-  grid, the clock constants, district and street names, tune labels and shared
-  constants.
+  grid, the clock constants, district and street names, tune labels, the six
+  radio stations and their eighteen tracks, and shared constants.
 - `game/src/shots.js` — the fixed `start`, `street`, `blockade`, `drive`,
   `chase`, `mission`, `heist` and `pier` screenshot poses, each pinnable to a
   different `?time=HH:MM`.
+- `game/audio/radio/` — the eighteen Suno-generated OGG tracks, three per
+  station; `MUSIC.md` and `docs/audio/suno-radio-prompts.md` hold the credits,
+  licence note, prompts and lyrics.
 - `game/vendor/` — three.js r180's minified module and core builds behind the
   one-line `three.module.js` shim.
 - `main.ts`, `serve.ts`, `vendor/makefun-game.ts` — entrypoint, development
@@ -507,10 +566,13 @@ Set `CHROME` to a Chrome or Chromium executable if the default lookup misses.
 - `tools/capture-media.mjs` — the README media driver behind
   `docs/media/overview.gif` and `docs/media/combat.jpg`; needs ffmpeg on
   `PATH` or in `FFMPEG`.
+- `test/radio.test.mjs` — the station order, track data, OGG files, audio
+  budget and MUSIC.md credits without a browser.
 - `tools/test-npc-loot.mjs` — the stdlib-only headless-Chrome E2E for
   pedestrian death, panic and loot, murder heat, the street knife, armed
-  witnesses, crowd density, the intersection signals and pedestrian wall
-  collision across the frozen street and blockade scenes.
+  witnesses, crowd density, the intersection signals, pedestrian wall
+  collision, the living clock and the full radio state, keys, wheel, save,
+  fallback and file delivery across the frozen street and blockade scenes.
 
 ## Bounty and license
 
