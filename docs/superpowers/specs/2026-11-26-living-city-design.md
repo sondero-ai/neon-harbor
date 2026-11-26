@@ -50,9 +50,9 @@ stay where they are.
   does; do not add a draw call per building.
 
 **Measured 2026-11-26 (correction).** The 272 baseline was stale: the merged
-`night-final` base measures **433 draw calls and a 4.9 ms median** on the same
-headless harness. The finished branch measures **370 draw calls and a 4.7 ms
-median** at the same chase pose — 0.85x the base's calls and 0.96x its frame
+`night-final` base measures **433 draw calls and a 6.7 ms median** on the same
+headless harness. The finished branch measures **370 draw calls and a 6.1 ms
+median** at the same chase pose — 0.85x the base's calls and 0.91x its frame
 time — so the 1.4x / 1.3x budgets hold with room to spare. Getting under the
 absolute 380 took three batching passes the plan did not anticipate: one
 instanced billboard field for static glows, one instanced mesh for each car's

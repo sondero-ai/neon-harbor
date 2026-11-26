@@ -169,9 +169,9 @@ screenshot in this README is the same blockade pose captured with
 `?time=10:30`.
 
 A typical 1280×720 frame in this build uses about **370 draw calls** at the
-chase shot, with a **4.7 ms** median frame in headless Chrome on the build
-machine; the pre-living-city base measures 433 and 4.9 ms on the same
-harness. Static glows share one instanced billboard field, each car's four
+chase shot, with a **6.1 ms** median frame over a 60-frame sample in headless
+Chrome on the build machine; the pre-living-city base measures 433 and 6.7 ms
+on the same harness. Static glows share one instanced billboard field, each car's four
 wheels are one instanced mesh, and the Air 1 airframe is merged per material,
 so the larger city and crowd cost less per frame than the old six-by-six
 build.
@@ -425,14 +425,18 @@ and silent gunfire-free kill, the armed witness's draw, first shot and
   state at green, amber and the switch;
 - **pedestrian collision** — a target straight through a known building, the
   stop at the wall face, a reachable target still reached, forward progress
-  along a wall, and 60 simulated seconds with no live walker inside a collider.
+  along a wall, and 60 simulated seconds with no live walker inside a collider;
+- **living clock** — the 81 blocks, the pinned 23:41 night, all four periods
+  and their sky textures, the day/night palette levels, a fifteen-minute
+  advance over thirty real seconds, the saved minute restored by Continue and
+  the day rollover at midnight.
 
 The suite prints one `ok`/`not ok` line per check and exits non-zero on a
-failure; the last run passed all 128 checks.
+failure; the last run passed all 140 checks.
 
 ```bash
 node --test test/loot.test.mjs     # pure loot table
-node tools/test-npc-loot.mjs       # headless Chrome end-to-end, 128 checks
+node tools/test-npc-loot.mjs       # headless Chrome end-to-end, 140 checks
 MAKEFUN_OUTPUT_DIR=out node main.ts --check   # entry caps, one summary line
 ```
 
