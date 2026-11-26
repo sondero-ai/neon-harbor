@@ -634,9 +634,13 @@ class Game {
     }
   }
 
-  announceVehicle(enteredCar, exitedCar) {
+  announceVehicle(enteredCar, exitedCar, carjacked = false) {
     if (this.hud.suppressToasts) return;
     if (enteredCar) {
+      if (carjacked) {
+        this.hud.toast = { title: 'CARJACKED', sub: 'DRIVER BAILED', life: 2.6 };
+        return;
+      }
       this.hud.toast = {
         title: enteredCar.name,
         sub: `${enteredCar.className} · ENGINE ON · F / E TO EXIT`,
@@ -1155,11 +1159,14 @@ class Game {
       } else {
         const wasDriving = this.player.driving;
         this.player.handleVehicleInput(input);
+        let carjacked = false;
         if (wasDriving !== this.player.driving && this.player.driving) {
           this.effects.registerVehicle(this.player.driving);
+          carjacked = Boolean(this.player.carjacked);
+          this.player.carjacked = false;
         }
         if (wasDriving !== this.player.driving) {
-          this.announceVehicle(this.player.driving, wasDriving);
+          this.announceVehicle(this.player.driving, wasDriving, carjacked);
         }
         this.updateRadioWheel(input);
         this.radio.tick();

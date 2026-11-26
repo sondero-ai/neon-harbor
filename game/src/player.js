@@ -745,7 +745,12 @@ export class Player {
 
   enterVehicle(car) {
     if (!car || this.driving) return;
+    this.carjacked = false;
     if (car.type === 'police' && this.police) this.police.reportCarTheft(car);
+    // An AI civilian driver bails out at the door; a cruiser's crew does not.
+    if (car.type !== 'police' && (car.driver === 'ai' || Boolean(car.ai)) && this.traffic?.ejectDriver) {
+      this.carjacked = Boolean(this.traffic.ejectDriver(car));
+    }
     this.driving = car;
     car.driver = 'player';
     car.ai = null;

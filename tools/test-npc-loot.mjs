@@ -2290,6 +2290,165 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 18: carjacking',
+    shot: 'street',
+    body: function carjacking() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const debug = neon && neon.debug;
+      const player = debug && debug.player;
+      const traffic = debug && debug.traffic;
+      const police = debug && debug.police;
+      const vehicles = debug && debug.vehicles;
+      const hud = debug && debug.hud;
+      const missing = [];
+      if (!traffic || typeof traffic.ejectDriver !== 'function') missing.push('traffic.ejectDriver');
+      if (!traffic || typeof traffic.update !== 'function') missing.push('traffic.update');
+      if (!player || typeof player.enterVehicle !== 'function') missing.push('player.enterVehicle');
+      if (!player || typeof player.exitVehicle !== 'function') missing.push('player.exitVehicle');
+      if (!vehicles || typeof vehicles.spawn !== 'function') missing.push('vehicles.spawn');
+      if (!police || typeof police.clearWanted !== 'function') missing.push('police.clearWanted');
+      if (!hud || typeof hud !== 'object') missing.push('__neon.debug.hud');
+      if (!neon || !neon.loot) missing.push('__neon.loot');
+      check('test 18: carjacking hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      const round = (value) => Math.round(value * 1000) / 1000;
+      const baseX = 81;
+      const baseZ = 0;
+      const resetWorld = () => {
+        police.clearWanted({ quiet: true });
+        police.consumeNotice();
+        police.clearUnits();
+        police.clearOfficers();
+        police.stageAir({ x: 640, y: 40, z: 640 });
+        traffic.reset({ spawnBeach: false });
+        for (const car of [...vehicles.list]) vehicles.remove(car);
+      };
+      resetWorld();
+      player.teleport(baseX, baseZ, Math.PI, 0);
+      player.health = 100;
+      player.armor = 0;
+      player.dead = false;
+
+      // Direct entry of an AI civilian car: the driver bails at the left door.
+      const car = vehicles.spawn('sedan', { x: baseX + 2.2, z: baseZ, yaw: Math.PI / 2, driver: 'ai' });
+      const beforePeds = new Set(traffic.peds);
+      player.enterVehicle(car);
+      const ejected = traffic.peds.find((ped) => ped.active && !beforePeds.has(ped));
+      check(
+        'test 18: taking an AI car leaves the player at the wheel',
+        player.driving === car && car.driver === 'player',
+        `driving=${player.driving === car} driver=${car.driver}`,
+      );
+      check(
+        'test 18: a driver spawns at the driver door',
+        Boolean(ejected),
+        'no new pedestrian (crowd slot or door blocked)',
+      );
+      if (!ejected) return results;
+      check(
+        'test 18: the ejected driver faces the car from just outside the left door',
+        (() => {
+          const local = car.localPoint(ejected.x, ejected.z);
+          return local.x < 0
+            && Math.abs(local.x) >= car.halfWidth + 0.3
+            && Math.abs(local.x) <= car.halfWidth + 1.2
+            && Math.abs(local.z) <= 1.2;
+        })(),
+        JSON.stringify({ x: round(ejected.x), z: round(ejected.z), car: [round(car.position.x), round(car.position.z)] }),
+      );
+      check(
+        'test 18: the ejected driver is a normal, fleeing crowd member',
+        ejected.health === 55
+          && ejected.dead === false
+          && ejected.armed === false
+          && ejected.mode === 'idle'
+          && ejected.fleeTimer === 6
+          && ejected.fleeResumeTarget === null
+          && ejected.fleeFromX === car.position.x
+          && ejected.fleeFromZ === car.position.z,
+        JSON.stringify({
+          health: ejected.health,
+          dead: ejected.dead,
+          armed: ejected.armed,
+          mode: ejected.mode,
+          flee: ejected.fleeTimer,
+          resume: ejected.fleeResumeTarget,
+        }),
+      );
+
+      const distanceBefore = Math.hypot(ejected.x - car.position.x, ejected.z - car.position.z);
+      traffic.update(0.2, 0);
+      const distanceAfter = Math.hypot(ejected.x - car.position.x, ejected.z - car.position.z);
+      check(
+        'test 18: the ejected driver runs away from the car',
+        distanceAfter > distanceBefore && ejected.fleeTimer < 6 && ejected.fleeTimer > 5,
+        `distance ${round(distanceBefore)} -> ${round(distanceAfter)} flee=${round(ejected.fleeTimer)}`,
+      );
+
+      const lootBefore = neon.loot.count;
+      traffic.applyPlayerHit({ ped: ejected, headshot: false }, 500);
+      check(
+        'test 18: the ejected driver is still a normal target and drops loot',
+        ejected.dead === true && neon.loot.count > lootBefore,
+        `dead=${ejected.dead} loot ${lootBefore} -> ${neon.loot.count}`,
+      );
+
+      // A police cruiser is not a civilian car: no driver is ejected.
+      player.exitVehicle();
+      resetWorld();
+      player.teleport(baseX, baseZ, Math.PI, 0);
+      const cruiser = vehicles.spawn('police', { x: baseX + 2.2, z: baseZ, yaw: Math.PI / 2, driver: 'ai' });
+      const pedsBeforeCruiser = traffic.peds.filter((ped) => ped.active).length;
+      player.enterVehicle(cruiser);
+      const pedsAfterCruiser = traffic.peds.filter((ped) => ped.active).length;
+      check(
+        'test 18: a police cruiser is taken without ejecting a driver',
+        cruiser.driver === 'player' && pedsAfterCruiser === pedsBeforeCruiser,
+        `driver=${cruiser.driver} peds ${pedsBeforeCruiser} -> ${pedsAfterCruiser}`,
+      );
+
+      // The real key path raises the one-shot CARJACKED / DRIVER BAILED toast.
+      player.exitVehicle();
+      resetWorld();
+      player.teleport(baseX, baseZ, Math.PI, 0);
+      const toastCar = vehicles.spawn('sedan', { x: baseX + 2.2, z: baseZ, yaw: Math.PI / 2, driver: 'ai' });
+      player.exitCooldown = 0;
+      hud.suppressToasts = false;
+      hud.toast = null;
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyF', key: 'f', bubbles: true }));
+      neon.advance(1 / 60);
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyF', key: 'f', bubbles: true }));
+      check(
+        'test 18: entering with F drives the car and shows CARJACKED / DRIVER BAILED',
+        player.driving === toastCar
+          && hud.toast !== null
+          && hud.toast.title === 'CARJACKED'
+          && hud.toast.sub === 'DRIVER BAILED',
+        JSON.stringify({ driving: player.driving ? player.driving.name : null, toast: hud.toast }),
+      );
+      const toastPeds = traffic.peds.filter((ped) => ped.active && ped.fleeTimer > 0);
+      check(
+        'test 18: the key-path carjack leaves one fleeing driver',
+        toastPeds.length === 1,
+        `fleeing=${toastPeds.length}`,
+      );
+
+      neon.advance(3);
+      check(
+        'test 18: the carjack toast fires once and is not repeated',
+        hud.toast === null || hud.toast.title !== 'CARJACKED',
+        JSON.stringify(hud.toast),
+      );
+      return results;
+    },
+  },
 ];
 
 async function main() {
