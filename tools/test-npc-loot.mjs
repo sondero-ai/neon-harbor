@@ -249,7 +249,7 @@ const TESTS = [
       const pk = pickups;
 
       const cashBefore = neon.combat.cash;
-      pk.spawnDrop({ x: p.position.x, z: p.position.z, kind: 'cash', amount: 40 });
+      const cashDrop = pk.spawnDrop({ x: p.position.x, z: p.position.z, kind: 'cash', amount: 40 });
       pk.update(0.016, p);
       check(
         'test 2: a cash drop pays out',
@@ -257,6 +257,13 @@ const TESTS = [
         `cash ${cashBefore} -> ${neon.combat.cash}`,
       );
       check('test 2: collected cash leaves no live loot', neon.loot.count === 0, JSON.stringify(neon.loot.items));
+      const cashAfterCollect = neon.combat.cash;
+      pk.update(40, p);
+      check(
+        'test 2: a spent cash drop never respawns',
+        neon.combat.cash === cashAfterCollect && neon.loot.count === 0 && !pk.items.includes(cashDrop),
+        `cash ${cashAfterCollect} -> ${neon.combat.cash} loot=${neon.loot.count}`,
+      );
 
       const reserveBefore = neon.combat.reserve;
       pk.spawnDrop({ x: p.position.x, z: p.position.z, kind: 'pistol', amount: 12 });
@@ -267,9 +274,31 @@ const TESTS = [
         `reserve ${reserveBefore} -> ${neon.combat.reserve}`,
       );
 
-      pk.spawnDrop({ x: p.position.x + 40, z: p.position.z, kind: 'cash', amount: 25, expire: 30 });
+      const dropX = p.position.x + 40;
+      const dropZ = p.position.z;
+      const expiring = pk.spawnDrop({ x: dropX, z: dropZ, kind: 'cash', amount: 25, expire: 30 });
+      const live = neon.loot.items.find((entry) => entry.kind === 'cash' && entry.x === dropX && entry.z === dropZ);
+      check(
+        'test 2: live loot reports the spawned amount and position',
+        Boolean(live) && live.amount === 25 && live.x === dropX && live.z === dropZ,
+        JSON.stringify(neon.loot.items),
+      );
       pk.update(31, p);
+      check(
+        'test 2: an expired drop is released from the pickups list',
+        !pk.items.includes(expiring) && pk.items.every((entry) => !entry.removed),
+        `items=${pk.items.length} removed=${pk.items.filter((entry) => entry.removed).length}`,
+      );
       check('test 2: a drop expires while the player is away', neon.loot.count === 0, JSON.stringify(neon.loot.items));
+
+      const resetDrop = pk.spawnDrop({ x: p.position.x + 20, z: p.position.z, kind: 'cash', amount: 10 });
+      const beforeReset = neon.loot.count;
+      pk.reset();
+      check(
+        'test 2: reset purges one-shot drops',
+        beforeReset === 1 && neon.loot.count === 0 && !pk.items.includes(resetDrop),
+        `before=${beforeReset} after=${neon.loot.count} items=${pk.items.length}`,
+      );
 
       for (let i = 0; i < 20; i += 1) pk.spawnDeathLoot(p.position.x + 30 + i, p.position.z, { smgOwned: false });
       const kinds = neon.loot.items.map((item) => item.kind);

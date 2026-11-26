@@ -114,6 +114,9 @@ export class Pickups {
       health: new THREE.MeshStandardMaterial({ color: 0x5cff8a, roughness: 0.5, emissive: 0x12602b }),
       blue: new THREE.MeshStandardMaterial({ color: 0x637fd8, roughness: 0.45, metalness: 0.25, emissive: 0x112355 }),
     };
+    // The icon meshes borrow these; only per-item ring, bill and glow
+    // resources may be disposed when a one-shot drop is released.
+    this.sharedMaterials = new Set(Object.values(this.materials));
     for (const spot of PICKUPS) this.addItem(spot);
   }
 
@@ -152,14 +155,39 @@ export class Pickups {
   }
 
   reset() {
-    for (const item of this.items) {
-      // One-shot drops belong to this life only: a reset must not revive a
-      // collected drop or extend an expired one.
-      if (item.oneShot) continue;
+    // One-shot drops are transient: a reset purges them instead of carrying
+    // them into the next session.
+    for (let i = this.items.length - 1; i >= 0; i -= 1) {
+      const item = this.items[i];
+      if (item.oneShot) {
+        this.release(item);
+        continue;
+      }
       item.collected = false;
       item.respawn = 0;
       item.group.visible = true;
     }
+  }
+
+  // Detach a one-shot drop and free everything it owns: its per-item
+  // geometries (ring, icon boxes) and per-item materials (ring, glow). The
+  // shared icon materials and the cached glow texture are never touched.
+  release(item) {
+    if (item.removed) return;
+    item.removed = true;
+    item.group.removeFromParent();
+    item.group.traverse((node) => {
+      // Meshes are ring and icon geometry, which this item owns. A Sprite's
+      // geometry is shared by every sprite in the engine; skip it.
+      if (node.isMesh && node.geometry) node.geometry.dispose();
+      const material = node.material;
+      if (!material) return;
+      for (const entry of Array.isArray(material) ? material : [material]) {
+        if (!this.sharedMaterials.has(entry)) entry.dispose();
+      }
+    });
+    const index = this.items.indexOf(item);
+    if (index >= 0) this.items.splice(index, 1);
   }
 
   get hint() {
@@ -180,20 +208,25 @@ export class Pickups {
     this.time += dt;
     this.playerX = player.position.x;
     this.playerZ = player.position.z;
-    for (const item of this.items) {
+    // Backwards so a drop released mid-loop (collected or expired) can be
+    // spliced out of this.items without skipping the next entry.
+    for (let i = this.items.length - 1; i >= 0; i -= 1) {
+      const item = this.items[i];
       if (item.removed) continue;
       // One-shot drops age out whether or not the player ever reaches them.
       if (item.oneShot) {
         item.age += dt;
         if (item.expire > 0 && item.age >= item.expire) {
-          item.group.removeFromParent();
-          item.removed = true;
+          this.release(item);
           continue;
         }
       }
       if (item.collected) {
         // A one-shot drop is spent for good; it never starts a respawn timer.
-        if (item.oneShot) continue;
+        if (item.oneShot) {
+          this.release(item);
+          continue;
+        }
         item.respawn -= dt;
         if (item.respawn <= 0) {
           item.collected = false;
@@ -240,6 +273,9 @@ export class Pickups {
     }
     if (this.audio) this.audio.pickup();
     if (this.onPickup) this.onPickup(message, item);
+    // A spent one-shot drop is released here; nothing of it stays in the
+    // scene or in this.items, and it can never be collected twice.
+    if (item.oneShot) this.release(item);
   }
 
   // A drop that exists for one life only: no respawn, removed at expiry.
