@@ -35,8 +35,10 @@ around nine draw calls and its four wheels are one instanced mesh.
   collide with buildings, and expose engine state (`rpm`, load, speed) for the
   audio layer.
 - **Left click** or **H** sounds the horn.
-- **F** or **E** enters the nearest slow car or leaves the car you are in.
-  The prompt appears as `F / E · ENTER VEHICLE` or `EXIT VEHICLE`.
+- **F** always enters the nearest slow car or leaves the car you are in.
+  **E** does the same only when no context action (sit, steal, rob, valet,
+  retrieve) owns the key. The prompt appears as `F / E · ENTER VEHICLE`,
+  `F / E · EXIT VEHICLE` or a contextual `E · …` line.
 
 The vehicle card in the HUD reports model, class, tune, a large speed
 readout, condition and damage percentages, gear, engine load and the radio
@@ -84,6 +86,28 @@ the door is blocked, the entry still works and no toast is shown.
 Police cruisers do not eject a driver; stealing one reports the theft to the
 police director instead.
 
+## The Solano Mall lot
+
+The lot behind the mall is 32 × 16 m with **26 stalls** in two rows and a 6 m
+aisle. Most occupied stalls are static cars: one instanced body per model (at
+most six body draw calls) plus one shared wheel mesh. Each occupied stall also
+has a solid AABB collider; emptying or stealing the car removes it, so the
+player can never be trapped by an invisible body.
+
+- Occupancy follows the clock: about 20% at night, 35% at dawn, 65% in the
+  day and 90% at dusk. Changes stagger one stall at a time over a few seconds.
+- Five real cars are always parked near the entrance. They are normal
+  Vehicles and can be entered with **F** or **E**.
+- **E · STEAL** beside a static car hides the instance, removes the collider,
+  spawns a real Vehicle of that type and colour and puts Rae at the wheel. The
+  stall stays empty until the next city reset.
+- Stop in the teal valet zone and **E · VALET** parks the car: Rae steps out,
+  the car is stored and a valet walks to the stall. **E · RETRIEVE** at the
+  podium spawns it back at the entrance pad. **F** still exits without
+  parking, so the valet action never traps a driver.
+- The lot door on the mall's parking side is pedestrian-only; the building
+  footprint refuses every vehicle.
+
 ## Getting hit
 
 A moving car that overlaps Rae pushes her out of the bodywork, lands one
@@ -99,4 +123,7 @@ damage hit above about 2.5 m/s, and knocks her down for 0.9 s behind a shared
 - `game/src/traffic-signals.js` — the shared signal clock and lamp sets.
 - `game/src/player.js` — enter/exit, driving input, vehicle contacts and
   knockdown.
-- `game/src/hud.js` — the vehicle card and carjack toast.
+- `game/src/parking.js` — the 26 stalls, static instancing, occupancy, theft
+  and valet storage.
+- `game/src/interactions.js` — the contextual steal/valet/retrieve prompts.
+- `game/src/hud.js` — the vehicle card, carjack and valet toasts.

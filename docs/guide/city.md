@@ -32,6 +32,42 @@ The beach and pier stay at the west edge of the map. The player bounds are
 generous enough to include the pier; the city limits are
 `x -142..358`, `z -250..250`, and the shoreline is at `x = -232`.
 
+## Solano Mall and the lot
+
+Block `(54, 0)` is the mall district. The building is **32 × 16 m** at
+`x 38–70, z 0–16`, with 0.5 m walls, a 3.2 m main door on the Vega Strip side
+and a matching lot door on the parking side. Both doors are open pedestrian
+gaps; every vehicle is refused the whole footprint by `world.vehicleBlocked`,
+so cruisers and civilian cars stay outside while officers and shoppers walk
+in. Inside are a 6.2 m ceiling with a skylight strip, six shop bays (jewelry,
+electronics, clothing, pharmacy, cafe, arcade), a vendor counter and six
+food-court tables with **24 chairs**, all of them seats in the shared
+registry. Three point lights and emissive troughs light the hall, and the
+automatic glass doors part when the player is within 3 m.
+
+The **26-stall parking lot** fills the back half of the block
+(`z -16–0`), thirteen stalls in each of two rows around a 6 m aisle. Most
+stalls hold static cars drawn as one instanced body per model plus a shared
+wheel mesh; each occupied stall owns a solid collider. Occupancy follows the
+clock: about 20% at night, 35% at dawn, 65% in the day and 90% at dusk, with
+changes staggered over a few seconds. Five real cars wait near the entrance.
+Press **E** beside a static car to steal it into a real drivable Vehicle; the
+stall's instance and collider both go away until the next city reset. Stop a
+car in the teal valet zone and press **E** to park it, then press **E** at the
+podium to bring it back to the entrance. **F** still leaves the car
+unconditionally.
+
+Sittings extend past the mall: the Luna Plaza benches, the pier benches and
+the beach loungers are all in the same `world.seats` registry, so **E** works
+at any free chair, bench or lounger. Crowd shoppers reserve mall chairs for
+20–60 in-game minutes and stand up when they panic, flee or die.
+
+The mall is lit, busy and enterable at every hour. At night four shoppers and
+one seated shopper remain; dusk brings thirty shoppers and seven occupied
+chairs. The jewelry register on the west counter starts the one robbery each
+city reset: three wanted stars, two hostile guards, a panicking crowd and a
+$650–950 cash drop.
+
 ## The living clock
 
 `environment.js` owns one clock and the palette it drives. A New Game starts
@@ -89,16 +125,18 @@ sand.
 ## Traffic and the crowd
 
 `traffic.js` keeps up to **18 cars** in the grid lanes and fills the blocks
-with **96 pedestrians**:
+with up to **168 pedestrians**:
 
-- a **48-walker** sidewalk crowd that loops the block edges;
-- **22 people** on the beach and the pier;
-- crosswalk pedestrians.
+- a **64-walker** sidewalk crowd that loops the block edges;
+- **28 people** on the beach and the pier;
+- up to **30 mall shoppers** at dusk, four at night, with seven chairs taken;
+- **two valets** at the mall lot podium and crosswalk pedestrians.
 
 Cars brake for the stop line, keep a following gap to anything in their lane,
 wait for pedestrians in the crosswalk, and recycle in and out of view around
-the player. The whole crowd is drawn through instanced meshes, so the street
-stays fluid with a full crowd on screen.
+the player. The whole crowd is drawn through nine instanced meshes (the eight
+body parts plus a shopping bag), so the street stays fluid with a full crowd
+on screen.
 
 Every one of the **100 intersections** has a visible signal
 (`traffic-signals.js`): a pole and two heads, one colour-and-axis instanced
@@ -116,14 +154,16 @@ around a corner slides along the wall instead of clipping through it.
 
 ## Performance
 
-A typical 1280×720 frame in this build uses about **370 draw calls** at the
-chase shot, with a **6.1 ms** median frame over a 60-frame sample in headless
-Chrome on the build machine; the pre-living-city base measured 433 draw calls
-and 6.7 ms on the same harness. Static glows share one instanced billboard
-field (`glow-field.js`), each car's four wheels are one instanced mesh, and
-the Air 1 airframe is merged per material, so the larger city and crowd cost
-less per frame than the old six-by-six build. The four screenshots currently
-report 307–393 draw calls each.
+A typical 1280×720 frame in this build uses about **400 draw calls** at the
+chase and daylight roadblock shots, **220** in the mall interior and **406**
+in the Pier 9 heist still; headless Chrome on the build machine averaged
+5.6–7.5 ms per frame across the new shots. The pre-living-city base measured
+433 draw calls and 6.7 ms on the same harness. Static glows share one
+instanced billboard field (`glow-field.js`), each car's four wheels are one
+instanced mesh, the static parking bodies are six instanced meshes plus one
+shared wheel mesh, and the Air 1 airframe is merged per material, so the
+larger city, mall and crowd cost less per frame than the old six-by-six
+build. The four screenshots currently report 220–405 draw calls each.
 
 ## Where this lives
 
@@ -132,6 +172,14 @@ report 307–393 draw calls each.
 - `game/src/world.js` — city generation, districts, ground/collision/camera
   queries, beach, pier, lighthouse, ocean, sky textures, sun and moon,
   lights, signs, the merged glow field and animation.
+- `game/src/world-kit.js` — the shared geometry/material helpers.
+- `game/src/mall.js` — the mall shell, shops, food court, doors, register and
+  the 24 seats.
+- `game/src/parking.js` — the 26 stalls, instanced static cars, occupancy,
+  theft and the player valet.
+- `game/src/mall-life.js`, `game/src/robbery.js` — the shopper schedule and
+  the jewelry robbery.
+- `game/src/interactions.js` — the contextual **E** layer.
 - `game/src/environment.js` — the clock, palettes, boundary blend and
   `?time=` parsing.
 - `game/src/traffic.js`, `traffic-signals.js` — cars, crowd, signals and

@@ -25,8 +25,15 @@ const SHOTS = [
   { shot: 'chase', file: '1-cover.jpg', quality: 87 },
   // One daylight frame so the contact sheet shows the living clock.
   { shot: 'blockade', file: '2-street.jpg', quality: 87, time: '10:30' },
-  { shot: 'heist', file: '3-mission.jpg', quality: 87 },
+  // The B1 slot after the mall wave: the interior at dusk, with shoppers.
+  { shot: 'mall-interior', file: '3-mission.jpg', quality: 87, time: '18:00' },
   { shot: 'start', file: '4-title.jpg', quality: 89 },
+];
+
+// Gallery stills kept beside the README: the heist moved out of the contact
+// sheet when the mall interior took the third slot.
+const GALLERY = [
+  { shot: 'heist', file: 'heist.jpg', dir: 'docs/media', quality: 87 },
 ];
 
 const MIME = {
@@ -260,7 +267,7 @@ async function main() {
     });
 
     console.log(`Chrome ${chrome}`);
-    for (const entry of SHOTS) {
+    for (const entry of [...SHOTS, ...GALLERY]) {
       const url = `http://127.0.0.1:${serverPort}/?shot=${entry.shot}${entry.time ? `&time=${entry.time}` : ''}&capture=${Date.now()}`;
       await send('Page.navigate', { url });
       const deadline = Date.now() + 30000;
@@ -298,7 +305,7 @@ async function main() {
       if (!chosen || chosen.buffer.length > MAX_BYTES) {
         throw new Error(`${entry.shot}: could not get under ${MAX_BYTES} bytes`);
       }
-      writeFileSync(join(shotRoot, entry.file), chosen.buffer);
+      writeFileSync(join(entry.dir ? join(here, entry.dir) : shotRoot, entry.file), chosen.buffer);
       const draws = await evaluate('window.__neon.draws');
       console.log(`${entry.file}  ${chosen.dims.width}x${chosen.dims.height}  q${chosen.quality}  ${(chosen.buffer.length / 1024).toFixed(1)} KiB  ${draws} draws`);
     }
@@ -306,7 +313,7 @@ async function main() {
     if (errors.length) {
       throw new Error(`console errors:\n${errors.join('\n')}`);
     }
-    console.log('capture PASS: 4 JPEGs, each 1280x720 and under 256 KiB, clean console');
+    console.log('capture PASS: 4 screenshots and the heist still, each 1280x720 and under 256 KiB, clean console');
     await send('Browser.close').catch(() => {});
   } catch (error) {
     if (chromeLog.trim()) console.error(chromeLog.trim().split('\n').slice(-12).join('\n'));

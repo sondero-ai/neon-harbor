@@ -55,7 +55,9 @@ firing AI, death poses and a boss health pool.
 
 A dead pedestrian folds into an instanced fall, lies on the pavement for
 about eight seconds and then goes. Anyone within **14 m** panics, sprints away
-for **6 s** at 1.6× speed and then walks back to their route.
+for **6 s** at 1.6× speed and then walks back to their route. A seated mall
+shopper stands and frees the chair before running; a corpse never keeps a seat
+reserved.
 
 Every human NPC death leaves exactly one item:
 
@@ -144,6 +146,23 @@ flash, tracer and pistol audio. They give up after twelve seconds or once Rae
 is past 45 m, and the first one to turn raises the `ARMED WITNESS · RETURN
 FIRE` toast. They remain ordinary crowd targets and drop the usual loot.
 
+## The mall robbery
+
+The jewelry counter on the mall's west wall has one robbery per city reset.
+Standing within 2 m prompts **E · ROB**. Pressing it:
+
+- starts the alarm sting and calls `police.addWanted(3, 'Mall Robbery')`;
+- spawns two security guards inside the hall, in dark uniforms with hats;
+- makes every shopper within 18 m panic and run for the doors;
+- drops $650–950 in cash down the counter.
+
+The guards are ordinary armed pedestrians with 78 health: killable, lootable,
+and counted by the witness and heat systems. They spawn inside the mall, so
+both always engage; police cruisers cannot enter the building because the
+whole footprint is vehicle-blocked, but foot officers can come through the
+3.2 m doors. The register is spent for the rest of the city reset; a second
+**E** only shows the empty prompt.
+
 ## Wasted and busted
 
 Getting wasted or busted takes over the screen with a full-frame overlay,
@@ -158,8 +177,10 @@ it again. Loot, corpses and drops reset with the scene.
 - `game/src/humanoid.js` — the melee arm pose layered over walk and aim.
 - `game/src/police.js` — wanted level, pursuit, roadblocks, Air 1, murder
   reports, 911 and the wasted/busted handshake.
-- `game/src/traffic.js` — pedestrian hitboxes, panic, armed witnesses and
-  death.
+- `game/src/traffic.js` — pedestrian hitboxes, panic, armed witnesses,
+  seating and death.
+- `game/src/robbery.js` — the mall register, alarm, security guards and cash
+  drop.
 - `game/src/missions.js` — mission crew hitboxes, bosses and mission deaths.
 - `game/src/loot.js`, `game/src/pickups.js` — the drop table and the glowing
   walk-over rings.

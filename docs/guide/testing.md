@@ -11,7 +11,7 @@ end-to-end suite. Run them from the repository root.
 ```bash
 node --test test/loot.test.mjs     # 4 tests
 node --test test/radio.test.mjs    # 5 tests
-node tools/test-npc-loot.mjs       # 244 E2E checks
+node tools/test-npc-loot.mjs       # 341 E2E checks
 MAKEFUN_OUTPUT_DIR=out node main.ts --check
 ```
 
@@ -30,12 +30,12 @@ Checks the six-station order, the three unique tracks each, every file path
 against the prompt pack, the OGG headers and the 36 MB audio budget, and that
 `MUSIC.md` credits every track and the 2026-11-26 generation date. No browser.
 
-### End to end (`tools/test-npc-loot.mjs`, 244 checks)
+### End to end (`tools/test-npc-loot.mjs`, 341 checks)
 
 The harness serves `game/`, launches headless Chrome, drives the frozen
 `?shot=street` and `?shot=blockade` scenes through `window.__neon`, and prints
 one `ok`/`not ok` line per check. The last run printed
-`PASS: all checks passed` with 244 `ok` lines. The twenty groups are:
+`PASS: all checks passed` with 341 `ok` lines. The twenty-six groups are:
 
 1. **pedestrians** — chest hitbox, damage and death, the fall state, corpse
    cleanup, the 14 m panic radius and 6 s flee/recovery, loot pickup and the
@@ -54,8 +54,8 @@ one `ok`/`not ok` line per check. The last run printed
    gunfire-free kill and the blade whoosh.
 9. **armed witness** — the 15% armed crowd, the draw, the first shot, damage,
    the 45 m give-up and the return-fire toast.
-10. **crowd density** — the 96/48/22/18 targets, all 22 beach walkers seeded,
-    no two pedestrians sharing a slot, the 48-walker sidewalk fill, and a
+10. **crowd density** — the 168/64/28/18 targets, all 28 beach walkers seeded,
+    no two pedestrians sharing a slot, the 64-walker sidewalk fill, and a
     free slot after the fill.
 11. **traffic signals** — a signal at every one of the 100 intersections, the
     green/amber/red rule at seven times, and the visible lamp sets matching
@@ -82,7 +82,8 @@ one `ok`/`not ok` line per check. The last run printed
 16. **knife arm** — the right shoulder before, during and after a swing shows
     a forward thrust, the pose returns to idle and the stab still kills.
 17. **beach** — the sand mesh min X is the shoreline, the shoreline +0.5 m is
-    walkable, the shoreline −0.5 m is blocked, and the slope is finite.
+    walkable, the shoreline −0.5 m is blocked, the slope is finite, and all
+    28 beach walkers stand on visible sand.
 18. **carjacking** — entering an AI car spawns a pedestrian at the driver
     door with a flee timer, leaves `car.driver === 'player'` and the ejected
     driver is a normal lootable target.
@@ -91,6 +92,29 @@ one `ok`/`not ok` line per check. The last run printed
 20. **ambient cars stay on the road grid** — a z-axis car spawns on an x road,
     an x-axis car on a z road, and an off-grid beach car is removed by
     `updateCars`.
+21. **pier is pedestrian-only** — the shack, five benches, four barrels,
+    twelve crates and the railings are solid; the deck and ramp refuse every
+    vehicle; sand refuses AI cars but not the player; a sedan cannot reach the
+    deck; a blocked cruiser force-dismounts its officers; the heist positions
+    and shot cruisers stay clear; 50 pier wander targets land on open planks.
+22. **seats and the contextual E layer** — plaza, pier and beach seats; E sits
+    and stands, a seated player cannot move, the prompt reads SIT, and a car
+    squeezed against a building wall never leaves the player inside either
+    body.
+23. **the Solano Mall shell and interior** — bounds, floor, walkable hall,
+    wall push-out, both doors walkable, the mall wall squeeze, vehicle blocking,
+    24 mall seats registered, and the minimap label/footprint.
+24. **the parking lot, theft and valet** — 26 stalls in bounds, 20/90/65%
+    occupancy at night/dusk/day within one stall, a static car steals into a
+    real Vehicle and loses its collider, and the valet parks and returns a car
+    while F still exits.
+25. **mall life follows the clock** — 30 shoppers at dusk, 4 at 02:00, at
+    least four seated with no shared chair, all chairs inside the mall, and no
+    stale occupant after the shrink.
+26. **the mall robbery** — the ROB prompt, one robbery per reset, three wanted
+    stars, two armed hostile guards inside, the $650–950 counter drop, a
+    fleeing crowd, no cruiser inside the mall, a second E doing nothing and a
+    guard death dropping loot.
 
 Audio output itself cannot be heard headless; the radio and volume checks
 assert the player state, the file responses, the sequencer bus and the saved
@@ -101,7 +125,7 @@ settings.
 The last run printed:
 
 ```text
-check PASS: game 56/993 entries, 33.75 MiB/48.00 MiB; screenshots 4/4, largest 184.7 KiB/256.0 KiB; dossier 1.00 MiB/1.50 MiB, text 159.9 KiB/160.0 KiB
+check PASS: game 62/993 entries, 33.82 MiB/48.00 MiB; screenshots 4/4, largest 184.9 KiB/256.0 KiB; dossier 1.01 MiB/1.50 MiB, text 160.0 KiB/160.0 KiB
 ```
 
 The caps are 993 game entries, 48 MiB of game files, 3–4 screenshots at
@@ -123,12 +147,13 @@ ffprobe -v error -select_streams v:0 \
 
 The current files:
 
-- `screenshots/1-cover.jpg` — 1280×720, 184.7 KiB
-- `screenshots/2-street.jpg` — 1280×720, 174.2 KiB
-- `screenshots/3-mission.jpg` — 1280×720, 143.9 KiB
-- `screenshots/4-title.jpg` — 1280×720, 140.1 KiB
+- `screenshots/1-cover.jpg` — 1280×720, 184.9 KiB
+- `screenshots/2-street.jpg` — 1280×720, 175.8 KiB
+- `screenshots/3-mission.jpg` — 1280×720, 145.4 KiB
+- `screenshots/4-title.jpg` — 1280×720, 145.2 KiB
 - `docs/media/overview.gif` — 640×360, 36 frames, 3.25 s, 2.88 MiB
-- `docs/media/combat.jpg` — 1280×720, 169.0 KiB
+- `docs/media/combat.jpg` — 1280×720, 169.2 KiB
+- `docs/media/heist.jpg` — 1280×720, 144.0 KiB
 
 All four screenshots are under the 256 KiB cap; the GIF is under 4.5 MiB.
 The title screenshot shows the Audio row. Inspect each screenshot at full

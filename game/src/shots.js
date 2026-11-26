@@ -302,9 +302,9 @@ export const SHOTS = {
     prewarm: 70,
     player: {
       x: 52,
-      z: 6,
-      facing: 0.5,
-      cameraYaw: 0.5 + Math.PI,
+      z: 8,
+      facing: Math.PI / 2,
+      cameraYaw: -Math.PI / 2,
       cameraPitch: 0.1,
       distance: 7.0,
     },

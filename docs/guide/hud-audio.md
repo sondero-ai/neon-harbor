@@ -16,7 +16,8 @@ share the same master.
 - **Vitals** — Rae's health and armor bars with hit flashes.
 - **Minimap** — the baked city and district, the named street, live traffic
   and walker counts, the player arrow, alternating red/blue police and
-  officer blips, mission enemies in coral and the objective marker.
+  officer blips, mission enemies in coral, the objective marker and the
+  labelled **SOLANO MALL** footprint with its **PARKING** lot.
 - **Crew panel** — Mira Sol, Odin and Kiki with live role and status lines.
 - **Dialogue box** — a drawn portrait, speaker name, role and line.
 
@@ -41,8 +42,12 @@ share the same master.
 - A top-centre district/street line and the `AIR 1 · SPOTLIGHT` banner with
   the helicopter's range.
 - A bottom-centre objective, progress or countdown, the context prompt
-  (`F / E · ENTER VEHICLE`), a dynamic crosshair (a fixed small reticle for
-  the knife) and the hit marker.
+  (`F / E · ENTER VEHICLE`, or an `E · SIT / STAND / STEAL / ROB / VALET /
+  RETRIEVE` line with its one-word detail), a dynamic crosshair (a fixed small
+  reticle for the knife) and the hit marker. The contextual action always
+  wins over vehicle entry; **F** remains unconditional.
+- A valet toast (`VALET PARKED`, `VALET RETURNED`), a mall robbery toast and
+  the usual pickup and death-drop toasts share the same centre channel.
 - Street jobs get their own progress panel under the location line.
 - Rewards and mission results arrive as toasts and a gold cash banner.
 - Getting wasted or busted takes over the screen with a full-frame overlay,
@@ -63,8 +68,8 @@ fresh-slot title card so the screenshots stay deterministic.
 - an engine hum tracking rpm, load and speed;
 - a two-tone siren whose level follows the nearest cruiser or officer;
 - pistol and SMG reports, impacts, explosions and the horn;
-- reload clicks, pickup chimes, hurt and wasted/busted stings, and menu
-  blips;
+- the two-tone mall robbery alarm sting, reload clicks, pickup chimes, hurt
+  and wasted/busted stings, and menu blips;
 - the three procedural synthwave, chiptune and surf beds used as radio
   fallbacks.
 
@@ -105,8 +110,11 @@ forces high quality for reproducible screenshots.
 
 ## Where this lives
 
-- `game/src/hud.js` — every card, panel, overlay, toast, wheel and the
-  mission-ending screen.
+- `game/src/hud.js` — every card, panel, overlay, toast, wheel, the
+  mall/parking minimap footprint and the mission-ending screen.
+- `game/src/interactions.js` — the contextual **E** prompt and its priority.
+- `game/src/mall.js`, `parking.js`, `robbery.js` — the mall, lot and robbery
+  state the HUD reads.
 - `game/src/audio.js` — the WebAudio engine, effects and fallback beds.
 - `game/src/radio.js` — the music decks and their state.
 - `game/src/main.js` — settings wiring, the Audio rows, quality, toasts and

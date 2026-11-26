@@ -291,7 +291,7 @@ export function buildMall(world) {
   // A central bench cluster and four planters. The hall centre (54, 8) stays
   // open so the mall-interior camera and the player's path through the doors
   // have a clear spine.
-  for (const [bx, bz, ry] of [[46.4, 7, 0], [46.4, 9, 0], [48.2, 8, Math.PI / 2]]) {
+  for (const [bx, bz, ry] of [[45.2, 5.2, 0], [45.2, 6.8, 0], [46.8, 4.4, Math.PI / 2]]) {
     addBox(furnitureParts, 2.0, 0.14, 0.58, bx, floorY + 0.5, bz, 0x6b4c3c, { ry });
     addBox(furnitureParts, 0.14, 0.42, 0.5, bx - Math.cos(ry) * 0.7, floorY + 0.25, bz + Math.sin(ry) * 0.7, 0x3a303c, { ry });
     addBox(furnitureParts, 0.14, 0.42, 0.5, bx + Math.cos(ry) * 0.7, floorY + 0.25, bz - Math.sin(ry) * 0.7, 0x3a303c, { ry });
