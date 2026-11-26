@@ -5,24 +5,29 @@
 // instanced meshes, so thirty-odd people cost seven draw calls.
 
 import * as THREE from '../vendor/three.module.js';
-import { BLOCK_CENTERS_X, BLOCK_CENTERS_Z, ROADS_X, ROADS_Z, WORLD } from './config.js';
-import { TRAFFIC_MIX, pickVehicleColor } from './vehicles.js';
+import { BLOCK_CENTERS_X, BLOCK_CENTERS_Z, WORLD } from './config.js';
 import { makeRng } from './random.js';
 import { Crowd, MAX_PEDS } from './traffic-crowd.js';
-import { signalState } from './traffic-signals.js';
+import {
+  PANIC_SECONDS,
+  ejectDriver,
+  removeCar,
+  spawnAmbientCar,
+  spawnLaneCar,
+  updateCars,
+} from './traffic-cars.js';
+
+export { LANE_OFFSET } from './traffic-cars.js';
 
 const clamp = THREE.MathUtils.clamp;
 const damp = THREE.MathUtils.damp;
 const TAU = Math.PI * 2;
 
-export const LANE_OFFSET = 3.2;
-const STOP_LINE = 12.4;
 const CORNER = 17.4;
 const SIDEWALK_TARGET = 64;
 const BEACH_TARGET = 28;
 const CAR_TARGET = 18;
 const PANIC_RADIUS = 14;
-const PANIC_SECONDS = 6;
 const FLEE_SPEED = 1.6;
 const ARMED_JACKET = 0x6b1e29;
 const ARMED_CHANCE = 0.15;
@@ -47,23 +52,6 @@ function cornerIndexFor(relativeX, relativeZ) {
     }
   }
   return 0;
-}
-
-/** The car rule is exactly the lamp rule; amber and red both stop. */
-function signalGreen(axis, elapsed) {
-  return signalState(axis, elapsed) === 'green';
-}
-
-function laneYaw(axis, direction) {
-  if (axis === 'x') return direction > 0 ? Math.PI / 2 : -Math.PI / 2;
-  return direction > 0 ? 0 : Math.PI;
-}
-
-function lanePoint(axis, line, direction, along) {
-  if (axis === 'x') {
-    return { x: along, z: line + direction * LANE_OFFSET, yaw: laneYaw(axis, direction) };
-  }
-  return { x: line - direction * LANE_OFFSET, z: along, yaw: laneYaw(axis, direction) };
 }
 
 // Same ray/sphere test the Harbor PD uses, kept local so the traffic module
@@ -303,256 +291,25 @@ export class Traffic {
   // ---------------------------------------------------------------- cars
 
   spawnLaneCar(type, axis, direction, line, along, cruise = 11, options = {}) {
-    const point = lanePoint(axis, line, direction, along);
-    const car = this.vehicles.spawn(type, {
-      x: point.x,
-      z: point.z,
-      yaw: point.yaw,
-      color: options.color ?? pickVehicleColor(this.rng, type),
-      driver: 'ai',
-      speed: cruise * 0.72,
-    });
-    car.ai = {
-      axis,
-      direction,
-      line,
-      cruise,
-      speedBias: this.rng.range(0.9, 1.08),
-      stuckTime: 0,
-      mode: 'drive',
-    };
-    car.controls.brake = 0;
-    car.fuel = options.fuel ?? 1;
-    this.cars.push(car);
-    return car;
+    return spawnLaneCar(this, type, axis, direction, line, along, cruise, options);
   }
 
   spawnAmbientCar(player, minDistance = 60, maxDistance = 170) {
-    const px = player.position.x;
-    const pz = player.position.z;
-    for (let attempt = 0; attempt < 24; attempt += 1) {
-      const axis = this.rng.chance(0.5) ? 'x' : 'z';
-      // A car on axis 'x' drives along a z road line, and a car on axis 'z'
-      // drives along an x road line. Picking the other list put cars on the
-      // beach at x = -189 and -243, where they queued at phantom signals.
-      const line = this.rng.pick(axis === 'x' ? ROADS_Z : ROADS_X);
-      const direction = this.rng.sign();
-      const along = axis === 'x'
-        ? this.rng.range(WORLD.cityMinX + 18, WORLD.cityMaxX - 18)
-        : this.rng.range(WORLD.cityMinZ + 18, WORLD.cityMaxZ - 18);
-      const point = lanePoint(axis, line, direction, along);
-      const distance = Math.hypot(point.x - px, point.z - pz);
-      if (distance < minDistance || distance > maxDistance) continue;
-      let clear = true;
-      for (const car of this.vehicles.list) {
-        if (car === this.player.driving) continue;
-        if (Math.hypot(car.position.x - point.x, car.position.z - point.z) < 12) {
-          clear = false;
-          break;
-        }
-      }
-      if (!clear) continue;
-      const type = this.rng.pick(TRAFFIC_MIX);
-      const car = this.spawnLaneCar(type, axis, direction, line, along, this.rng.range(10.5, 15));
-      car.fuel = this.rng.chance(0.22) ? this.rng.range(0.1, 0.34) : 1;
-      return car;
-    }
-    return null;
+    return spawnAmbientCar(this, player, minDistance, maxDistance);
   }
 
   removeCar(car) {
-    const index = this.cars.indexOf(car);
-    if (index !== -1) this.cars.splice(index, 1);
-    this.vehicles.remove(car);
-    this.gasStation?.releaseCar(car);
+    return removeCar(this, car);
   }
 
-  /**
-   * Pull the AI driver out at the driver door and send them running for six
-   * seconds. Returns the new pedestrian, or null when the crowd has no slot
-   * or the door is blocked (the caller then skips the toast).
-   */
   ejectDriver(car) {
-    if (!car || car.removed) return null;
-    const cos = Math.cos(car.yaw);
-    const sin = Math.sin(car.yaw);
-    // Driver's door: car-local left, just outside the bodywork, toward the
-    // front of the cabin.
-    const candidates = [
-      [-(car.halfWidth + 0.65), 0.35],
-      [car.halfWidth + 0.65, 0.35],
-      [-(car.halfWidth + 0.65), -0.6],
-    ];
-    let spot = null;
-    for (const [side, forward] of candidates) {
-      const x = car.position.x + cos * side + sin * forward;
-      const z = car.position.z - sin * side + cos * forward;
-      if (this.world.collides(x, z, 0.36)) continue;
-      if (this.vehicles.blocksPoint(x, z, 0.36, car)) continue;
-      spot = { x, z };
-      break;
-    }
-    if (!spot) return null;
-    const ped = this.spawnPed({
-      x: spot.x,
-      z: spot.z,
-      yaw: Math.atan2(car.position.x - spot.x, car.position.z - spot.z),
-      mode: 'idle',
-      armed: false,
-    });
-    if (!ped) return null;
-    // No block route to resume: this is a one-way run away from the car.
-    ped.blockX = 0;
-    ped.blockZ = 0;
-    ped.cornerIndex = 0;
-    ped.crossingAxis = null;
-    ped.nextBlockX = 0;
-    ped.nextBlockZ = 0;
-    ped.fleeResumeTarget = null;
-    ped.pause = 0;
-    ped.motion = 1;
-    ped.fleeTimer = PANIC_SECONDS;
-    ped.fleeFromX = car.position.x;
-    ped.fleeFromZ = car.position.z;
-    const dx = spot.x - car.position.x;
-    const dz = spot.z - car.position.z;
-    const length = Math.hypot(dx, dz) || 1;
-    ped.target = { x: spot.x + (dx / length) * 12, z: spot.z + (dz / length) * 12 };
-    ped.y = this.world.groundHeightAt(spot.x, spot.z);
-    return ped;
+    return ejectDriver(this, car);
   }
 
   updateCars(dt, elapsed, player) {
-    const px = player.position.x;
-    const pz = player.position.z;
-    for (const car of [...this.cars]) {
-      if (car.removed) continue;
-      if (car.driver !== 'ai') {
-        // A player who carjacks a car at a pump must free that pad at once:
-        // its station AI is gone, so the state machine would never release it.
-        this.gasStation?.releaseCar(car);
-        continue;
-      }
-      const ai = car.ai;
-      if (!ai) continue;
-      // Remove a car that is not on its road grid: an ambient spawn from an
-      // older build, or one knocked onto the sand. It would otherwise queue
-      // at a traffic signal that does not exist on the beach.
-      const laneSet = ai.axis === 'x' ? ROADS_Z : ROADS_X;
-      const offGrid = !laneSet.includes(ai.line) || car.position.x < WORLD.cityMinX - 1;
-      const blockedZone = typeof this.world.vehicleBlocked === 'function'
-        && this.world.vehicleBlocked(car.position.x, car.position.z, false);
-      if (offGrid || blockedZone) {
-        this.removeCar(car);
-        continue;
-      }
-      // A car this station owns is driven by the forecourt state machine, not
-      // by the lane rules; a low-fuel car on the adjacent lane may divert in.
-      if (this.gasStation) {
-        if (this.gasStation.owns(car)) {
-          this.gasStation.updateCar(car, dt);
-          continue;
-        }
-        this.gasStation.maybeDivert(car, ai, dt);
-      }
-      const along = ai.axis === 'x' ? car.position.x : car.position.z;
-      const forwardX = Math.sin(car.yaw);
-      const forwardZ = Math.cos(car.yaw);
-      const sideX = Math.cos(car.yaw);
-      const sideZ = -Math.sin(car.yaw);
-
-      let desired = ai.cruise * ai.speedBias;
-
-      // Stop line for the next intersection, and the two-phase city signal.
-      const axisRoads = ai.axis === 'x' ? ROADS_X : ROADS_Z;
-      let nextRoad = null;
-      if (ai.direction > 0) {
-        for (const road of axisRoads) if (road > along + 2.5) { nextRoad = road; break; }
-      } else {
-        for (let i = axisRoads.length - 1; i >= 0; i -= 1) if (axisRoads[i] < along - 2.5) { nextRoad = axisRoads[i]; break; }
-      }
-      if (nextRoad !== null) {
-        const stopDistance = ai.direction > 0 ? nextRoad - STOP_LINE - along : along - (nextRoad + STOP_LINE);
-        if (!signalGreen(ai.axis, elapsed) && stopDistance > -0.4 && stopDistance < 26) {
-          desired = Math.min(desired, Math.max(0, (stopDistance - 0.7) * 0.55));
-        }
-      }
-
-      // Keep a safe gap to anything rolling in the same lane.
-      for (const other of this.vehicles.list) {
-        if (other === car || other.removed) continue;
-        const dx = other.position.x - car.position.x;
-        const dz = other.position.z - car.position.z;
-        const ahead = dx * forwardX + dz * forwardZ;
-        const lateral = dx * sideX + dz * sideZ;
-        if (ahead < -0.5 || ahead > 30 || Math.abs(lateral) > 2.4) continue;
-        const otherSpeed = Math.max(0, other.speed);
-        const gap = ahead - car.halfLength - other.halfLength;
-        const follow = Math.max(0, gap - 3.4) * 0.55 + otherSpeed;
-        if (gap < 6.5) desired = 0;
-        else desired = Math.min(desired, follow);
-      }
-
-      if (!player.driving) {
-        const dx = px - car.position.x;
-        const dz = pz - car.position.z;
-        const ahead = dx * forwardX + dz * forwardZ;
-        const lateral = dx * sideX + dz * sideZ;
-        if (ahead > 0 && ahead < 17 && Math.abs(lateral) < 2.6) {
-          desired = ahead < 10 ? 0 : Math.min(desired, (ahead - 5) * 0.6);
-        }
-      }
-
-      for (const ped of this.peds) {
-        if (!ped.active || ped.mode !== 'cross') continue;
-        const dx = ped.x - car.position.x;
-        const dz = ped.z - car.position.z;
-        if (dx * dx + dz * dz > 400) continue;
-        const ahead = dx * forwardX + dz * forwardZ;
-        const lateral = dx * sideX + dz * sideZ;
-        if (ahead > 0 && ahead < 20 && Math.abs(lateral) < 7.2) {
-          if (ahead < 12) desired = 0;
-          else desired = Math.min(desired, (ahead - 6) * 0.42);
-        }
-      }
-
-      const speed = car.speed;
-      if (speed < desired - 0.35) {
-        car.controls.throttle = clamp((desired - speed) * 0.3, 0.12, 1);
-        car.controls.brake = 0;
-      } else if (speed > desired + 0.5) {
-        car.controls.throttle = 0;
-        car.controls.brake = clamp((speed - desired) * 0.32, 0.15, 1);
-      } else {
-        car.controls.throttle = 0;
-        car.controls.brake = desired < 0.4 ? 0.35 : 0;
-      }
-      const headingError = Math.atan2(
-        Math.sin(laneYaw(ai.axis, ai.direction) - car.yaw),
-        Math.cos(laneYaw(ai.axis, ai.direction) - car.yaw),
-      );
-      car.controls.steer = clamp(headingError * 2.4, -0.3, 0.3);
-      car.controls.handbrake = false;
-
-      if (Math.abs(speed) < 0.4) ai.stuckTime += dt;
-      else ai.stuckTime = 0;
-
-      const minAlong = ai.axis === 'x' ? WORLD.cityMinX : WORLD.cityMinZ;
-      const maxAlong = ai.axis === 'x' ? WORLD.cityMaxX : WORLD.cityMaxZ;
-      const beyondMin = along < minAlong + 2;
-      const beyondMax = along > maxAlong - 2;
-      const farAway = Math.hypot(car.position.x - px, car.position.z - pz) > 250;
-      const stuckTooLong = ai.stuckTime > 16 && Math.hypot(car.position.x - px, car.position.z - pz) > 60;
-      if (beyondMin || beyondMax || farAway || stuckTooLong) this.removeCar(car);
-    }
-
-    this.spawnTimer -= dt;
-    if (this.spawnTimer <= 0) {
-      this.spawnTimer = 0.65;
-      const activeAi = this.cars.filter((car) => car.driver === 'ai').length;
-      if (activeAi < this.carTarget) this.spawnAmbientCar(player, 55, 175);
-    }
+    return updateCars(this, dt, elapsed, player);
   }
+
 
   // ---------------------------------------------------------------- pedestrians
 
