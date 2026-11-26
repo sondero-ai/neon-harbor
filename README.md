@@ -68,7 +68,7 @@ driving detail is in [driving](docs/guide/driving.md).
   Run and a safehouse. [Story and free roam →](docs/guide/story.md)
 - **A living city** — 81 seeded blocks, Old Town's market square and the
   Foundry's rail yards, 100 signalised intersections, 96 pedestrians, 18
-  traffic cars and a 48-minute day across dawn, day, dusk and night.
+  traffic cars and a 9.6-minute day across dawn, day, dusk and night.
   [City and clock →](docs/guide/city.md)
 - **Seven cars and carjacking** — arcade handling, drifting, skid marks,
   lane-following traffic and a driver who bails out at the door when you steal

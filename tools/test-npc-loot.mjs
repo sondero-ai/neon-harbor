@@ -1431,8 +1431,8 @@ const TESTS = [
       );
       const shotTime = neon.time;
       check(
-        'test 13: a capture pins 23:41 night at the two-second minute',
-        shotTime.clock === '23:41' && shotTime.period === 'night' && shotTime.rate === 0.5,
+        'test 13: a capture pins 23:41 night at 2.5 minutes per second',
+        shotTime.clock === '23:41' && shotTime.period === 'night' && shotTime.rate === 2.5,
         JSON.stringify({ clock: shotTime.clock, period: shotTime.period, rate: shotTime.rate }),
       );
 
@@ -1513,13 +1513,13 @@ const TESTS = [
         `start=${startClock}`,
       );
       check(
-        'test 13: thirty real seconds move the clock fifteen minutes',
-        advanced === '18:15',
+        'test 13: thirty real seconds move the clock seventy-five minutes',
+        advanced === '19:15',
         `advanced=${advanced}`,
       );
       check(
         'test 13: Continue restores the saved minute',
-        beforeContinue === '12:00' && restored === '18:15',
+        beforeContinue === '12:00' && restored === '19:15',
         JSON.stringify({ beforeContinue, restored }),
       );
 
@@ -1528,7 +1528,7 @@ const TESTS = [
       neon.advance(30);
       check(
         'test 13: crossing midnight rolls the day counter',
-        neon.time.clock === '00:05' && neon.time.day === dayBefore + 1,
+        neon.time.clock === '01:05' && neon.time.day === dayBefore + 1,
         JSON.stringify({ clock: neon.time.clock, day: neon.time.day, dayBefore }),
       );
       return results;

@@ -35,10 +35,12 @@ generous enough to include the pier; the city limits are
 ## The living clock
 
 `environment.js` owns one clock and the palette it drives. A New Game starts
-at **18:00 on day four**; the clock runs **one in-game minute per two real
-seconds**, so a full day takes **48 real minutes** and the HUD's
-`DAY n · HH:MM` line advances through it. Continue restores the saved minute
-and day, and midnight rolls the day counter.
+at **18:00 on day four**; the clock runs **five in-game minutes per two real
+seconds** (`CLOCK_MINUTES_PER_SECOND = 2.5`), so a full day takes **9.6 real
+minutes** and the HUD's `DAY n · HH:MM` line advances through it. Continue
+restores the saved minute and day, and midnight rolls the day counter. The
+traffic signals are separate: they keep their real-time 18 s cycle, and the
+clock is a time-of-day indicator, not a signal clock.
 
 | Period | Clock | What the palette does |
 | --- | --- | --- |

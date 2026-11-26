@@ -66,8 +66,9 @@ one `ok`/`not ok` line per check. The last run printed
     walker inside a collider.
 13. **living clock** — the 81 blocks, the pinned 23:41 night, all four
     periods and their sky textures, the day/night palette levels, a
-    fifteen-minute advance over thirty real seconds, the saved minute
-    restored by Continue and the day rollover at midnight.
+    seventy-five-minute advance over thirty real seconds at 2.5 minutes per
+    second, the saved minute restored by Continue and the day rollover at
+    midnight.
 14. **radio** — the Vega 105.1 default, six stations with three tracks each,
     the HUD reading the same state, every key and track/station wrap, `M`
     mute, the hold-Tab wheel with arrow selection and per-track clicks, the
