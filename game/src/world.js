@@ -81,6 +81,13 @@ import {
 } from './world/sky.js';
 import { buildBeach, buildGround, buildOcean, buildRoadMarkings } from './world/ground.js';
 import { addBeacon, addRoofProps, addStorefront, buildCity } from './world/city.js';
+import {
+  buildCasaLuna,
+  buildHotel,
+  buildMotorRow,
+  buildPlaza,
+  buildRadioBlock,
+} from './world/landmarks.js';
 
 export class World {
   constructor(scene, { quality = 'high' } = {}) {
@@ -119,7 +126,7 @@ export class World {
     buildBeach(this);
     buildOcean(this);
     buildCity(this);
-    this.buildPlaza(0, 0);
+    buildPlaza(this, 0, 0);
     this.buildBeachProps();
     this.buildPier();
     this.buildLighthouse();
@@ -198,306 +205,6 @@ export class World {
     this.sun.shadow.mapSize.set(preset.shadowMap, preset.shadowMap);
     this.sun.shadow.map?.dispose();
     this.sun.shadow.map = null;
-  }
-
-  buildHotel(cx, cz) {
-    const rng = this.rng;
-    const width = 31;
-    const depth = 31;
-    const baseHeight = 32;
-    const towerWidth = 21;
-    const towerDepth = 21;
-    const towerHeight = 34;
-    const y0 = WORLD.sidewalkHeight;
-    const baseStyle = this.facadeStyles[2];
-    const towerStyle = this.facadeStyles[4];
-
-    const base = makeBuildingMesh(width, baseHeight, depth, baseStyle);
-    base.position.set(cx, y0 + baseHeight / 2, cz);
-    base.castShadow = true;
-    base.receiveShadow = true;
-    this.root.add(base);
-    this.roofParts.push({
-      geometry: new THREE.BoxGeometry(width + 0.3, 0.45, depth + 0.3),
-      matrix: matrixFor(cx, y0 + baseHeight + 0.22, cz),
-      color: 0x2b2430,
-    });
-    const tower = makeBuildingMesh(towerWidth, towerHeight, towerDepth, towerStyle);
-    tower.position.set(cx, y0 + baseHeight + towerHeight / 2, cz);
-    tower.castShadow = true;
-    tower.receiveShadow = true;
-    this.root.add(tower);
-    this.roofParts.push({
-      geometry: new THREE.BoxGeometry(towerWidth + 0.3, 0.45, towerDepth + 0.3),
-      matrix: matrixFor(cx, y0 + baseHeight + towerHeight + 0.22, cz),
-      color: 0x2b2430,
-    });
-    addCrownBand(this.crownParts, cx, cz, towerWidth + 0.7, towerDepth + 0.7, y0 + baseHeight + towerHeight + 0.55, 0xffc95c, 0.25);
-    addBox(this.crownParts, 0.16, 22, 0.16, cx - towerWidth / 2 + 0.1, y0 + baseHeight + 14, cz - towerDepth / 2 + 0.1, 0x3fe0cf);
-    addBox(this.crownParts, 0.16, 22, 0.16, cx + towerWidth / 2 - 0.1, y0 + baseHeight + 14, cz + towerDepth / 2 - 0.1, 0x3fe0cf);
-    this.addStorefront(cx, cz, width, depth);
-
-    const building = {
-      cx, cz, x0: cx - width / 2, x1: cx + width / 2, z0: cz - depth / 2, z1: cz + depth / 2,
-      baseY: y0, height: baseHeight + towerHeight, styleIndex: 1,
-    };
-    this.buildings.push(building);
-    this.landmarks.hotel = building;
-    this.colliders.push({
-      kind: 'building',
-      minX: building.x0, maxX: building.x1, minZ: building.z0, maxZ: building.z1,
-      minY: 0, maxY: y0 + baseHeight + towerHeight + 0.6,
-    });
-    this.addRoofProps(cx, cz, towerWidth, towerDepth, y0 + baseHeight + towerHeight, rng);
-  }
-
-  buildCasaLuna(cx, cz) {
-    const rng = this.rng;
-    const width = 33;
-    const depth = 32;
-    const height = 23;
-    const y0 = WORLD.sidewalkHeight;
-    const style = this.facadeStyles[0];
-    const mesh = makeBuildingMesh(width, height, depth, style);
-    mesh.position.set(cx, y0 + height / 2, cz);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    this.root.add(mesh);
-    this.roofParts.push({
-      geometry: new THREE.BoxGeometry(width + 0.3, 0.45, depth + 0.3),
-      matrix: matrixFor(cx, y0 + height + 0.22, cz),
-      color: 0x2b2430,
-    });
-    // A shaded rooftop terrace under a little pergola.
-    for (let i = 0; i < 5; i += 1) {
-      addBox(this.roofParts, 0.12, 2.2, 0.12, cx - 8 + i * 4, y0 + height + 1.4, cz - 7, 0x3a2a2d);
-    }
-    addBox(this.roofParts, 18, 0.14, 5, cx, y0 + height + 2.5, cz - 7, 0xa4585c);
-    addCrownBand(this.crownParts, cx, cz, width + 0.5, depth + 0.5, y0 + height + 0.5, 0xff8a72, 0.18);
-    this.addStorefront(cx, cz, width, depth);
-    const building = {
-      cx, cz, x0: cx - width / 2, x1: cx + width / 2, z0: cz - depth / 2, z1: cz + depth / 2,
-      baseY: y0, height, styleIndex: 0,
-    };
-    this.buildings.push(building);
-    this.landmarks.casa = building;
-    this.colliders.push({
-      kind: 'building',
-      minX: building.x0, maxX: building.x1, minZ: building.z0, maxZ: building.z1,
-      minY: 0, maxY: y0 + height + 0.6,
-    });
-    this.addRoofProps(cx, cz, width, depth, y0 + height, rng);
-  }
-
-  buildMotorRow(cx, cz) {
-    const rng = this.rng;
-    const width = 35;
-    const depth = 30;
-    const height = 14;
-    const y0 = WORLD.sidewalkHeight;
-    const style = this.facadeStyles[6];
-    const mesh = makeBuildingMesh(width, height, depth, style);
-    mesh.position.set(cx, y0 + height / 2, cz);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    this.root.add(mesh);
-    this.roofParts.push({
-      geometry: new THREE.BoxGeometry(width + 0.3, 0.45, depth + 0.3),
-      matrix: matrixFor(cx, y0 + height + 0.22, cz),
-      color: 0x2b2430,
-    });
-    addCrownBand(this.crownParts, cx, cz, width + 0.5, depth + 0.5, y0 + height + 0.5, 0xff6f61, 0.18);
-    this.addStorefront(cx, cz, width, depth);
-    const building = {
-      cx, cz, x0: cx - width / 2, x1: cx + width / 2, z0: cz - depth / 2, z1: cz + depth / 2,
-      baseY: y0, height, styleIndex: 6,
-    };
-    this.buildings.push(building);
-    this.landmarks.motor = building;
-    this.colliders.push({
-      kind: 'building',
-      minX: building.x0, maxX: building.x1, minZ: building.z0, maxZ: building.z1,
-      minY: 0, maxY: y0 + height + 0.6,
-    });
-    this.addRoofProps(cx, cz, width, depth, y0 + height, rng);
-  }
-
-  buildRadioBlock(cx, cz) {
-    const rng = this.rng;
-    const width = 23;
-    const depth = 23;
-    const height = 11;
-    const y0 = WORLD.sidewalkHeight;
-    const style = this.facadeStyles[5];
-    const mesh = makeBuildingMesh(width, height, depth, style);
-    mesh.position.set(cx, y0 + height / 2, cz);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    this.root.add(mesh);
-    this.roofParts.push({
-      geometry: new THREE.BoxGeometry(width + 0.3, 0.45, depth + 0.3),
-      matrix: matrixFor(cx, y0 + height + 0.22, cz),
-      color: 0x2b2430,
-    });
-    addCrownBand(this.crownParts, cx, cz, width + 0.5, depth + 0.5, y0 + height + 0.5, 0x3fe0cf, 0.18);
-    this.addStorefront(cx, cz, width, depth);
-    const building = {
-      cx, cz, x0: cx - width / 2, x1: cx + width / 2, z0: cz - depth / 2, z1: cz + depth / 2,
-      baseY: y0, height, styleIndex: 5,
-    };
-    this.buildings.push(building);
-    this.landmarks.radio = building;
-    this.colliders.push({
-      kind: 'building',
-      minX: building.x0, maxX: building.x1, minZ: building.z0, maxZ: building.z1,
-      minY: 0, maxY: y0 + height + 0.6,
-    });
-    this.addRoofProps(cx, cz, width, depth, y0 + height, rng);
-
-    // A lattice mast beside the station, with one red aircraft light at the top.
-    const towerParts = [];
-    const tx = cx + 12;
-    const tz = cz + 10;
-    const mastHeight = 58;
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        addBox(towerParts, 0.18, mastHeight, 0.18, tx + sx * 1.5, y0 + mastHeight / 2, tz + sz * 1.5, 0x6a6774);
-      }
-    }
-    for (let y = 5; y < mastHeight; y += 6) {
-      addBox(towerParts, 3.2, 0.12, 0.12, tx, y0 + y, tz - 1.5, 0x777480);
-      addBox(towerParts, 3.2, 0.12, 0.12, tx, y0 + y, tz + 1.5, 0x777480);
-      addBox(towerParts, 0.12, 0.12, 3.2, tx - 1.5, y0 + y, tz, 0x777480);
-      addBox(towerParts, 0.12, 0.12, 3.2, tx + 1.5, y0 + y, tz, 0x777480);
-    }
-    const mast = new THREE.Mesh(
-      mergeGeometries(towerParts),
-      material(0xffffff, { vertexColors: true, roughness: 0.6, metalness: 0.3 }),
-    );
-    mast.castShadow = true;
-    this.root.add(mast);
-    this.addBeacon(tx, y0 + mastHeight + 0.8, tz, 1.5);
-    this.landmarks.mast = { x: tx, z: tz, height: mastHeight };
-  }
-
-  // ---------------------------------------------------------------- plaza
-
-  buildPlaza(cx, cz) {
-    const rng = this.rng;
-    const stone = canvasTexture(256, 256, (ctx, width, height) => {
-      ctx.fillStyle = '#8d7774';
-      ctx.fillRect(0, 0, width, height);
-      const inner = ctx.createRadialGradient(width / 2, height / 2, 10, width / 2, height / 2, width / 2);
-      inner.addColorStop(0, 'rgba(255,225,190,0.24)');
-      inner.addColorStop(0.55, 'rgba(90,65,70,0.08)');
-      inner.addColorStop(1, 'rgba(30,20,32,0.35)');
-      ctx.fillStyle = inner;
-      ctx.fillRect(0, 0, width, height);
-      ctx.strokeStyle = 'rgba(48,37,44,0.45)';
-      ctx.lineWidth = 2;
-      for (let r = 28; r < width / 2; r += 28) {
-        ctx.beginPath();
-        ctx.arc(width / 2, height / 2, r, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      for (let i = 0; i < 16; i += 1) {
-        const angle = (i / 16) * Math.PI * 2;
-        ctx.beginPath();
-        ctx.moveTo(width / 2 + Math.cos(angle) * 24, height / 2 + Math.sin(angle) * 24);
-        ctx.lineTo(width / 2 + Math.cos(angle) * 128, height / 2 + Math.sin(angle) * 128);
-        ctx.stroke();
-      }
-    });
-    const plaza = new THREE.Mesh(
-      new THREE.CylinderGeometry(15.5, 15.5, 0.08, 40),
-      material(0xffffff, { map: stone, roughness: 0.88 }),
-    );
-    plaza.position.set(cx, WORLD.sidewalkHeight + 0.04, cz);
-    plaza.receiveShadow = true;
-    this.root.add(plaza);
-
-    const basin = new THREE.Mesh(
-      new THREE.CylinderGeometry(6.2, 6.6, 0.95, 40),
-      material(0x4e4049, { roughness: 0.8 }),
-    );
-    basin.position.set(cx, WORLD.sidewalkHeight + 0.5, cz);
-    basin.castShadow = true;
-    basin.receiveShadow = true;
-    this.root.add(basin);
-
-    this.fountainWater = new THREE.Mesh(
-      new THREE.CylinderGeometry(5.6, 5.6, 0.12, 40),
-      material(0x2c7885, {
-        roughness: 0.2,
-        metalness: 0.12,
-        emissive: 0x3fe0cf,
-        emissiveIntensity: 0.45,
-      }),
-    );
-    this.fountainWater.position.set(cx, WORLD.sidewalkHeight + 0.99, cz);
-    this.root.add(this.fountainWater);
-
-    const plinth = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.5, 1.9, 1.0, 12),
-      material(0x6f5c60, { roughness: 0.85 }),
-    );
-    plinth.position.set(cx, WORLD.sidewalkHeight + 1.4, cz);
-    plinth.castShadow = true;
-    this.root.add(plinth);
-    const spire = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.18, 0.55, 3.4, 8),
-      material(0x8c7574, { roughness: 0.6, metalness: 0.2 }),
-    );
-    spire.position.set(cx, WORLD.sidewalkHeight + 3.4, cz);
-    spire.castShadow = true;
-    this.root.add(spire);
-
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(2.9, 0.12, 8, 40),
-      basicMaterial(0x3fe0cf),
-    );
-    ring.rotation.x = Math.PI / 2;
-    ring.position.set(cx, WORLD.sidewalkHeight + 4.2, cz);
-    this.root.add(ring);
-    this.plazaRing = ring;
-    const ringGlow = makeGlowSprite(0x3fe0cf, 11, 0.5);
-    ringGlow.position.set(cx, WORLD.sidewalkHeight + 4.2, cz);
-    this.root.add(ringGlow);
-
-    for (let i = 0; i < 6; i += 1) {
-      const angle = (i / 6) * Math.PI * 2;
-      const bx = cx + Math.cos(angle) * 12.5;
-      const bz = cz + Math.sin(angle) * 12.5;
-      addBox(this.roofParts, 1.8, 0.16, 0.6, bx, WORLD.sidewalkHeight + 0.55, bz, 0x5b454a, { ry: -angle });
-      addBox(this.roofParts, 0.16, 0.45, 0.5, bx - Math.cos(angle) * 0.6, WORLD.sidewalkHeight + 0.3, bz - Math.sin(angle) * 0.6, 0x3b2e35, { ry: -angle });
-      addBox(this.roofParts, 0.16, 0.45, 0.5, bx + Math.cos(angle) * 0.6, WORLD.sidewalkHeight + 0.3, bz + Math.sin(angle) * 0.6, 0x3b2e35, { ry: -angle });
-      // Sit facing outward, away from the fountain.
-      this.seats.push({
-        x: bx,
-        z: bz,
-        y: WORLD.sidewalkHeight,
-        yaw: Math.atan2(Math.cos(angle), Math.sin(angle)),
-        kind: 'plaza',
-        occupant: null,
-      });
-    }
-
-    this.colliders.push({
-      kind: 'prop',
-      minX: cx - 6.4,
-      maxX: cx + 6.4,
-      minZ: cz - 6.4,
-      maxZ: cz + 6.4,
-      minY: 0,
-      maxY: WORLD.sidewalkHeight + 0.95,
-    });
-    this.landmarks.plaza = { x: cx, z: cz };
-    this.plazaPalmSpots = [];
-    for (let i = 0; i < 6; i += 1) {
-      const angle = (i / 6) * Math.PI * 2 + 0.4;
-      this.plazaPalmSpots.push({ x: cx + Math.cos(angle) * 11.2, z: cz + Math.sin(angle) * 11.2 });
-    }
-    this.plazaRng = rng;
   }
 
   // ---------------------------------------------------------------- beach dressing
@@ -1616,6 +1323,22 @@ export class World {
 
   addRoofProps(cx, cz, width, depth, topY, rng) {
     return addRoofProps(this, cx, cz, width, depth, topY, rng);
+  }
+
+  buildHotel(cx, cz) {
+    return buildHotel(this, cx, cz);
+  }
+
+  buildCasaLuna(cx, cz) {
+    return buildCasaLuna(this, cx, cz);
+  }
+
+  buildMotorRow(cx, cz) {
+    return buildMotorRow(this, cx, cz);
+  }
+
+  buildRadioBlock(cx, cz) {
+    return buildRadioBlock(this, cx, cz);
   }
 
   // ---------------------------------------------------------------- animation
