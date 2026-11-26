@@ -3623,6 +3623,30 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 28: the station shot',
+    shot: 'station',
+    body: function stationShot() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+      const neon = window.__neon;
+      const station = neon?.debug?.gasStation;
+      const shots = neon?.shots;
+      check('test 28: the station shot is registered',
+        Boolean(shots?.station) && shots.station.mode === 'playing',
+        JSON.stringify(shots?.station ?? null));
+      check('test 28: a car is staged at a pump', Boolean(station?.slots?.[0]?.car)
+        && station.slots[0].phase === 'pump' && station.slots[0].car.fuel < 0.35,
+        JSON.stringify({ phase: station?.slots?.[0]?.phase, fuel: station?.slots?.[0]?.car?.fuel }));
+      const approach = neon?.debug?.traffic?.cars.find((car) => car.ai?.stationApproach);
+      check('test 28: a low-fuel car is staged on the approach', Boolean(approach) && approach.fuel < 0.35,
+        JSON.stringify(approach ? { fuel: approach.fuel, z: approach.position.z } : null));
+      check('test 28: the shot renders draw calls', (neon?.draws ?? 0) > 0, String(neon?.draws));
+      return results;
+    },
+  },
 ];
 
 async function main() {

@@ -52,28 +52,30 @@ Output: four files in `screenshots/`, each 1280×720 and at most 256 KiB:
 | `3-mission.jpg` | `?shot=mall-interior&time=18:00` | the Solano Mall food court at dusk, with seated shoppers and the CH.1 card |
 | `4-title.jpg` | `?shot=start` | the title and menu over the night skyline, with the Audio row |
 
-The tool also writes the Pier 9 heist still to `docs/media/heist.jpg`, which
-keeps the mission on the README after the mall interior took the third slot
-on the contact sheet.
+The tool also writes the gallery stills: the Pier 9 heist to
+`docs/media/heist.jpg`, which keeps the mission on the README after the mall
+interior took the third slot on the contact sheet, and the Solano Fuel
+forecourt to `docs/media/station.jpg`.
 
 The first file by name is the cover. Shot mode builds the real world, player,
 police or mission director, weapons, effects and HUD, runs a fixed number of
 simulation steps and freezes. It forces high quality, suppresses toasts and
 the fresh-slot title card, and does not depend on pointer lock or the wall
-clock. The cover, heist and title use the pinned 23:41 clock; the roadblock
-uses `?time=10:30` and the mall interior `?time=18:00`. The other poses
-(`street`, `drive`, `mission`, `mall`, `pier`) remain available for
-development checks.
+clock. The cover, heist, station and title use the pinned 23:41 clock; the
+roadblock uses `?time=10:30` and the mall interior `?time=18:00`. The other
+poses (`street`, `drive`, `mission`, `mall`, `mall-interior`, `station`,
+`pier`) remain available for development checks.
 
 The latest run:
 
 ```text
-1-cover.jpg  1280x720  q87  184.9 KiB  400 draws
-2-street.jpg 1280x720  q87  175.8 KiB  405 draws
-3-mission.jpg 1280x720 q87  145.4 KiB  220 draws
-4-title.jpg  1280x720  q89  145.2 KiB  336 draws
-heist.jpg    1280x720  q87  144.0 KiB  406 draws
-capture PASS: 4 screenshots and the heist still, each 1280x720 and under 256 KiB, clean console
+1-cover.jpg  1280x720  q87  185.6 KiB  400 draws
+2-street.jpg 1280x720  q87  175.0 KiB  395 draws
+3-mission.jpg 1280x720 q87  145.4 KiB  215 draws
+4-title.jpg  1280x720  q89  145.4 KiB  348 draws
+heist.jpg    1280x720  q87  143.9 KiB  406 draws
+station.jpg  1280x720  q87  139.6 KiB  227 draws
+capture PASS: 4 screenshots and the gallery stills, each 1280x720 and under 256 KiB, clean console
 ```
 
 ## Animated media
@@ -132,7 +134,7 @@ line:
 The latest run:
 
 ```text
-check PASS: game 62/993 entries, 33.82 MiB/48.00 MiB; screenshots 4/4, largest 184.9 KiB/256.0 KiB; dossier 1.01 MiB/1.50 MiB, text 160.0 KiB/160.0 KiB
+check PASS: game 64/993 entries, 33.85 MiB/48.00 MiB; screenshots 4/4, largest 185.6 KiB/256.0 KiB; dossier 1.01 MiB/1.50 MiB, text 160.0 KiB/160.0 KiB
 ```
 
 The dossier lists the game's source, then `game/index.html` and the module

@@ -26,7 +26,8 @@ Buildings use eight facade palettes with punched, ribbon and glass window
 patterns, floor bands, lit rooms with blinds and curtains, rooftop tanks and
 antennas, emissive storefronts and neon boards. Landmarks include the Sunset
 Hotel tower, Casa Luna on the beach, Motor Row, the Luna Plaza fountain, the
-radio mast, the Vega Strip arch, Pier 9 and its working lighthouse.
+radio mast, the Vega Strip arch, **Solano Fuel**, Pier 9 and its working
+lighthouse.
 
 The beach and pier stay at the west edge of the map. The player bounds are
 generous enough to include the pier; the city limits are
@@ -67,6 +68,28 @@ one seated shopper remain; dusk brings thirty shoppers and seven occupied
 chairs. The jewelry register on the west counter starts the one robbery each
 city reset: three wanted stars, two hostile guards, a panicking crowd and a
 $650–950 cash drop.
+
+## Solano Fuel
+
+Block `(-108, 0)` is the Solano Fuel station, on the north-west corner of the
+x=-81 road. A **16 × 20 m canopy** on four 0.5 m columns covers two 6 m pump
+islands at `z = -8` and `z = +8`; each island carries two pumps, for four
+nozzles. The kiosk is **10 × 8 m** at `x = -120` with an east door, a north
+service-bay roll-up door, a lit sign and a price board (`FUEL 1.89 · DIESEL
+2.05 · AIR FREE`). An air/water stand sits at `(-116, 13)`. A **service lane**
+runs at `x = -92` from the entry curb cut at `z -20..-16` to the exit at
+`z +16..+20`, with painted entry/exit chevrons on the road at
+`(-84.2, -18)` and `(-84.2, +18)`.
+
+The canopy, kiosk, pump islands, columns and air stand are solid normal
+colliders; the forecourt, pads, service lane and both curb cuts are clear for
+a car. The station's two pads are real slots. About **22%** of ambient cars
+spawn with a low tank; a flagged northbound car on the adjacent lane pulls
+into a free pad, waits **4–6 s**, fills, then loops around the kiosk and
+rejoins the lane at `(-84.2, 18)`. Both pumps can be busy at once, and a
+third flagged car keeps rolling instead of queueing in the road. The station
+is also its own `?shot=station` scene with a car on pad 0 and one on the
+approach.
 
 ## The living clock
 
@@ -134,9 +157,10 @@ with up to **168 pedestrians**:
 
 Cars brake for the stop line, keep a following gap to anything in their lane,
 wait for pedestrians in the crosswalk, and recycle in and out of view around
-the player. The whole crowd is drawn through nine instanced meshes (the eight
-body parts plus a shopping bag), so the street stays fluid with a full crowd
-on screen.
+the player. About 22% of ambient cars carry a low tank and divert into Solano
+Fuel when a pump is free; the rest never stop. The whole crowd is drawn
+through nine instanced meshes (the eight body parts plus a shopping bag), so
+the street stays fluid with a full crowd on screen.
 
 Every one of the **100 intersections** has a visible signal
 (`traffic-signals.js`): a pole and two heads, one colour-and-axis instanced
@@ -155,15 +179,16 @@ around a corner slides along the wall instead of clipping through it.
 ## Performance
 
 A typical 1280×720 frame in this build uses about **400 draw calls** at the
-chase and daylight roadblock shots, **220** in the mall interior and **406**
-in the Pier 9 heist still; headless Chrome on the build machine averaged
-5.6–7.5 ms per frame across the new shots. The pre-living-city base measured
-433 draw calls and 6.7 ms on the same harness. Static glows share one
-instanced billboard field (`glow-field.js`), each car's four wheels are one
-instanced mesh, the static parking bodies are six instanced meshes plus one
-shared wheel mesh, and the Air 1 airframe is merged per material, so the
-larger city, mall and crowd cost less per frame than the old six-by-six
-build. The four screenshots currently report 220–405 draw calls each.
+chase, **395** at the daylight roadblock, **215** in the mall interior, **348**
+on the title, **406** in the Pier 9 heist still and **227** at the Solano Fuel
+station; headless Chrome on the build machine averaged 5.6–7.5 ms per frame
+across the shots. The pre-living-city base measured 433 draw calls and 6.7 ms
+on the same harness. Static glows share one instanced billboard field
+(`glow-field.js`), each car's four wheels are one instanced mesh, the static
+parking bodies are six instanced meshes plus one shared wheel mesh, and the
+Air 1 airframe is merged per material, so the larger city, mall, station and
+crowd cost less per frame than the old six-by-six build. The four screenshots
+currently report 215–400 draw calls each.
 
 ## Where this lives
 
@@ -177,6 +202,9 @@ build. The four screenshots currently report 220–405 draw calls each.
   the 24 seats.
 - `game/src/parking.js` — the 26 stalls, instanced static cars, occupancy,
   theft and the player valet.
+- `game/src/gas-station.js` — the Solano Fuel canopy, islands, kiosk, lanes,
+  colliders, pump slots and the NPC pump flow.
+- `game/src/fuel.js` — the tank constants, drain, percent and service quote.
 - `game/src/mall-life.js`, `game/src/robbery.js` — the shopper schedule and
   the jewelry robbery.
 - `game/src/interactions.js` — the contextual **E** layer.

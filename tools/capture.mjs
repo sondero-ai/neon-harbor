@@ -34,6 +34,7 @@ const SHOTS = [
 // sheet when the mall interior took the third slot.
 const GALLERY = [
   { shot: 'heist', file: 'heist.jpg', dir: 'docs/media', quality: 87 },
+  { shot: 'station', file: 'station.jpg', dir: 'docs/media', quality: 87 },
 ];
 
 const MIME = {
@@ -313,7 +314,7 @@ async function main() {
     if (errors.length) {
       throw new Error(`console errors:\n${errors.join('\n')}`);
     }
-    console.log('capture PASS: 4 screenshots and the heist still, each 1280x720 and under 256 KiB, clean console');
+    console.log('capture PASS: 4 screenshots and the gallery stills, each 1280x720 and under 256 KiB, clean console');
     await send('Browser.close').catch(() => {});
   } catch (error) {
     if (chromeLog.trim()) console.error(chromeLog.trim().split('\n').slice(-12).join('\n'));

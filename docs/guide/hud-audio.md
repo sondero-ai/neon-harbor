@@ -34,8 +34,9 @@ share the same master.
   street knife at slot 3 with `--` ammo and a `STREET KNIFE · CQC` footer,
   plus locked rifle and RPG slots.
 - **Vehicle card** — model, class, tune, a large speed readout, condition and
-  damage percentages, gear, engine load and the station radio line (station,
-  artist, track, `1/3`, and `ON AIR`, `SYNTH`, `OFF AIR` or `RADIO OFF`).
+  damage percentages, the fuel percent and bar (teal, gold low, coral empty),
+  gear, engine load and the station radio line (station, artist, track, `1/3`,
+  and `ON AIR`, `SYNTH`, `OFF AIR` or `RADIO OFF`).
 
 ### Edges and overlays
 
@@ -43,9 +44,9 @@ share the same master.
   the helicopter's range.
 - A bottom-centre objective, progress or countdown, the context prompt
   (`F / E · ENTER VEHICLE`, or an `E · SIT / STAND / STEAL / ROB / VALET /
-  RETRIEVE` line with its one-word detail), a dynamic crosshair (a fixed small
-  reticle for the knife) and the hit marker. The contextual action always
-  wins over vehicle entry; **F** remains unconditional.
+  RETRIEVE / SERVICE` line with its one-word detail), a dynamic crosshair (a
+  fixed small reticle for the knife) and the hit marker. The contextual action
+  always wins over vehicle entry; **F** remains unconditional.
 - A valet toast (`VALET PARKED`, `VALET RETURNED`), a mall robbery toast and
   the usual pickup and death-drop toasts share the same centre channel.
 - Street jobs get their own progress panel under the location line.

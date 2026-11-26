@@ -41,9 +41,32 @@ around nine draw calls and its four wheels are one instanced mesh.
   `F / E · EXIT VEHICLE` or a contextual `E · …` line.
 
 The vehicle card in the HUD reports model, class, tune, a large speed
-readout, condition and damage percentages, gear, engine load and the radio
-line. Condition drops with impacts; the card is the same data the world uses,
+readout, condition/damage and fuel, gear, engine load and the radio line.
+Condition and fuel drop in play; the card is the same data the world uses,
 not a separate scripted display.
+
+## Fuel and service
+
+Every car carries a tank from 0 to 1. Driving burns
+`FUEL_BURN_PER_METER = 0.00007` for each metre travelled, so a full tank lasts
+about 14.3 km — roughly 12–16 real minutes around the harbor. An empty tank
+turns the throttle into nothing: the car still rolls, steers and brakes, but
+it cannot accelerate. Fuel is session state like bodywork condition; it is not
+written to the save.
+
+The vehicle card draws the tank as `NN% FUEL` plus a bar: teal from 30% up,
+gold from 20% to 30%, coral below 20%. A one-shot `LOW FUEL` toast fires the
+first time the tank drops under 20% and arms again after a refuel above 35%.
+
+**Solano Fuel** is the station on block (-108, 0), on the north-west side of
+the x=-81 road. Stop within 3.5 m of a nozzle at under 0.5 m/s and press
+**E · SERVICE**. The prompt shows the exact quote — **$8 per 10% of the
+missing tank plus $150 scaled by body damage** — and E fills the tank to 100%
+and repairs the body to 100%. A wallet short of the quote refuses with
+`NOT ENOUGH CASH` and changes nothing; a full, undamaged car has no prompt and
+is never charged. **F** still exits without paying, so a pump never traps a
+driver. A city reset restores the opening cars' tanks (0.62 and 0.88) and
+leaves the save shape alone.
 
 ## Traffic
 
@@ -53,7 +76,12 @@ not a separate scripted display.
 - keep a following gap to anything in their lane;
 - wait for pedestrians in the crosswalk;
 - recycle in and out of view around the player;
-- avoid the player on foot when the player is ahead in their lane.
+- avoid the player on foot when the player is ahead in their lane;
+- pull into Solano Fuel when flagged low on fuel (about 22% of ambient cars
+  spawn with a tank between 0.10 and 0.34). A flagged northbound car on the
+  x=-81 lane takes a free pump, waits 4–6 s, then loops around the kiosk and
+  rejoins the lane; with both pumps busy it keeps driving. Unflagged cars
+  never stop.
 
 A car driving along the x axis uses a **z** road line, and a car driving along
 the z axis uses an **x** road line. This is the beach spawn fix: the old
@@ -117,13 +145,19 @@ damage hit above about 2.5 m/s, and knocks her down for 0.9 s behind a shared
 ## Where this lives
 
 - `game/src/vehicles.js` — the seven classes, meshes, instanced wheels,
-  arcade physics, lights, skid marks and `overlapCircle`.
+  arcade physics, lights, skid marks, the fuel tank and `overlapCircle`.
+- `game/src/fuel.js` — the tank constants, distance drain, HUD percent and the
+  service quote.
+- `game/src/gas-station.js` — the Solano Fuel forecourt, pump slots, player
+  service and the NPC pull-in/pump/pull-out state machine.
 - `game/src/traffic.js` — lane AI, following gaps, stop lines, recycling,
-  ambient spawns, `ejectDriver` and off-grid cleanup.
+  ambient spawns, low-fuel flagging, `ejectDriver` and off-grid cleanup.
 - `game/src/traffic-signals.js` — the shared signal clock and lamp sets.
 - `game/src/player.js` — enter/exit, driving input, vehicle contacts and
   knockdown.
 - `game/src/parking.js` — the 26 stalls, static instancing, occupancy, theft
   and valet storage.
-- `game/src/interactions.js` — the contextual steal/valet/retrieve prompts.
-- `game/src/hud.js` — the vehicle card, carjack and valet toasts.
+- `game/src/interactions.js` — the contextual steal/valet/retrieve/SERVICE
+  prompts.
+- `game/src/hud.js` — the vehicle card with the fuel gauge, carjack and valet
+  toasts.

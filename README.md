@@ -14,9 +14,9 @@ Neon Harbor runs from [plain static files](docs/guide/building.md): no build
 step, no package install, no third-party network request after the page loads.
 You play courier **Rae Solano**, back in the harbor to settle a family debt.
 The city is nine by nine blocks of storefronts, towers, brick market lanes,
-rail yards, a beach, a pier, a working lighthouse and the enterable **Solano
-Mall**. Read [the story](docs/guide/story.md) and
-[the city](docs/guide/city.md) for the full picture.
+rail yards, a beach, a pier, a working lighthouse, the enterable **Solano
+Mall** and the **Solano Fuel** forecourt. Read [the story](docs/guide/story.md)
+and [the city](docs/guide/city.md) for the full picture.
 
 ## Overview
 
@@ -50,7 +50,7 @@ driving detail is in [driving](docs/guide/driving.md).
 | --- | --- |
 | Move / sprint / jump | **WASD** or arrows · **Shift** · **Space** |
 | Enter or leave a car | **F** always; **E** when no context action is near |
-| Context action | **E** — sit, stand, steal a parked car, rob the register, valet, retrieve |
+| Context action | **E** — sit, stand, steal a parked car, rob the register, valet, retrieve, service at a pump |
 | Drive | **W/S** throttle and brake/reverse · **A/D** steer · **Space** handbrake |
 | Fire / aim | **LMB** / **RMB** |
 | Weapons | **1** pistol · **2** SMG · **3** knife · **R** reload |
@@ -76,9 +76,14 @@ driving detail is in [driving](docs/guide/driving.md).
   a six-table food court, 24 sittable chairs, a jewelry register to rob, and a
   26-stall parking lot with clock-driven occupancy, parked-car theft, valets
   and a two-guard security response. [Mall and lot →](docs/guide/city.md#solano-mall-and-the-lot)
-- **Seven cars and carjacking** — arcade handling, drifting, skid marks,
-  lane-following traffic, a driver who bails out at the door when you steal a
-  civilian car, and the mall lot's valet service.
+- **Solano Fuel** — a four-nozzle forecourt on block (-108, 0) with a lit
+  canopy, kiosk, air/water stand and a parallel service lane. Every car has a
+  fuel tank that drains as it drives; an empty tank cannot accelerate. Stop on
+  a pad and **E · SERVICE** refuels and repairs for cash, and about 22% of
+  ambient cars pull in when their tank is low. [Fuel and service →](docs/guide/driving.md#fuel-and-service)
+- **Seven cars and carjacking** — arcade handling, drifting, skid marks, fuel
+  tanks and a HUD gauge, lane-following traffic, a driver who bails out at the
+  door when you steal a civilian car, and the mall lot's valet service.
   [Driving and traffic →](docs/guide/driving.md)
 - **Combat with consequence** — pistol, SMG and the always-carried street
   knife with its arm stab, vehicle hits and knockdowns, five-star police,
@@ -88,11 +93,11 @@ driving detail is in [driving](docs/guide/driving.md).
   crossfading two-deck player, a hold-Tab station wheel, SYNTH fallbacks and
   OFF AIR. [Radio →](docs/guide/radio.md) · [Music credits](MUSIC.md)
 - **HUD and sound** — mission card, minimap, crew panel, dialogue, response
-  roster, five-slot weapon strip, speed/condition card, radio line, WebAudio
-  engine, sirens and guns, plus the Audio row in the title and pause menus.
-  [HUD, audio and settings →](docs/guide/hud-audio.md)
+  roster, five-slot weapon strip, speed/condition/fuel card, radio line,
+  WebAudio engine, sirens and guns, plus the Audio row in the title and pause
+  menus. [HUD, audio and settings →](docs/guide/hud-audio.md)
 - **Dependency-free builds and tests** — four screenshots, an overview GIF, a
-  bounty dossier and 347 end-to-end checks.
+  bounty dossier and 378 end-to-end checks.
   [Building](docs/guide/building.md) · [Testing](docs/guide/testing.md)
 
 ## Screenshots
@@ -109,22 +114,23 @@ by name is the cover; nothing is composited and no filters are applied.
 
 The combat still shows a staged pedestrian death and its loot drop:
 [`docs/media/combat.jpg`](docs/media/combat.jpg). The Pier 9 heist moved off
-the contact sheet to [`docs/media/heist.jpg`](docs/media/heist.jpg). Shot
-staging and the media tools are described in
-[building](docs/guide/building.md).
+the contact sheet to [`docs/media/heist.jpg`](docs/media/heist.jpg), and the
+Solano Fuel forecourt is the second gallery still,
+[`docs/media/station.jpg`](docs/media/station.jpg). Shot staging and the media
+tools are described in [building](docs/guide/building.md).
 
 ## Documentation
 
 | Guide | What it covers |
 | --- | --- |
 | [Story and free roam](docs/guide/story.md) | the five missions, failure and retry, free-roam jobs, saving |
-| [The city and the clock](docs/guide/city.md) | the seeded grid, districts, the mall and its lot, day/night palette, beach |
-| [Driving, traffic and carjacking](docs/guide/driving.md) | the seven classes, handling, traffic AI, carjacking, parked cars and valet |
+| [The city and the clock](docs/guide/city.md) | the seeded grid, districts, the mall and its lot, Solano Fuel, day/night palette, beach |
+| [Driving, traffic and carjacking](docs/guide/driving.md) | the seven classes, handling, fuel and service, traffic AI, carjacking, parked cars and valet |
 | [Combat, heat and consequences](docs/guide/combat.md) | weapons, knife arm, vehicle hits, police, Air 1, murder heat, loot |
 | [The radio](docs/guide/radio.md) | stations, tracks, controls, wheel, fallbacks, persistence |
 | [HUD, audio and settings](docs/guide/hud-audio.md) | every HUD card, audio layers, volume/mute, quality |
 | [Serving, capture and the entry build](docs/guide/building.md) | serve, screenshots, GIF, `main.ts`, caps |
-| [Testing and verification](docs/guide/testing.md) | loot, radio, 347 E2E checks, media checks |
+| [Testing and verification](docs/guide/testing.md) | fuel, loot, radio, 378 E2E checks, media checks |
 | [Source map](docs/guide/source-map.md) | every game, tool, test and docs path |
 | [Music credits](MUSIC.md) | all eighteen tracks, artists, durations, licence note |
 
@@ -136,15 +142,16 @@ and lyrics are in [docs/audio/suno-radio-prompts.md](docs/audio/suno-radio-promp
 ## Build and verify
 
 ```bash
+node --test test/fuel.test.mjs      # 3 tests
 node --test test/loot.test.mjs      # 4 tests
 node --test test/radio.test.mjs     # 5 tests
-node tools/test-npc-loot.mjs        # 347 end-to-end checks
+node tools/test-npc-loot.mjs        # 378 end-to-end checks
 MAKEFUN_OUTPUT_DIR=out node main.ts --check
 ```
 
-The last run passed all four checks: 4/4 loot tests, 5/5 radio tests, 347/347
-E2E checks and `check PASS` for the entry caps. The exact commands, the
-twenty-six E2E groups and the media dimensions are in
+The last run passed all five checks: 3/3 fuel tests, 4/4 loot tests, 5/5 radio
+tests, 378/378 E2E checks and `check PASS` for the entry caps. The exact
+commands, the twenty-eight E2E groups and the media dimensions are in
 [testing](docs/guide/testing.md). Build and capture instructions are in
 [building](docs/guide/building.md).
 

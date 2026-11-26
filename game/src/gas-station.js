@@ -346,6 +346,50 @@ export class GasStation {
     }
   }
 
+  /**
+   * Freeze the forecourt for the ?shot=station capture: one car on a pad with
+   * the hose out and a low tank, plus a low-fuel car rolling up the lane.
+   */
+  stageShot({ pump = 0, approach = 'pickup' } = {}) {
+    this.reset();
+    if (!this.vehicles) return null;
+    const slot = this.slots[pump] ?? this.slots[0];
+
+    const car = this.vehicles.spawn('sedan', {
+      x: slot.x,
+      z: slot.z,
+      yaw: slot.yaw,
+      fuel: 0.22,
+      driver: 'ai',
+    });
+    car.condition = 0.58;
+    car.setPose(slot.x, slot.z, slot.yaw);
+    car.controls.throttle = 0;
+    car.controls.brake = 1;
+    car.controls.steer = 0;
+    car.controls.handbrake = false;
+    car.ai = {
+      mode: 'pump',
+      station: {
+        slot,
+        waypoints: this.pulloutFor(slot),
+        index: 0,
+        lastX: slot.x,
+        lastZ: slot.z,
+      },
+    };
+    slot.car = car;
+    slot.phase = 'pump';
+    slot.timer = 3;
+
+    if (this.traffic) {
+      const lane = this.traffic.spawnLaneCar(approach, 'z', 1, -81, -16, 6, { fuel: 0.24 });
+      lane.ai.stationApproach = true;
+      lane.controls.brake = 0;
+    }
+    return car;
+  }
+
   // ---------------------------------------------------------------- NPC flow
 
   /** True while this station is driving the car through its forecourt. */

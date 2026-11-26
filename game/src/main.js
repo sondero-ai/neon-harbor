@@ -1098,6 +1098,7 @@ class Game {
       // stay exactly where the shot asked for them.
       if (shot.air) this.police.stageAir(shot.air);
       if (shot.dialogue) this.missions.subtitle = { ...shot.dialogue, life: 999 };
+      if (shot.station) this.gasStation?.stageShot(shot.station);
       if (Number.isFinite(shot.health)) this.player.health = shot.health;
       if (Number.isFinite(shot.armor)) this.player.armor = shot.armor;
       this.hud.lastHealth = this.player.health;

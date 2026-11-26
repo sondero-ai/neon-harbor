@@ -6,17 +6,25 @@ All checks are dependency-free: Node's standard library for the unit tests
 and the harness, and headless Chrome through the DevTools protocol for the
 end-to-end suite. Run them from the repository root.
 
-## The four commands
+## The five commands
 
 ```bash
+node --test test/fuel.test.mjs     # 3 tests
 node --test test/loot.test.mjs     # 4 tests
 node --test test/radio.test.mjs    # 5 tests
-node tools/test-npc-loot.mjs       # 347 E2E checks
+node tools/test-npc-loot.mjs       # 378 E2E checks
 MAKEFUN_OUTPUT_DIR=out node main.ts --check
 ```
 
 Set `CHROME` to a Chrome or Chromium executable if the default lookup misses.
 `ffmpeg` is only needed for `tools/capture-media.mjs`, not for these checks.
+
+### Fuel (`test/fuel.test.mjs`, 3 tests)
+
+Pins the distance drain rate (`0.00007` per metre) and the 0..1 clamp, the
+service quote (missing fuel at $8 per 10%, bodywork at $150 scaled by damage,
+both rounded once and summed), and the HUD percent plus the 20% low-fuel
+threshold. No browser.
 
 ### Loot (`test/loot.test.mjs`, 4 tests)
 
@@ -30,12 +38,13 @@ Checks the six-station order, the three unique tracks each, every file path
 against the prompt pack, the OGG headers and the 36 MB audio budget, and that
 `MUSIC.md` credits every track and the 2026-11-26 generation date. No browser.
 
-### End to end (`tools/test-npc-loot.mjs`, 347 checks)
+### End to end (`tools/test-npc-loot.mjs`, 378 checks)
 
 The harness serves `game/`, launches headless Chrome, drives the frozen
-`?shot=street` and `?shot=blockade` scenes through `window.__neon`, and prints
-one `ok`/`not ok` line per check. The last run printed
-`PASS: all checks passed` with 347 `ok` lines. The twenty-six groups are:
+`?shot=` scenes (`street`, `blockade`, `pier`, `mall-interior` and `station`)
+through `window.__neon`, and prints one `ok`/`not ok` line per check. The last
+run printed `PASS: all checks passed` with 378 `ok` lines. The twenty-eight
+groups are:
 
 1. **pedestrians** — chest hitbox, damage and death, the fall state, corpse
    cleanup, the 14 m panic radius and 6 s flee/recovery, loot pickup and the
@@ -116,6 +125,16 @@ one `ok`/`not ok` line per check. The last run printed
     stars, two armed hostile guards inside, the $650–950 counter drop, a
     fleeing crowd, no cruiser inside the mall, a second E doing nothing and a
     guard death dropping loot.
+27. **the gas station forecourt and service lane** — two pumps and two slots,
+    nozzle reach, the kiosk/island/column colliders, clear pads and curb cuts,
+    the player SERVICE quote and cash debit, the refusal and LOW FUEL toasts,
+    an empty tank refusing throttle, a flagged NPC pull-in/pump/pull-out and
+    rejoin, an unflagged pass, both pumps busy, a third flagged car skipping,
+    pump 1 filling its car, 60 simulated seconds with no lane deadlock and
+    removing a pump car freeing its slot.
+28. **the station shot** — the registered `?shot=station` playing scene, a
+    low-tank car staged on pad 0, a low-fuel car staged on the approach and
+    live draw calls.
 
 Audio output itself cannot be heard headless; the radio and volume checks
 assert the player state, the file responses, the sequencer bus and the saved
@@ -126,7 +145,7 @@ settings.
 The last run printed:
 
 ```text
-check PASS: game 62/993 entries, 33.82 MiB/48.00 MiB; screenshots 4/4, largest 184.9 KiB/256.0 KiB; dossier 1.01 MiB/1.50 MiB, text 160.0 KiB/160.0 KiB
+check PASS: game 64/993 entries, 33.85 MiB/48.00 MiB; screenshots 4/4, largest 185.6 KiB/256.0 KiB; dossier 1.01 MiB/1.50 MiB, text 160.0 KiB/160.0 KiB
 ```
 
 The caps are 993 game entries, 48 MiB of game files, 3–4 screenshots at
@@ -148,17 +167,24 @@ ffprobe -v error -select_streams v:0 \
 
 The current files:
 
-- `screenshots/1-cover.jpg` — 1280×720, 184.9 KiB
-- `screenshots/2-street.jpg` — 1280×720, 175.8 KiB
+- `screenshots/1-cover.jpg` — 1280×720, 185.6 KiB
+- `screenshots/2-street.jpg` — 1280×720, 175.0 KiB
 - `screenshots/3-mission.jpg` — 1280×720, 145.4 KiB
-- `screenshots/4-title.jpg` — 1280×720, 145.2 KiB
+- `screenshots/4-title.jpg` — 1280×720, 145.4 KiB
 - `docs/media/overview.gif` — 640×360, 36 frames, 3.25 s, 2.88 MiB
 - `docs/media/combat.jpg` — 1280×720, 169.2 KiB
-- `docs/media/heist.jpg` — 1280×720, 144.0 KiB
+- `docs/media/heist.jpg` — 1280×720, 143.9 KiB
+- `docs/media/station.jpg` — 1280×720, 139.6 KiB
 
 All four screenshots are under the 256 KiB cap; the GIF is under 4.5 MiB.
 The title screenshot shows the Audio row. Inspect each screenshot at full
 resolution and at 300 px; check for clipped text, overlaps and legibility.
+
+The capture reported the same draw calls on two consecutive runs: **400** at
+the chase, **395** at the daylight roadblock, **215** in the mall interior,
+**348** on the title, **406** in the heist still and **227** at the Solano Fuel
+station. The station's number is the real `?shot=station` page, not a target
+set in advance.
 
 ## What is not verified
 
@@ -168,3 +194,12 @@ resolution and at 300 px; check for clipped text, overlaps and legibility.
   headless Chrome, not a phone or a low-end GPU.
 - The GIF records the opening walk only; it does not drive, fight or cross
   the day/night range. The screenshots and the combat still cover those.
+- The station NPCs are tested on the `?shot=street` page with ambient traffic
+  and pedestrians removed, so group 27 proves the forecourt flow itself, not
+  every possible crowd interaction on the road.
+- The `?shot=station` camera is pinned west from `x = -84,z = 2.4`; the pump-0
+  car therefore sits partly behind the right HUD column in `station.jpg`, and
+  the approach car is outside that frame. Both are staged and checked live;
+  a different camera would be a composition change.
+- A station-owned car taken by the player keeps its pump slot reserved until
+  the station or the city resets; `reset()` clears every slot.
