@@ -88,30 +88,213 @@ export const START_OBJECTIVE = {
   reward: 0,
 };
 
-// Three original stations. The sequencer in audio.js reads the same tempo and
-// mood names, and the HUD shows whichever station the player has tuned.
+// Six original stations with three tracks each. Files live under
+// game/audio/radio/<station>/; the player crossfades real OGG files and falls
+// back to the sequencer in audio.js only for the three styles that have one.
+// Vega 105.1 is the default, and every track below has a staged file.
 export const RADIO = {
+  defaultStation: 'vega',
+  defaultTrack: 0,
+  crossfadeSeconds: 0.8,
   stations: [
     {
+      id: 'vega',
+      station: 'Vega 105.1',
+      short: 'VEGA',
+      genre: 'hip-hop / rap',
+      color: '#ffc95c',
+      fallbackStyle: null,
+      tracks: [
+        {
+          title: 'Vega Strip Money',
+          artist: 'Kade Voss',
+          file: 'audio/radio/vega/01-vega-strip-money.ogg',
+          duration: 119,
+          vocals: true,
+        },
+        {
+          title: 'Ledger Season',
+          artist: 'Nia Vex',
+          file: 'audio/radio/vega/02-ledger-season.ogg',
+          duration: 78,
+          vocals: true,
+        },
+        {
+          title: 'Harbor Flow',
+          artist: 'Marlowe',
+          file: 'audio/radio/vega/03-harbor-flow.ogg',
+          duration: 81,
+          vocals: true,
+        },
+      ],
+    },
+    {
+      id: 'night-tide',
       station: 'Night Tide 88.3',
-      track: 'Sable Youth — Harbor Lights',
-      style: 'synthwave',
+      short: 'TIDE',
+      genre: 'synthwave',
+      color: '#3fe0cf',
+      fallbackStyle: 'synthwave',
       bpm: 96,
+      tracks: [
+        {
+          title: 'Harbor Lights',
+          artist: 'Sable Youth',
+          file: 'audio/radio/night-tide/01-harbor-lights.ogg',
+          duration: 186,
+          vocals: true,
+        },
+        {
+          title: 'Neon Coastline',
+          artist: 'Sable Youth',
+          file: 'audio/radio/night-tide/02-neon-coastline.ogg',
+          duration: 234,
+          vocals: false,
+        },
+        {
+          title: 'Foggy Harbor Dawn',
+          artist: 'Sable Youth',
+          file: 'audio/radio/night-tide/03-foggy-harbor-dawn.ogg',
+          duration: 230,
+          vocals: false,
+        },
+      ],
     },
     {
+      id: 'knrv',
       station: 'KNRV 104.7',
-      track: 'Chrome Weather — The Static',
-      style: 'chiptune',
+      short: 'KNRV',
+      genre: 'chiptune',
+      color: '#ff7e9a',
+      fallbackStyle: 'chiptune',
       bpm: 118,
+      tracks: [
+        {
+          title: 'Level E-1',
+          artist: 'Pixel Sonata',
+          file: 'audio/radio/knrv/01-level-e-1.ogg',
+          duration: 153,
+          vocals: false,
+        },
+        {
+          title: 'Rainy Bitstorm',
+          artist: 'Pixel Sonata',
+          file: 'audio/radio/knrv/02-rainy-bitstorm.ogg',
+          duration: 168,
+          vocals: false,
+        },
+        {
+          title: 'Night Arcade Dash',
+          artist: 'Pixel Sonata',
+          file: 'audio/radio/knrv/03-night-arcade-dash.ogg',
+          duration: 132,
+          vocals: false,
+        },
+      ],
     },
     {
+      id: 'breakwater',
       station: 'The Breakwater 97.1',
-      track: 'Low Tide Riot — Pier Saints',
-      style: 'surf',
+      short: 'BREAKWATER',
+      genre: 'surf rock',
+      color: '#7fa8ff',
+      fallbackStyle: 'surf',
       bpm: 132,
+      tracks: [
+        {
+          title: 'Salt and Sparks',
+          artist: 'The Breakwater Trio',
+          file: 'audio/radio/breakwater/01-salt-and-sparks.ogg',
+          duration: 168,
+          vocals: true,
+        },
+        {
+          title: 'Boardwalk Chase',
+          artist: 'The Breakwater Trio',
+          file: 'audio/radio/breakwater/02-boardwalk-chase.ogg',
+          duration: 178,
+          vocals: false,
+        },
+        {
+          title: 'Midnight Undertow',
+          artist: 'The Breakwater Trio',
+          file: 'audio/radio/breakwater/03-midnight-undertow.ogg',
+          duration: 165,
+          vocals: false,
+        },
+      ],
+    },
+    {
+      id: 'solano-soul',
+      station: 'Solano Soul 92.1',
+      short: 'SOLANO',
+      genre: 'funk / neo-soul',
+      color: '#c58cff',
+      fallbackStyle: null,
+      tracks: [
+        {
+          title: 'Ledger Blue',
+          artist: 'Rae Solano',
+          file: 'audio/radio/solano-soul/01-ledger-blue.ogg',
+          duration: 153,
+          vocals: true,
+        },
+        {
+          title: 'Beachside Cantina',
+          artist: 'Solano Soul House Band',
+          file: 'audio/radio/solano-soul/02-beachside-cantina.ogg',
+          duration: 217,
+          vocals: false,
+        },
+        {
+          title: 'Family Cut',
+          artist: 'Odin',
+          file: 'audio/radio/solano-soul/03-family-cut.ogg',
+          duration: 139,
+          vocals: true,
+        },
+      ],
+    },
+    {
+      id: 'foundry',
+      station: 'Foundry FM 99.5',
+      short: 'FOUNDRY',
+      genre: 'darkwave / EBM',
+      color: '#d66b5a',
+      fallbackStyle: null,
+      tracks: [
+        {
+          title: 'Rust and Rain',
+          artist: 'Cold Stack',
+          file: 'audio/radio/foundry/01-rust-and-rain.ogg',
+          duration: 205,
+          vocals: true,
+        },
+        {
+          title: 'Foundry Floor',
+          artist: 'Cold Stack',
+          file: 'audio/radio/foundry/02-foundry-floor.ogg',
+          duration: 219,
+          vocals: false,
+        },
+        {
+          title: 'Graveyard Shift',
+          artist: 'Cold Stack',
+          file: 'audio/radio/foundry/03-graveyard-shift.ogg',
+          duration: 219,
+          vocals: false,
+        },
+      ],
     },
   ],
 };
+
+/** The station index for a saved id, or the default station when it is unknown. */
+export function radioStationIndex(id) {
+  const index = RADIO.stations.findIndex((station) => station.id === id);
+  if (index >= 0) return index;
+  return Math.max(0, RADIO.stations.findIndex((station) => station.id === RADIO.defaultStation));
+}
 
 // The two carried weapons. Damage is per pellet-free hitscan shot; fireRate is
 // shots per second and the spread is in radians before movement penalties.
