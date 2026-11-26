@@ -58,9 +58,10 @@ same mouse drag looks around. **Enter** confirms the focused menu action.
 - While driving, **W/S** is throttle and brake/reverse, **A/D** steers, and
   **Space** is the handbrake. Hold it through a corner to drift; the rear
   tires leave skid marks. **Left click** or **H** sounds the horn.
-- On foot, **left click** fires, **right click** aims and tightens the camera.
-  **R** reloads, **1** selects the Solano 9 pistol and **2** the Kestrel SMG
-  once it has been picked up.
+- On foot, **left click** fires or, with the knife out, stabs; **right click**
+  aims and tightens the camera. **R** reloads, **1** selects the Solano 9
+  pistol, **2** the Kestrel SMG once it has been picked up, and **3** the
+  street knife.
 - **Mouse** looks around; the **wheel** pulls the foot camera in or out.
 - **T** switches the radio on or off, **`[`** and **`]`** change stations, and
   **M** mutes. **`-`** and **`=`** trim the master volume.
@@ -191,18 +192,33 @@ Combat lives on `player.js`: the pistol and SMG are hitscan with spread,
 recoil, muzzle flash, tracer, impact sparks, a hit marker, magazine and reserve
 ammo and a reload timer. Bullets stop on the nearest collider, vehicle or
 officer, so cover works. Armor absorbs part of each hit before health; damage
-shakes the camera and reddens the screen edge. `pickups.js` places both weapons
-plus medkits and armor on chrome rings around the map; they float, glow,
-respawn and announce themselves in a toast.
+shakes the camera and reddens the screen edge. The **street knife** on slot 3
+is always carried: left click swings it 2.1 m from Rae's chest along the
+camera's direction for 60 damage with no headshot bonus, no ammunition and no
+gunshot, so it never reports gunfire. A hit plays the blade whoosh and impact
+sparks; a miss is silent. `pickups.js` places both guns plus medkits and armor
+on chrome rings around the map; they float, glow, respawn and announce
+themselves in a toast.
 
 Pedestrians are targets too. Every walker carries a chest sphere and a head
 sphere, 55 health and the same ×1.75 headshot multiplier as the officers: a
 34-damage pistol round drops one in two body hits or a single clean headshot.
 The body folds into an instanced fall, lies on the pavement for about eight
-seconds and then goes; anyone within nine metres panics, sprints off for four
-seconds and then walks back to their route. Heat is unchanged and
-witness-based: every shot still reports gunfire, so a nearby officer or
-cruiser responds the usual way.
+seconds and then goes; anyone within fourteen metres panics, sprints off for
+six seconds and then walks back to their route.
+
+Murder now raises heat. A civilian kill seen by an officer within 70 m, a
+cruiser within 90 m of Rae or Air 1 within 90 m of the body adds one wanted
+star immediately; with no police in sight, a witness queues a 911 call that
+arrives three seconds later as `WITNESS CALLED 911`. A kill in an empty street
+stays quiet, an officer's death still costs two stars and a mission enemy's
+death adds no civilian heat. Fifteen percent of the block-loop walkers wear a
+dark red jacket and carry a pistol: a murder within the fourteen-metre panic
+radius makes them draw for 0.9 s and then fire every 1.2 s for nine damage
+while Rae is within 30 m and in sight, with a muzzle flash, tracer and pistol
+audio. They give up after twelve seconds or once Rae is past 45 m, and the
+first one to turn raises the `ARMED WITNESS · RETURN FIRE` toast. They remain
+ordinary crowd targets and drop the usual loot.
 
 Every human NPC death leaves exactly one item: 60% cash, 30% Solano 9 ammo
 (+12) and, once the Kestrel SMG is owned, 10% an SMG crate (+32); before the
@@ -236,14 +252,15 @@ with a drawn portrait, speaker name, role and line. The right rail carries the
 cash card, five wanted stars, `PURSUIT · 6 UNITS` or the search status, the
 `DAY 4 · 23:41` clock, the `STRIP RUNNER · 62/250 RESPECT` meter, the HPD
 response roster with named callsigns, roles and distances, the five-slot weapon
-strip (Solano 9, Kestrel SMG, street knife, and locked rifle and RPG slots), and
-the vehicle card with model, class, tune, a large speed readout, condition and
-damage percentages, gear, engine load and the Night Tide 88.3 radio line. A
+strip (Solano 9, Kestrel SMG, the always-carried street knife at slot 3 with
+`--` ammo and a `STREET KNIFE · CQC` footer, and locked rifle and RPG slots),
+and the vehicle card with model, class, tune, a large speed readout, condition
+and damage percentages, gear, engine load and the Night Tide 88.3 radio line. A
 top-centre `AIR 1 · SPOTLIGHT` banner tracks the helicopter's range; the bottom
 centre keeps the live objective, progress or countdown, the context prompt, a
-dynamic crosshair and hit marker. Street jobs get their own progress panel
-under the location line; rewards and mission results arrive as toasts and a
-gold cash banner. Getting wasted or busted takes over the screen with a
+dynamic crosshair (a fixed small reticle for the knife) and hit marker. Street
+jobs get their own progress panel under the location line; rewards and mission
+results arrive as toasts and a gold cash banner. Getting wasted or busted takes over the screen with a
 full-frame overlay, drops part of the cash on hand and returns Rae to the strip
 with the heat cleared; a failed mission stays on screen with a retry prompt
 until you take it again.
@@ -340,9 +357,12 @@ and the SMG gate without a browser. `tools/test-npc-loot.mjs` serves `game/`,
 launches headless Chrome through the DevTools protocol like
 `tools/capture.mjs`, and drives the frozen `?shot=street` and `?shot=blockade`
 scenes through `window.__neon`: the pedestrian chest hitbox, damage and death,
-the fall state and corpse cleanup, panic flee and recovery, loot pickup and its
-30-second expiry, reset, the real `player.fireWeapon` path and officer death
-loot.
+the fall state and corpse cleanup, the 14 m panic radius and 6 s flee and
+recovery, loot pickup and its 30-second expiry, reset, the real
+`player.fireWeapon` path and officer death loot, the murder-heat 911 delay and
+its police-witness shortcut, the knife's slot-3 selection, 1.5 m lethal reach
+and silent gunfire-free kill, and the armed witness's draw, first shot and
+45 m give-up.
 Set `CHROME` to a Chrome or Chromium executable if the default lookup misses.
 
 ## Source map
@@ -359,10 +379,12 @@ Set `CHROME` to a Chrome or Chromium executable if the default lookup misses.
 - `game/src/vehicles.js` — seven vehicle classes, meshes, arcade physics,
   lights and pooled skid marks.
 - `game/src/traffic.js` — lane traffic, signals, following, pedestrians,
-  crosswalk crossings, beach/pier crowd and shot staging.
+  crosswalk crossings, beach/pier crowd, panic and armed witnesses, and shot
+  staging.
 - `game/src/police.js` — wanted level, pursuit driving, search/decay, cruiser
-  and officer combat, roadblocks, callsigns, the Air 1 helicopter and its
-  searchlight, the response roster, busted/wasted handshake and chase staging.
+  and officer combat, civilian murder reports and the 911 call, roadblocks,
+  callsigns, the Air 1 helicopter and its searchlight, the response roster,
+  busted/wasted handshake and chase staging.
 - `game/src/missions.js` — the five-mission director: markers, dialogue queue,
   mission enemies and bosses, objectives, timers, rewards, failure and retry,
   pier fire, and mission/heist staging.
@@ -373,8 +395,8 @@ Set `CHROME` to a Chrome or Chromium executable if the default lookup misses.
 - `game/src/pickups.js` — walk-over pickup rings, weapon/medkit/armor spawns,
   one-shot death drops, 30-second expiry, payout and reset cleanup.
 - `game/src/player.js`, `humanoid.js` — movement, driving, chase camera,
-  vehicle collision, hitscan weapons, aiming, damage and Rae's low-poly
-  walk/run/aim cycle.
+  vehicle collision, hitscan guns and the street knife, aiming, damage and
+  Rae's low-poly walk/run/aim cycle.
 - `game/src/effects.js` — sparks, smoke, flashes, tracers, explosions, skid
   marks, vehicle lights, screen shake and hurt accumulation.
 - `game/src/audio.js` — the WebAudio engine, sirens, guns, impacts, horn, UI
@@ -399,8 +421,8 @@ Set `CHROME` to a Chrome or Chromium executable if the default lookup misses.
   `docs/media/overview.gif` and `docs/media/combat.jpg`; needs ffmpeg on
   `PATH` or in `FFMPEG`.
 - `tools/test-npc-loot.mjs` — the stdlib-only headless-Chrome E2E for
-  pedestrian death, panic and loot across the frozen street and blockade
-  scenes.
+  pedestrian death, panic and loot, murder heat, the street knife and armed
+  witnesses across the frozen street and blockade scenes.
 
 ## Bounty and license
 

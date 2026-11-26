@@ -703,6 +703,371 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 7: murder heat',
+    shot: 'street',
+    body: function murderHeat() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const debug = neon && neon.debug;
+      const police = debug && debug.police;
+      const traffic = debug && debug.traffic;
+      const player = debug && debug.player;
+      const camera = debug && debug.camera;
+      const missing = [];
+      if (!neon) missing.push('window.__neon');
+      if (!police || typeof police.reportCivilianDeath !== 'function') missing.push('police.reportCivilianDeath');
+      if (!police || typeof police.update !== 'function') missing.push('police.update');
+      if (!traffic || typeof traffic.spawnPed !== 'function') missing.push('traffic.spawnPed');
+      if (!traffic || typeof traffic.applyPlayerHit !== 'function') missing.push('traffic.applyPlayerHit');
+      if (!player || typeof player.fireWeapon !== 'function') missing.push('player.fireWeapon');
+      if (!player || typeof player.selectWeapon !== 'function') missing.push('player.selectWeapon');
+      if (!camera || !camera.position) missing.push('__neon.debug.camera');
+      check('test 7: murder-heat hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      const px = player.position.x;
+      const pz = player.position.z;
+      // Air 1 patrols close to the opening block, so park it outside the 90 m
+      // police-witness range before the quiet-street cases.
+      police.stageAir({ x: 640, y: 40, z: 640 });
+      police.clearWanted({ quiet: true });
+
+      // Phase A: civilian witnesses only.
+      const victim = traffic.spawnPed({ x: px + 20, z: pz + 20, armed: false });
+      const witness = traffic.spawnPed({ x: px + 22, z: pz + 20, armed: false });
+      check('test 7: the witness-only murder stages', Boolean(victim) && Boolean(witness), 'spawnPed returned null');
+      if (!victim || !witness) return results;
+      traffic.applyPlayerHit({ ped: victim, headshot: false }, 500);
+      check(
+        'test 7: a witnessed murder without police stays at zero stars at once',
+        police.wanted === 0 && Boolean(police.witnessReport),
+        `wanted=${police.wanted} report=${JSON.stringify(police.witnessReport)}`,
+      );
+      check(
+        'test 7: the 911 report starts a 3 s timer',
+        Boolean(police.witnessReport) && police.witnessReport.timer === 3,
+        JSON.stringify(police.witnessReport),
+      );
+      police.update(2.9, 0);
+      check('test 7: the witness kill is still at zero stars before 3 s', police.wanted === 0, `wanted=${police.wanted}`);
+      police.update(0.2, 2.9);
+      check(
+        'test 7: the 911 call adds one star after the delay',
+        police.wanted === 1 && police.witnessReport === null,
+        `wanted=${police.wanted} report=${JSON.stringify(police.witnessReport)}`,
+      );
+
+      // Phase B: an officer within 70 m of the body is an immediate witness.
+      police.clearWanted({ quiet: true });
+      police.clearOfficers();
+      const bodyX = px - 20;
+      const bodyZ = pz + 20;
+      const officer = police.spawnOfficerAt(bodyX + 2, bodyZ);
+      const victim2 = traffic.spawnPed({ x: bodyX, z: bodyZ, armed: false });
+      check('test 7: the staged officer and second victim exist', Boolean(officer) && Boolean(victim2), 'staging returned null');
+      if (victim2) {
+        traffic.applyPlayerHit({ ped: victim2, headshot: false }, 500);
+        check(
+          'test 7: an officer witnessing the murder adds a star immediately',
+          police.wanted === 1 && police.witnessReport === null,
+          `wanted=${police.wanted} report=${JSON.stringify(police.witnessReport)}`,
+        );
+      }
+
+      // Phase C: a silent knife kill with nobody around adds no heat at all.
+      police.clearWanted({ quiet: true });
+      police.clearOfficers();
+      player.teleport(81, 0, Math.PI, 0);
+      player.cameraPitch = -0.27;
+      player.cameraDistance = 3.1;
+      player.updateView(camera, 1 / 60, true);
+      player.selectWeapon('knife');
+      player.fireCooldown = 0;
+      const lone = traffic.spawnPed({ x: 81, z: -1.5, armed: false });
+      check(
+        'test 7: the knife reaches a lone pedestrian',
+        Boolean(lone) && player.weaponKey === 'knife',
+        `ped=${Boolean(lone)} weapon=${player.weaponKey}`,
+      );
+      if (lone) {
+        player.fireWeapon(camera);
+        check(
+          'test 7: a lone knife murder adds no heat',
+          lone.dead === true && police.wanted === 0 && police.witnessReport === null,
+          `dead=${lone.dead} wanted=${police.wanted} report=${JSON.stringify(police.witnessReport)}`,
+        );
+        police.update(3.2, 6);
+        check(
+          'test 7: no 911 call follows a witness-free knife murder',
+          police.wanted === 0 && police.witnessReport === null,
+          `wanted=${police.wanted} report=${JSON.stringify(police.witnessReport)}`,
+        );
+      }
+      return results;
+    },
+  },
+  {
+    name: 'test 8: street knife',
+    shot: 'street',
+    body: function streetKnife() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const debug = neon && neon.debug;
+      const player = debug && debug.player;
+      const traffic = debug && debug.traffic;
+      const police = debug && debug.police;
+      const camera = debug && debug.camera;
+      const missing = [];
+      if (!neon || !neon.loot) missing.push('__neon.loot');
+      if (!player || typeof player.fireWeapon !== 'function') missing.push('player.fireWeapon');
+      if (!player || typeof player.selectWeapon !== 'function') missing.push('player.selectWeapon');
+      if (!player || !player.combatState) missing.push('player.combatState');
+      if (!traffic || typeof traffic.spawnPed !== 'function') missing.push('traffic.spawnPed');
+      if (!police || typeof police.reportGunfire !== 'function') missing.push('police.reportGunfire');
+      if (!camera || !camera.position) missing.push('__neon.debug.camera');
+      check('test 8: knife hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      // Park the air unit so the knife's murder heat stays a civilian 911 call.
+      police.stageAir({ x: 640, y: 40, z: 640 });
+      police.clearWanted({ quiet: true });
+      police.clearOfficers();
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit3' }));
+      neon.advance(1 / 60);
+      check(
+        'test 8: Digit3 selects the knife',
+        neon.combat.weapon === 'knife' && player.weaponKey === 'knife',
+        `weapon=${neon.combat.weapon} key=${player.weaponKey}`,
+      );
+      const state = player.combatState;
+      check(
+        'test 8: combat state reports a melee knife with no ammo',
+        state.key === 'knife' && state.weaponKey === 'knife' && state.melee === true && state.ammo === null,
+        JSON.stringify({ key: state.key, weaponKey: state.weaponKey, melee: state.melee, ammo: state.ammo }),
+      );
+      check(
+        'test 8: the knife model replaces the guns in the right hand',
+        player.knifeModel.visible === true && player.pistolModel.visible === false && player.smgModel.visible === false,
+        JSON.stringify({ knife: player.knifeModel.visible, pistol: player.pistolModel.visible, smg: player.smgModel.visible }),
+      );
+
+      player.cameraPitch = -0.27;
+      player.cameraDistance = 3.1;
+      player.updateView(camera, 1 / 60, true);
+      const forwardX = -Math.sin(player.cameraYaw);
+      const forwardZ = -Math.cos(player.cameraYaw);
+      const victim = traffic.spawnPed({
+        x: player.position.x + forwardX * 1.5,
+        z: player.position.z + forwardZ * 1.5,
+        armed: false,
+      });
+      const witness = traffic.spawnPed({
+        x: player.position.x + forwardX * 1.5 + 2,
+        z: player.position.z + forwardZ * 1.5,
+        armed: false,
+      });
+      check('test 8: the stab target and witness spawn', Boolean(victim) && Boolean(witness), 'spawnPed returned null');
+      if (!victim || !witness) return results;
+
+      let gunfireReports = 0;
+      const originalReportGunfire = police.reportGunfire;
+      police.reportGunfire = (...args) => {
+        gunfireReports += 1;
+        return originalReportGunfire.apply(police, args);
+      };
+      const lootBefore = neon.loot.count;
+      let stabError = null;
+      try {
+        player.fireCooldown = 0;
+        player.fireWeapon(camera);
+      } catch (error) {
+        stabError = error.message;
+      } finally {
+        police.reportGunfire = originalReportGunfire;
+      }
+      check(
+        'test 8: one 1.5 m stab kills a full-health pedestrian',
+        !stabError && victim.dead === true && victim.health === 0,
+        stabError ?? `dead=${victim.dead} health=${victim.health}`,
+      );
+      check(
+        'test 8: the swing starts the 0.28 s animation',
+        player.meleeSwing === 0.28,
+        `swing=${player.meleeSwing}`,
+      );
+      check(
+        'test 8: the knife kill drops the usual loot',
+        neon.loot.count > lootBefore,
+        `loot ${lootBefore} -> ${neon.loot.count}`,
+      );
+      check(
+        'test 8: the stab never reports gunfire',
+        gunfireReports === 0,
+        `reports=${gunfireReports}`,
+      );
+      check(
+        'test 8: the knife murder queues the witness 911 report',
+        police.wanted === 0 && Boolean(police.witnessReport),
+        `wanted=${police.wanted} report=${JSON.stringify(police.witnessReport)}`,
+      );
+
+      player.selectWeapon('pistol');
+      const pistol = player.combatState;
+      check(
+        'test 8: slot 1 restores the pistol and its ammo',
+        pistol.key === 'pistol' && pistol.melee === false && pistol.ammo === player.weapons.pistol.ammo
+          && player.weapons.knife.owned === true && player.pistolModel.visible === true && player.knifeModel.visible === false,
+        JSON.stringify({ key: pistol.key, melee: pistol.melee, ammo: pistol.ammo }),
+      );
+
+      // A pre-knife save carries no knife slot and must still load it owned.
+      player.loadFromSave({
+        cash: player.cash,
+        health: player.health,
+        armor: player.armor,
+        wanted: 0,
+        mission: 0,
+        playSeconds: 0,
+        weaponKey: 'pistol',
+        weapons: {
+          pistol: { owned: true, ammo: 7, reserve: 21 },
+          smg: { owned: false, ammo: 0, reserve: 0 },
+        },
+        cameraYaw: player.cameraYaw,
+        cameraPitch: player.cameraPitch,
+        position: { x: player.position.x, y: player.position.y, z: player.position.z },
+      });
+      check(
+        'test 8: an old save loads with the knife owned',
+        player.weapons.knife.owned === true && player.weapons.pistol.ammo === 7 && player.weaponKey === 'pistol',
+        JSON.stringify({ knife: player.weapons.knife, ammo: player.weapons.pistol.ammo, key: player.weaponKey }),
+      );
+      return results;
+    },
+  },
+  {
+    name: 'test 9: armed witness',
+    shot: 'street',
+    body: function armedWitness() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const debug = neon && neon.debug;
+      const player = debug && debug.player;
+      const traffic = debug && debug.traffic;
+      const police = debug && debug.police;
+      const camera = debug && debug.camera;
+      const missing = [];
+      if (!neon || !neon.loot) missing.push('__neon.loot');
+      if (!traffic || typeof traffic.spawnPed !== 'function') missing.push('traffic.spawnPed');
+      if (!traffic || typeof traffic.update !== 'function') missing.push('traffic.update');
+      if (!traffic || typeof traffic.despawnPed !== 'function') missing.push('traffic.despawnPed');
+      if (!police || typeof police.clearWanted !== 'function') missing.push('police.clearWanted');
+      if (!player || !player.position) missing.push('__neon.debug.player');
+      if (!camera || !camera.position) missing.push('__neon.debug.camera');
+      check('test 9: armed-witness hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      const baseX = 81;
+      const baseZ = 0;
+      police.stageAir({ x: 640, y: 40, z: 640 });
+      police.clearWanted({ quiet: true });
+      police.clearOfficers();
+      player.teleport(baseX, baseZ, Math.PI, 0);
+      player.cameraPitch = -0.27;
+      player.cameraDistance = 3.1;
+      player.updateView(camera, 1 / 60, true);
+      player.health = 100;
+      player.armor = 0;
+      player.dead = false;
+
+      const armed = traffic.spawnPed({ x: baseX, z: baseZ - 6, yaw: 0, armed: true });
+      const victim = traffic.spawnPed({ x: baseX, z: baseZ - 8, armed: false });
+      check(
+        'test 9: an armed pedestrian stages with a victim in the panic radius',
+        Boolean(armed) && armed.armed === true && Boolean(victim),
+        JSON.stringify({ armed: Boolean(armed), flag: armed && armed.armed }),
+      );
+      if (!armed || !victim) return results;
+
+      traffic.applyPlayerHit({ ped: victim, headshot: false }, 500);
+      check(
+        'test 9: the armed witness draws for 0.9 s before it is hostile',
+        armed.hostile === false && armed.hostileDraw === 0.9,
+        `hostile=${armed.hostile} draw=${armed.hostileDraw}`,
+      );
+      traffic.update(0.5, 0);
+      check(
+        'test 9: the armed witness is still drawing after 0.5 s',
+        armed.hostile === false && armed.hostileDraw > 0,
+        `hostile=${armed.hostile} draw=${armed.hostileDraw}`,
+      );
+
+      const healthBefore = player.health;
+      const originalRandom = Math.random;
+      try {
+        Math.random = () => 0;
+        traffic.update(0.45, 0);
+      } finally {
+        Math.random = originalRandom;
+      }
+      check(
+        'test 9: the first shot after the draw lowers the player health',
+        armed.hostile === true && player.health < healthBefore,
+        `hostile=${armed.hostile} health ${healthBefore} -> ${player.health}`,
+      );
+
+      player.teleport(baseX + 50, baseZ, Math.PI, 0);
+      traffic.update(0.06, 0);
+      check(
+        'test 9: moving beyond 45 m sends the armed witness back to fleeing',
+        armed.hostile === false && armed.fleeTimer > 0,
+        `hostile=${armed.hostile} flee=${armed.fleeTimer}`,
+      );
+
+      const lootBefore = neon.loot.count;
+      traffic.applyPlayerHit({ ped: armed, headshot: false }, 500);
+      check(
+        'test 9: an armed pedestrian still dies like any other and drops loot',
+        armed.dead === true && neon.loot.count > lootBefore,
+        `dead=${armed.dead} loot ${lootBefore} -> ${neon.loot.count}`,
+      );
+
+      // The same staged position, unarmed: it should only run.
+      player.teleport(baseX, baseZ, Math.PI, 0);
+      const unarmed = traffic.spawnPed({ x: baseX, z: baseZ - 6, yaw: 0, armed: false });
+      const victim2 = traffic.spawnPed({ x: baseX, z: baseZ - 8, armed: false });
+      check('test 9: the unarmed witness stages', Boolean(unarmed) && Boolean(victim2), 'spawnPed returned null');
+      if (unarmed && victim2) {
+        traffic.applyPlayerHit({ ped: victim2, headshot: false }, 500);
+        check(
+          'test 9: an unarmed witness only flees',
+          unarmed.hostile === false && unarmed.fleeTimer === 6,
+          `hostile=${unarmed.hostile} flee=${unarmed.fleeTimer}`,
+        );
+        traffic.update(1.2, 0);
+        check(
+          'test 9: the unarmed witness never turns hostile',
+          unarmed.hostile === false && unarmed.fleeTimer > 0,
+          `hostile=${unarmed.hostile} flee=${unarmed.fleeTimer}`,
+        );
+      }
+      return results;
+    },
+  },
 ];
 
 async function main() {

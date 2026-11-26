@@ -129,11 +129,11 @@ export class Player {
         ammo: clamp(Math.round(Number(smg?.ammo) || 0), 0, WEAPONS.smg.mag),
         reserve: clamp(Math.round(Number(smg?.reserve) || 0), 0, 999),
       };
-      this.weaponKey = save.weaponKey === 'smg' && this.weapons.smg.owned
-        ? 'smg'
-        : save.weaponKey === 'knife' ? 'knife' : 'pistol';
-      this.syncGunModel();
     }
+    this.weaponKey = save.weaponKey === 'smg' && this.weapons.smg.owned
+      ? 'smg'
+      : save.weaponKey === 'knife' ? 'knife' : 'pistol';
+    this.syncGunModel();
     this.cameraYaw = save.cameraYaw;
     this.cameraPitch = clamp(save.cameraPitch, CAMERA.minPitch, CAMERA.maxPitch);
     this.facing = this.cameraYaw - Math.PI;
