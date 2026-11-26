@@ -46,7 +46,6 @@ function raySphere(origin, direction, cx, cy, cz, radius) {
   return null;
 }
 
-
 export const MISSION_COUNT = STORY.length;
 
 export function missionName(index) {
@@ -940,7 +939,6 @@ export class Missions {
     this.enemies.push(enemy);
     return enemy;
   }
-
 
   // ---------------------------------------------------------------- deterministic shots
 

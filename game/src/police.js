@@ -19,14 +19,6 @@ const damp = THREE.MathUtils.damp;
 const _vec = new THREE.Vector3();
 const _forward = new THREE.Vector3();
 
-
-
-
-
-
-
-
-
 // ---------------------------------------------------------------- police
 
 export class Police {
