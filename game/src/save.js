@@ -3,10 +3,11 @@
 // sanity-checked: a corrupt save should read as "no save", never take the game
 // down.
 
-import { CAMERA, PLAYER } from './config.js';
+import { CAMERA, DAY, DAY_MINUTES, HOURS, MINUTES, PLAYER } from './config.js';
 
 const SAVE_KEY = 'neon-harbor.save.v1';
 const SETTINGS_KEY = 'neon-harbor.settings.v1';
+const LEGACY_CLOCK = HOURS * 60 + MINUTES;
 
 const finite = (value, fallback) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -36,15 +37,19 @@ export const SaveStore = {
         mission: clamp(Math.round(finite(parsed.mission, 0)), 0, 99),
         storyDone: parsed.storyDone === true,
         playSeconds: Math.max(0, finite(parsed.playSeconds, 0)),
+        // Old saves carry no clock; they resume at the legacy 23:41 night so
+        // Continue keeps the scene the player last saw.
+        clockMinutes: ((finite(parsed.clockMinutes, LEGACY_CLOCK) % DAY_MINUTES) + DAY_MINUTES) % DAY_MINUTES,
+        day: clamp(Math.round(finite(parsed.day, DAY)), 1, 99),
         weaponKey: parsed.weaponKey === 'smg' || parsed.weaponKey === 'knife' ? parsed.weaponKey : 'pistol',
         weapons: parsed.weapons && typeof parsed.weapons === 'object' ? parsed.weapons : null,
         savedAt: finite(parsed.savedAt, 0),
         cameraYaw: finite(parsed.cameraYaw, PLAYER.spawnCameraYaw),
         cameraPitch: clamp(finite(parsed.cameraPitch, 0.17), CAMERA.minPitch, CAMERA.maxPitch),
         position: {
-          x: clamp(finite(position.x, PLAYER.spawn.x), -320, 199),
+          x: clamp(finite(position.x, PLAYER.spawn.x), -320, 355),
           y: clamp(finite(position.y, 0), -2, 80),
-          z: clamp(finite(position.z, PLAYER.spawn.z), -197, 201),
+          z: clamp(finite(position.z, PLAYER.spawn.z), -247, 247),
         },
       };
       if (!Number.isFinite(save.position.x) || !Number.isFinite(save.position.z)) return null;
@@ -73,6 +78,8 @@ export const SaveStore = {
           mission: progress.mission ?? 0,
           storyDone: progress.storyDone === true,
           playSeconds: progress.playSeconds ?? 0,
+          clockMinutes: progress.clockMinutes ?? LEGACY_CLOCK,
+          day: progress.day ?? DAY,
           weaponKey: progress.weaponKey ?? 'pistol',
           weapons: progress.weapons ?? null,
           cameraYaw: progress.cameraYaw,

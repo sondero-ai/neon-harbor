@@ -113,6 +113,7 @@ export class Effects {
       polygonOffset: true,
       polygonOffsetFactor: -3,
     });
+    this.beamBaseOpacity = this.lowQuality ? 0.09 : 0.16;
     this.beamGeometry = new THREE.PlaneGeometry(2.7, 11);
     this.beamGeometry.rotateX(-Math.PI / 2);
   }
@@ -387,6 +388,14 @@ export class Effects {
     vehicle.group.remove(vehicle.__lightKit);
     delete vehicle.__lightKit;
     this.lightVehicles.delete(vehicle);
+  }
+
+  // The environment owns the time of day; the only effect it drives is the
+  // road-level headlight beam, which fades out in daylight.
+  applyEnvironment(palette) {
+    const level = palette.carLights;
+    this.beamMaterial.opacity = this.beamBaseOpacity * (0.1 + 0.9 * level);
+    this.beamMaterial.color.setHex(0xffd79b).multiplyScalar(0.55 + 0.45 * level);
   }
 
   // ------------------------------------------------------------ per frame

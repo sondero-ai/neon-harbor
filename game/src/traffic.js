@@ -5,7 +5,7 @@
 // instanced meshes, so thirty-odd people cost seven draw calls.
 
 import * as THREE from '../vendor/three.module.js';
-import { BLOCK_CENTERS, ROADS, WORLD } from './config.js';
+import { BLOCK_CENTERS_X, BLOCK_CENTERS_Z, ROADS_X, ROADS_Z, WORLD } from './config.js';
 import { TRAFFIC_MIX, pickVehicleColor } from './vehicles.js';
 import { makeRng } from './random.js';
 
@@ -16,10 +16,10 @@ const TAU = Math.PI * 2;
 export const LANE_OFFSET = 3.2;
 const STOP_LINE = 12.4;
 const CORNER = 17.4;
-const MAX_PEDS = 48;
-const SIDEWALK_TARGET = 24;
-const BEACH_TARGET = 11;
-const CAR_TARGET = 13;
+const MAX_PEDS = 96;
+const SIDEWALK_TARGET = 48;
+const BEACH_TARGET = 22;
+const CAR_TARGET = 18;
 const PANIC_RADIUS = 14;
 const PANIC_SECONDS = 6;
 const FLEE_SPEED = 1.6;
@@ -228,6 +228,8 @@ export class Traffic {
     this.pedTimer = 0;
     this.carTarget = CAR_TARGET;
     this.sidewalkTarget = SIDEWALK_TARGET;
+    this.beachTarget = BEACH_TARGET;
+    this.maxPeds = MAX_PEDS;
     this._density = { cars: 0, walkers: 0 };
     this.reset({ spawnBeach: false });
   }
@@ -289,10 +291,13 @@ export class Traffic {
     const spots = [
       [-67, 18.1, 1], [-74, 36.4, 3], [-96, 18.3, 1], [-52, 36.6, 2],
       [14, 18.2, 0], [-114, 36.5, 2], [-30, 36.7, 0],
+      // Old Town's market row and the Foundry's rail spur, so the new
+      // districts read as lived-in from the first frame.
+      [0, -198.6, 1], [54, -198.7, 2], [-54, -198.5, 3],
+      [216, 18.2, 0], [270, 36.4, 1], [324, 18.3, 3],
     ];
-    for (let i = 0; i < 4; i += 1) {
-      const spot = spots[i];
-      this.spawnSidewalkPed(spot[0], spot[1], spot[2]);
+    for (const [x, z, cornerIndex] of spots) {
+      this.spawnSidewalkPed(x, z, cornerIndex);
     }
     if (spawnBeach) this.spawnBeachCrowd();
   }
@@ -388,6 +393,8 @@ export class Traffic {
       [-232, 66.5], [-224, 72.2], [-236, 72.8],
       [-198, 48], [-186, 42], [-164, 53], [-206, 88],
       [-184, 96], [-154, 84], [-188, 70.5], [-203, 71.5],
+      [-218, 120], [-192, 132], [-166, 118], [-230, 98], [-210, 140],
+      [-174, 150], [-156, 130], [-226, -118], [-200, -132], [-176, -120], [-158, -96],
     ];
     for (let i = 0; i < Math.min(spots.length, BEACH_TARGET); i += 1) {
       const [x, z] = spots[i];
@@ -436,9 +443,11 @@ export class Traffic {
     const pz = player.position.z;
     for (let attempt = 0; attempt < 24; attempt += 1) {
       const axis = this.rng.chance(0.5) ? 'x' : 'z';
-      const line = this.rng.pick(ROADS);
+      const line = this.rng.pick(axis === 'x' ? ROADS_X : ROADS_Z);
       const direction = this.rng.sign();
-      const along = this.rng.range(WORLD.cityMin + 18, WORLD.cityMax - 18);
+      const along = axis === 'x'
+        ? this.rng.range(WORLD.cityMinX + 18, WORLD.cityMaxX - 18)
+        : this.rng.range(WORLD.cityMinZ + 18, WORLD.cityMaxZ - 18);
       const point = lanePoint(axis, line, direction, along);
       const distance = Math.hypot(point.x - px, point.z - pz);
       if (distance < minDistance || distance > maxDistance) continue;
@@ -480,11 +489,12 @@ export class Traffic {
       let desired = ai.cruise * ai.speedBias;
 
       // Stop line for the next intersection, and the two-phase city signal.
+      const axisRoads = ai.axis === 'x' ? ROADS_X : ROADS_Z;
       let nextRoad = null;
       if (ai.direction > 0) {
-        for (const road of ROADS) if (road > along + 2.5) { nextRoad = road; break; }
+        for (const road of axisRoads) if (road > along + 2.5) { nextRoad = road; break; }
       } else {
-        for (let i = ROADS.length - 1; i >= 0; i -= 1) if (ROADS[i] < along - 2.5) { nextRoad = ROADS[i]; break; }
+        for (let i = axisRoads.length - 1; i >= 0; i -= 1) if (axisRoads[i] < along - 2.5) { nextRoad = axisRoads[i]; break; }
       }
       if (nextRoad !== null) {
         const stopDistance = ai.direction > 0 ? nextRoad - STOP_LINE - along : along - (nextRoad + STOP_LINE);
@@ -552,8 +562,10 @@ export class Traffic {
       if (Math.abs(speed) < 0.4) ai.stuckTime += dt;
       else ai.stuckTime = 0;
 
-      const beyondMin = along < WORLD.cityMin + 2;
-      const beyondMax = along > WORLD.cityMax - 2;
+      const minAlong = ai.axis === 'x' ? WORLD.cityMinX : WORLD.cityMinZ;
+      const maxAlong = ai.axis === 'x' ? WORLD.cityMaxX : WORLD.cityMaxZ;
+      const beyondMin = along < minAlong + 2;
+      const beyondMax = along > maxAlong - 2;
       const farAway = Math.hypot(car.position.x - px, car.position.z - pz) > 250;
       const stuckTooLong = ai.stuckTime > 16 && Math.hypot(car.position.x - px, car.position.z - pz) > 60;
       if (beyondMin || beyondMax || farAway || stuckTooLong) this.removeCar(car);
@@ -655,10 +667,10 @@ export class Traffic {
   }
 
   nearestBlock(x, z) {
-    let best = { x: BLOCK_CENTERS[0], z: BLOCK_CENTERS[0] };
+    let best = { x: BLOCK_CENTERS_X[0], z: BLOCK_CENTERS_Z[0] };
     let bestDistance = Infinity;
-    for (const cx of BLOCK_CENTERS) {
-      for (const cz of BLOCK_CENTERS) {
+    for (const cx of BLOCK_CENTERS_X) {
+      for (const cz of BLOCK_CENTERS_Z) {
         const distance = Math.abs(x - cx) + Math.abs(z - cz);
         if (distance < bestDistance) {
           bestDistance = distance;
@@ -848,7 +860,7 @@ export class Traffic {
           this.despawnPed(ped);
         }
       }
-      if (this.peds.length > 64) this.peds = this.peds.filter((ped) => ped.active);
+      if (this.peds.length > MAX_PEDS * 2) this.peds = this.peds.filter((ped) => ped.active);
     }
   }
 
@@ -981,7 +993,7 @@ export class Traffic {
     const alongX = this.rng.chance(0.5);
     if (alongX) {
       const nextX = ped.blockX + signX * 54;
-      if (!BLOCK_CENTERS.includes(nextX)) return false;
+      if (!BLOCK_CENTERS_X.includes(nextX)) return false;
       ped.nextBlockX = nextX;
       ped.nextBlockZ = ped.blockZ;
       ped.mode = 'cross';
@@ -990,7 +1002,7 @@ export class Traffic {
       return true;
     }
     const nextZ = ped.blockZ + signZ * 54;
-    if (!BLOCK_CENTERS.includes(nextZ)) return false;
+    if (!BLOCK_CENTERS_Z.includes(nextZ)) return false;
     ped.nextBlockX = ped.blockX;
     ped.nextBlockZ = nextZ;
     ped.mode = 'cross';
@@ -1024,8 +1036,8 @@ export class Traffic {
     const px = player.position.x;
     const pz = player.position.z;
     for (let attempt = 0; attempt < 12; attempt += 1) {
-      const blockX = this.rng.pick(BLOCK_CENTERS);
-      const blockZ = this.rng.pick(BLOCK_CENTERS);
+      const blockX = this.rng.pick(BLOCK_CENTERS_X);
+      const blockZ = this.rng.pick(BLOCK_CENTERS_Z);
       const distance = Math.hypot(blockX - px, blockZ - pz);
       if (distance < 30 || distance > 145) continue;
       const corner = CORNERS[this.rng.int(0, 3)];

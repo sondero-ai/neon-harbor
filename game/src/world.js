@@ -7,10 +7,13 @@
 
 import * as THREE from '../vendor/three.module.js';
 import {
-  BLOCK_CENTERS,
+  BLOCK_CENTERS_X,
+  BLOCK_CENTERS_Z,
+  CORE_BLOCK_CENTERS,
   PALETTE,
   QUALITY_PRESETS,
-  ROADS,
+  ROADS_X,
+  ROADS_Z,
   SEED,
   WORLD,
 } from './config.js';
@@ -39,6 +42,16 @@ const SUN_DIR = new THREE.Vector3(...WORLD.sunDir).normalize();
 const UP = new THREE.Vector3(0, 1, 0);
 const clamp = THREE.MathUtils.clamp;
 const lerp = THREE.MathUtils.lerp;
+const CORE_SET = new Set(CORE_BLOCK_CENTERS);
+
+// The extension blocks are generated after the original core, in a fixed
+// order, so every core tower and sign keeps the exact geometry it had before
+// the city grew. The two new districts are chosen by block centre.
+function districtForBlock(cx, cz) {
+  if (cx >= 216) return 'foundry';
+  if (cz <= -162) return 'oldtown';
+  return null;
+}
 
 const _origin = new THREE.Vector3();
 const _direction = new THREE.Vector3();
@@ -223,120 +236,283 @@ export class World {
 
   // ---------------------------------------------------------------- sky
 
-  buildSky() {
-    const skyTexture = canvasTexture(1024, 512, (ctx, width, height) => {
-      // Vega Strip after midnight: indigo overhead, a magenta band of city
-      // light along the horizon, and a moon instead of the sunset.
+  // One baked sky per period. The night keeps the indigo-to-magenta gradient
+  // the first build was framed around; the other three add the dawn, day and
+  // dusk bands. Stars and the moon live as separate objects so the environment
+  // can fade them instead of repainting the canvas.
+  makeSkyTexture(state) {
+    const texture = canvasTexture(1024, 512, (ctx, width, height) => {
       const gradient = ctx.createLinearGradient(0, 0, 0, height);
-      gradient.addColorStop(0, '#040410');
-      gradient.addColorStop(0.16, '#090a20');
-      gradient.addColorStop(0.32, '#15102e');
-      gradient.addColorStop(0.45, '#261543');
-      gradient.addColorStop(0.53, '#482052');
-      gradient.addColorStop(0.575, '#7a2e5a');
-      gradient.addColorStop(0.61, '#a8445f');
-      gradient.addColorStop(0.66, '#5a2948');
-      gradient.addColorStop(0.8, '#24152c');
-      gradient.addColorStop(1, '#080612');
+      const stops = {
+        night: [
+          [0, '#040410'], [0.16, '#090a20'], [0.32, '#15102e'], [0.45, '#261543'],
+          [0.53, '#482052'], [0.575, '#7a2e5a'], [0.61, '#a8445f'], [0.66, '#5a2948'],
+          [0.8, '#24152c'], [1, '#080612'],
+        ],
+        dawn: [
+          [0, '#0d0d26'], [0.24, '#241c46'], [0.42, '#56306a'], [0.52, '#8f4666'],
+          [0.58, '#d47a63'], [0.63, '#f2b878'], [0.69, '#7a4a5c'], [0.82, '#2a1c30'],
+          [1, '#100b18'],
+        ],
+        day: [
+          [0, '#265a9e'], [0.28, '#4781bc'], [0.48, '#7fb0d5'], [0.58, '#bcd9e9'],
+          [0.65, '#dbe9ef'], [0.76, '#a9becb'], [0.9, '#7c93a1'], [1, '#5f7580'],
+        ],
+        dusk: [
+          [0, '#05051a'], [0.2, '#161034'], [0.38, '#3d214c'], [0.5, '#762c4e'],
+          [0.56, '#c0554f'], [0.62, '#f09a5e'], [0.68, '#5c2d42'], [0.82, '#1d1324'],
+          [1, '#080610'],
+        ],
+      }[state];
+      for (const [offset, color] of stops) gradient.addColorStop(offset, color);
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, width, height);
 
-      // City light pollution, warm and pink, sitting on the horizon.
+      // City light pollution or horizon haze, depending on the hour.
       const horizon = ctx.createRadialGradient(width * 0.42, height * 0.6, 10, width * 0.42, height * 0.6, width * 0.56);
-      horizon.addColorStop(0, 'rgba(255,86,132,0.22)');
-      horizon.addColorStop(0.4, 'rgba(160,60,120,0.09)');
-      horizon.addColorStop(1, 'rgba(80,20,80,0)');
+      if (state === 'day') {
+        horizon.addColorStop(0, 'rgba(255,248,228,0.2)');
+        horizon.addColorStop(0.45, 'rgba(220,232,238,0.08)');
+        horizon.addColorStop(1, 'rgba(180,205,215,0)');
+      } else if (state === 'dawn') {
+        horizon.addColorStop(0, 'rgba(255,176,120,0.3)');
+        horizon.addColorStop(0.42, 'rgba(210,110,110,0.12)');
+        horizon.addColorStop(1, 'rgba(90,30,80,0)');
+      } else if (state === 'dusk') {
+        horizon.addColorStop(0, 'rgba(255,132,96,0.3)');
+        horizon.addColorStop(0.42, 'rgba(190,70,110,0.13)');
+        horizon.addColorStop(1, 'rgba(70,18,70,0)');
+      } else {
+        horizon.addColorStop(0, 'rgba(255,86,132,0.22)');
+        horizon.addColorStop(0.4, 'rgba(160,60,120,0.09)');
+        horizon.addColorStop(1, 'rgba(80,20,80,0)');
+      }
       ctx.fillStyle = horizon;
       ctx.fillRect(0, 0, width, height);
 
-      const rng = makeRng(0x57a2);
-      for (let i = 0; i < 190; i += 1) {
+      const rng = makeRng(0x57a2 + state.length * 97);
+      const cloudCount = state === 'day' ? 0 : state === 'night' ? 16 : 9;
+      for (let i = 0; i < cloudCount; i += 1) {
         const x = rng.range(0, width);
-        const y = rng.range(8, height * 0.49);
-        const radius = rng.range(0.4, 1.7);
-        ctx.fillStyle = `rgba(225,235,255,${rng.range(0.1, 0.62)})`;
-        ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      for (let i = 0; i < 6; i += 1) {
-        ctx.fillStyle = 'rgba(255,255,255,0.9)';
-        ctx.beginPath();
-        ctx.arc(rng.range(0, width), rng.range(8, height * 0.36), rng.range(1.4, 2.2), 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // The moon: a cold disc with a soft halo.
-      const moonX = width * 0.73;
-      const moonY = height * 0.17;
-      const moonGlow = ctx.createRadialGradient(moonX, moonY, 4, moonX, moonY, width * 0.15);
-      moonGlow.addColorStop(0, 'rgba(190,210,255,0.24)');
-      moonGlow.addColorStop(0.28, 'rgba(150,170,235,0.08)');
-      moonGlow.addColorStop(1, 'rgba(90,110,190,0)');
-      ctx.fillStyle = moonGlow;
-      ctx.fillRect(moonX - width * 0.16, moonY - width * 0.16, width * 0.32, width * 0.32);
-      const moonCore = ctx.createRadialGradient(moonX - 4, moonY - 4, 1, moonX, moonY, 15);
-      moonCore.addColorStop(0, '#f4f7ff');
-      moonCore.addColorStop(0.72, '#c9d6f5');
-      moonCore.addColorStop(1, '#8c9dd4');
-      ctx.fillStyle = moonCore;
-      ctx.beginPath();
-      ctx.arc(moonX, moonY, 13, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(110,130,180,0.22)';
-      for (const [dx, dy, r] of [[-4, 2, 2.4], [3, -3, 1.8], [1, 5, 1.4]]) {
-        ctx.beginPath();
-        ctx.arc(moonX + dx, moonY + dy, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Thin night clouds drifting under the stars.
-      for (let i = 0; i < 16; i += 1) {
-        const x = rng.range(0, width);
-        const y = rng.range(height * 0.22, height * 0.52);
+        const y = rng.range(height * 0.24, height * 0.52);
         const rx = rng.range(30, 110);
         const ry = rng.range(2, 7);
-        ctx.fillStyle = `rgba(96,62,120,${rng.range(0.04, 0.12)})`;
+        const tint = state === 'night' ? '96,62,120' : state === 'dawn' ? '210,132,110' : '200,110,104';
+        ctx.fillStyle = `rgba(${tint},${rng.range(0.04, state === 'night' ? 0.12 : 0.1)})`;
         ctx.beginPath();
         ctx.ellipse(x, y, rx, ry, rng.range(-0.1, 0.1), 0, Math.PI * 2);
         ctx.fill();
       }
     });
-    skyTexture.wrapS = THREE.RepeatWrapping;
+    texture.wrapS = THREE.RepeatWrapping;
+    return texture;
+  }
 
-    const skyMaterial = new THREE.MeshBasicMaterial({
-      map: skyTexture,
+  makeMoonTexture() {
+    return canvasTexture(128, 128, (ctx, width, height) => {
+      ctx.clearRect(0, 0, width, height);
+      const cx = width / 2;
+      const cy = height / 2;
+      const disc = ctx.createRadialGradient(cx - 6, cy - 6, 2, cx, cy, 34);
+      disc.addColorStop(0, '#f4f7ff');
+      disc.addColorStop(0.72, '#c9d6f5');
+      disc.addColorStop(1, '#8c9dd4');
+      ctx.fillStyle = disc;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 33, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(110,130,180,0.22)';
+      for (const [dx, dy, r] of [[-9, 5, 6], [7, -7, 4.5], [2, 11, 3.5], [12, 8, 3]]) {
+        ctx.beginPath();
+        ctx.arc(cx + dx, cy + dy, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+  }
+
+  buildSky() {
+    this.skyTextures = {
+      night: this.makeSkyTexture('night'),
+      dawn: this.makeSkyTexture('dawn'),
+      day: this.makeSkyTexture('day'),
+      dusk: this.makeSkyTexture('dusk'),
+    };
+    const skyGeometry = new THREE.SphereGeometry(1250, 48, 24);
+    this.skyA = new THREE.Mesh(skyGeometry, new THREE.MeshBasicMaterial({
+      map: this.skyTextures.night,
       side: THREE.BackSide,
       depthWrite: false,
       fog: false,
       toneMapped: false,
-    });
-    this.skySphere = new THREE.Mesh(new THREE.SphereGeometry(1250, 48, 24), skyMaterial);
-    this.skySphere.frustumCulled = false;
-    this.skySphere.renderOrder = -1000;
-    this.skyRoot.add(this.skySphere);
+    }));
+    this.skyA.frustumCulled = false;
+    this.skyA.renderOrder = -1000;
+    this.skyRoot.add(this.skyA);
+    this.skyB = new THREE.Mesh(skyGeometry, new THREE.MeshBasicMaterial({
+      map: this.skyTextures.night,
+      side: THREE.BackSide,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0,
+      fog: false,
+      toneMapped: false,
+    }));
+    this.skyB.frustumCulled = false;
+    this.skyB.renderOrder = -999;
+    this.skyB.visible = false;
+    this.skyRoot.add(this.skyB);
+    this.skyFromKey = 'night';
+    this.skyToKey = 'night';
 
-    // The moon is painted into the sky texture; the old sun sprites are kept
-    // out of the night frame.
-    const halo = makeGlowSprite(0x8fa8ff, 120, 0.0);
-    halo.position.copy(SUN_DIR).multiplyScalar(1120);
+    // A real star field, so the environment can fade it from day to night
+    // instead of baking stars into one texture.
+    const starRng = makeRng(0x57a2);
+    const positions = [];
+    for (let i = 0; i < 900; i += 1) {
+      const y = starRng.range(0.035, 1);
+      const ring = Math.sqrt(1 - y * y);
+      const angle = starRng.range(0, Math.PI * 2);
+      positions.push(Math.cos(angle) * ring * 1210, y * 1210, Math.sin(angle) * ring * 1210);
+    }
+    const starGeometry = new THREE.BufferGeometry();
+    starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    this.stars = new THREE.Points(starGeometry, new THREE.PointsMaterial({
+      size: 1.9,
+      map: makeGlowTexture(),
+      color: 0xe8efff,
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+      sizeAttenuation: false,
+      fog: false,
+      toneMapped: false,
+    }));
+    this.stars.frustumCulled = false;
+    this.stars.renderOrder = -998;
+    this.skyRoot.add(this.stars);
+
+    // Sun and moon are real sky objects now: the palette moves them, fades
+    // them and tints them, and the same direction drives the directional light.
+    const halo = makeGlowSprite(0x8fa8ff, 220, 0.0);
     halo.renderOrder = -900;
     halo.material.fog = false;
     halo.visible = false;
     this.skyRoot.add(halo);
 
-    const core = makeGlowSprite(0xe8efff, 34, 0.0);
-    core.position.copy(SUN_DIR).multiplyScalar(1118);
+    const core = makeGlowSprite(0xe8efff, 68, 0.0);
     core.renderOrder = -899;
     core.material.fog = false;
     core.visible = false;
     this.skyRoot.add(core);
     this.sunHalo = halo;
     this.sunCore = core;
+
+    const moonHalo = makeGlowSprite(0x8fa8ff, 200, 0.0);
+    moonHalo.renderOrder = -898;
+    moonHalo.material.fog = false;
+    moonHalo.visible = false;
+    this.skyRoot.add(moonHalo);
+    const moonCore = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: this.makeMoonTexture(),
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      fog: false,
+      toneMapped: false,
+    }));
+    moonCore.scale.set(58, 58, 1);
+    moonCore.renderOrder = -897;
+    moonCore.visible = false;
+    this.skyRoot.add(moonCore);
+    this.moonHalo = moonHalo;
+    this.moonCore = moonCore;
+  }
+
+  setSky(fromKey, toKey, blend) {
+    if (this.skyFromKey !== fromKey) {
+      this.skyA.material.map = this.skyTextures[fromKey] ?? this.skyTextures.night;
+      this.skyA.material.needsUpdate = true;
+      this.skyFromKey = fromKey;
+    }
+    this.skyB.visible = toKey !== fromKey && blend > 0.001;
+    if (this.skyToKey !== toKey) {
+      this.skyB.material.map = this.skyTextures[toKey] ?? this.skyTextures.night;
+      this.skyB.material.needsUpdate = true;
+      this.skyToKey = toKey;
+    }
+    if (this.skyB.visible) this.skyB.material.opacity = blend;
+  }
+
+  applyEnvironment(palette) {
+    this.hemi.color.setHex(palette.hemiSky);
+    this.hemi.groundColor.setHex(palette.hemiGround);
+    this.hemi.intensity = palette.hemiIntensity;
+    this.ambient.color.setHex(palette.ambient);
+    this.ambient.intensity = palette.ambientIntensity;
+    this.sun.color.setHex(palette.sunColor);
+    this.sun.intensity = palette.sunIntensity;
+    this.fill.intensity = palette.fillIntensity;
+    this.lightDir.set(palette.lightDir[0], palette.lightDir[1], palette.lightDir[2]).normalize();
+    this.focusAt(this.focusX, this.focusZ);
+
+    // Window light, neon and street lamps are emissive materials rather than
+    // real lights; the palette scales their intensity so noon reads as day.
+    this.neonLevel = 0.55 + 0.45 * palette.neon;
+    for (const style of this.facadeStyles) {
+      style.material.emissiveIntensity = style.baseEmissive * (0.18 + 0.82 * palette.window);
+    }
+    if (this.storefrontMaterial) {
+      this.storefrontMaterial.emissiveIntensity = this.storefrontBaseEmissive * (0.18 + 0.82 * palette.window);
+    }
+    if (this.crownMaterial) this.crownMaterial.color.setScalar(0.42 + 0.58 * palette.neon);
+    if (this.pierBulbMaterial) this.pierBulbMaterial.color.setScalar(0.42 + 0.58 * palette.neon);
+    if (this.lampMaterial) {
+      this.lampMaterial.color.setHex(0xffc37a).multiplyScalar(0.32 + 0.68 * palette.street);
+    }
+    if (this.lampGlowMaterial) this.lampGlowMaterial.opacity = 0.38 * (0.1 + 0.9 * palette.street);
+    if (this.streetPoolMaterial) this.streetPoolMaterial.opacity = 0.14 * palette.street;
+
+    if (this.water) {
+      this.water.material.color.setHex(palette.waterTint);
+      this.water.material.emissive.setHex(palette.waterEmissive);
+      this.water.material.emissiveIntensity = palette.waterEmissiveIntensity;
+    }
+    if (this.sparkles) this.sparkles.material.opacity = palette.sparkle;
+    if (this.stars) this.stars.material.opacity = palette.stars;
+    for (const cloud of this.clouds) {
+      cloud.sprite.material.color.setHex(palette.cloud);
+      cloud.sprite.material.opacity = cloud.baseOpacity * palette.cloudOpacity;
+    }
+
+    this.setSky(palette.skyFrom, palette.skyTo, palette.skyBlend);
+
+    const sun = palette.sun;
+    this.sunHalo.visible = sun > 0.01;
+    this.sunCore.visible = sun > 0.01;
+    if (sun > 0.01) {
+      this.sunHalo.position.set(palette.lightDir[0], palette.lightDir[1], palette.lightDir[2]).multiplyScalar(1120);
+      this.sunCore.position.set(palette.lightDir[0], palette.lightDir[1], palette.lightDir[2]).multiplyScalar(1118);
+      this.sunHalo.material.opacity = 0.45 * sun;
+      this.sunCore.material.opacity = 0.95 * sun;
+    }
+    const moon = palette.moon;
+    this.moonHalo.visible = moon > 0.01;
+    this.moonCore.visible = moon > 0.01;
+    if (moon > 0.01) {
+      this.moonHalo.position.set(palette.moonDir[0], palette.moonDir[1], palette.moonDir[2]).multiplyScalar(1120);
+      this.moonCore.position.set(palette.moonDir[0], palette.moonDir[1], palette.moonDir[2]).multiplyScalar(1118);
+      this.moonHalo.material.opacity = 0.32 * moon;
+      this.moonCore.material.opacity = moon;
+    }
   }
 
   buildLights() {
     const preset = QUALITY_PRESETS[this.quality] ?? QUALITY_PRESETS.high;
+    this.lightDir = SUN_DIR.clone();
+    this.focusX = 20;
+    this.focusZ = 30;
     this.hemi = new THREE.HemisphereLight(0x7f8fd6, 0x171322, 1.38);
     this.scene.add(this.hemi);
 
@@ -365,7 +541,10 @@ export class World {
   }
 
   focusAt(x, z) {
-    this.sun.position.set(x + SUN_DIR.x * 120, SUN_DIR.y * 120 + 12, z + SUN_DIR.z * 120);
+    this.focusX = x;
+    this.focusZ = z;
+    const direction = this.lightDir ?? SUN_DIR;
+    this.sun.position.set(x + direction.x * 120, direction.y * 120 + 12, z + direction.z * 120);
     this.sun.target.position.set(x, 0, z);
     this.sun.target.updateMatrixWorld();
   }
@@ -408,11 +587,15 @@ export class World {
     }, { repeat: [30, 30] });
 
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(WORLD.cityMax - WORLD.cityMin, WORLD.cityMax - WORLD.cityMin),
+      new THREE.PlaneGeometry(WORLD.cityMaxX - WORLD.cityMinX, WORLD.cityMaxZ - WORLD.cityMinZ),
       material(0xffffff, { map: asphalt, roughness: 0.94, metalness: 0.02 }),
     );
     ground.rotation.x = -Math.PI / 2;
-    ground.position.set((WORLD.cityMin + WORLD.cityMax) / 2, 0, (WORLD.cityMin + WORLD.cityMax) / 2);
+    ground.position.set(
+      (WORLD.cityMinX + WORLD.cityMaxX) / 2,
+      0,
+      (WORLD.cityMinZ + WORLD.cityMaxZ) / 2,
+    );
     ground.receiveShadow = true;
     this.root.add(ground);
 
@@ -440,8 +623,8 @@ export class World {
     }, { repeat: [1, 1] });
 
     this.sidewalkParts = [];
-    for (const cx of BLOCK_CENTERS) {
-      for (const cz of BLOCK_CENTERS) {
+    for (const cx of BLOCK_CENTERS_X) {
+      for (const cz of BLOCK_CENTERS_Z) {
         addBox(this.sidewalkParts, WORLD.blockSize, 0.15, WORLD.blockSize, cx, 0.075, cz, 0xffffff);
         addBox(this.sidewalkParts, WORLD.blockSize + 0.5, 0.18, 0.4, cx, 0.085, cz - BLOCK_HALF - 0.25, 0xcab7b1);
         addBox(this.sidewalkParts, WORLD.blockSize + 0.5, 0.18, 0.4, cx, 0.085, cz + BLOCK_HALF + 0.25, 0xcab7b1);
@@ -471,17 +654,24 @@ export class World {
     };
 
     // Solid paint runs between intersections, with the crosswalks left clear.
-    const spans = [];
-    for (let i = 0; i < ROADS.length - 1; i += 1) {
-      const start = ROADS[i] + ROAD_HALF + 2.4;
-      const end = ROADS[i + 1] - ROAD_HALF - 2.4;
-      if (end - start > 2) spans.push([start, end]);
-    }
-    spans.unshift([WORLD.cityMin + 1.0, ROADS[0] - ROAD_HALF - 2.4]);
-    spans.push([ROADS[ROADS.length - 1] + ROAD_HALF + 2.4, WORLD.cityMax - 1.0]);
+    // Each axis keeps its own spans so the wider grid paints the full asphalt.
+    const paintSpans = (roads, min, max) => {
+      const spans = [];
+      for (let i = 0; i < roads.length - 1; i += 1) {
+        const start = roads[i] + ROAD_HALF + 2.4;
+        const end = roads[i + 1] - ROAD_HALF - 2.4;
+        if (end - start > 2) spans.push([start, end]);
+      }
+      spans.unshift([min + 1.0, roads[0] - ROAD_HALF - 2.4]);
+      spans.push([roads[roads.length - 1] + ROAD_HALF + 2.4, max - 1.0]);
+      return spans;
+    };
+    const spansX = paintSpans(ROADS_X, WORLD.cityMinX, WORLD.cityMaxX);
+    const spansZ = paintSpans(ROADS_Z, WORLD.cityMinZ, WORLD.cityMaxZ);
 
-    for (const line of ROADS) {
-      for (const [start, end] of spans) {
+    // A line at x runs the length of the city in z, and vice versa.
+    for (const line of ROADS_X) {
+      for (const [start, end] of spansZ) {
         if (end - start < 2) continue;
         const length = end - start;
         const middle = (start + end) / 2;
@@ -489,6 +679,13 @@ export class World {
         addMark(yellow, 0.16, length, line + 0.2, middle);
         addMark(white, 0.13, length, line - ROAD_HALF + 0.72, middle);
         addMark(white, 0.13, length, line + ROAD_HALF - 0.72, middle);
+      }
+    }
+    for (const line of ROADS_Z) {
+      for (const [start, end] of spansX) {
+        if (end - start < 2) continue;
+        const length = end - start;
+        const middle = (start + end) / 2;
         addMark(yellow, length, 0.16, middle, line - 0.2);
         addMark(yellow, length, 0.16, middle, line + 0.2);
         addMark(white, length, 0.13, middle, line - ROAD_HALF + 0.72);
@@ -500,8 +697,8 @@ export class World {
     const stripeWidth = 0.58;
     const stripeGap = 0.65;
     const stripeSpan = 2.35;
-    for (const rx of ROADS) {
-      for (const rz of ROADS) {
+    for (const rx of ROADS_X) {
+      for (const rz of ROADS_Z) {
         for (const north of [-1, 1]) {
           const z = rz + north * (ROAD_HALF + stripeSpan / 2 + 1.0);
           for (let i = 0; i < 8; i += 1) {
@@ -533,7 +730,7 @@ export class World {
   }
 
   beachHeight(x, z = 0) {
-    const t = clamp((WORLD.cityMin - x) / (WORLD.cityMin - WORLD.shorelineX), 0, 1);
+    const t = clamp((WORLD.cityMinX - x) / (WORLD.cityMinX - WORLD.shorelineX), 0, 1);
     return -0.45 * t + Math.sin((z + x * 0.6) * 0.09) * 0.018 * t;
   }
 
@@ -671,9 +868,14 @@ export class World {
 
   buildCity() {
     this.facadeStyles = makeFacadeStyles();
+    for (const style of this.facadeStyles) {
+      // The environment scales window light against this base every frame.
+      style.baseEmissive = style.material.emissiveIntensity;
+    }
     this.roofParts = [];
     this.crownParts = [];
     this.storefrontParts = [];
+    this.extensionParts = [];
 
     this.storefrontTexture = canvasTexture(1024, 256, (ctx, width, height) => {
       ctx.fillStyle = '#191321';
@@ -719,8 +921,10 @@ export class World {
     this.storefrontTexture.wrapS = THREE.RepeatWrapping;
     this.storefrontTexture.wrapT = THREE.ClampToEdgeWrapping;
 
-    for (const cx of BLOCK_CENTERS) {
-      for (const cz of BLOCK_CENTERS) {
+    // The core first, in its original order, so the old landmarks and shots
+    // keep the exact geometry they were built with.
+    for (const cx of CORE_BLOCK_CENTERS) {
+      for (const cz of CORE_BLOCK_CENTERS) {
         if (cx === 0 && cz === 0) continue;
         if (cx === 54 && cz === 54) {
           this.buildHotel(cx, cz);
@@ -741,9 +945,45 @@ export class World {
         this.buildBlock(cx, cz);
       }
     }
+
+    // Then the 45-block extension: Old Town to the north, Foundry to the east,
+    // and new neighbourhoods along the rest of the ring.
+    for (const cx of BLOCK_CENTERS_X) {
+      for (const cz of BLOCK_CENTERS_Z) {
+        if (CORE_SET.has(cx) && CORE_SET.has(cz)) continue;
+        if (cx === 0 && cz === -216) {
+          this.buildMarketSquare(cx, cz);
+          continue;
+        }
+        this.buildBlock(cx, cz, { district: districtForBlock(cx, cz), mergeBuildings: true });
+      }
+    }
+
+    // The extension's tower shells share one draw call per facade style; the
+    // street-level dressing still merges into the city's global batches.
+    if (this.extensionParts.length > 0) {
+      const byStyle = new Map();
+      for (const part of this.extensionParts) {
+        if (!byStyle.has(part.styleIndex)) byStyle.set(part.styleIndex, []);
+        byStyle.get(part.styleIndex).push(part);
+      }
+      for (const [styleIndex, parts] of byStyle) {
+        const mesh = new THREE.Mesh(
+          mergeGeometries(parts),
+          this.facadeStyles[styleIndex % this.facadeStyles.length].material,
+        );
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        this.root.add(mesh);
+      }
+    }
   }
 
-  styleFor(cx, cz, rng) {
+  styleFor(cx, cz, rng, district = null) {
+    // Old Town keeps the warm brick and ribbon-glass facades; the Foundry
+    // wears the darker warehouse palette. Core blocks ignore the district.
+    if (district === 'oldtown') return rng.pick([0, 2, 4, 6, 7, 0, 2]);
+    if (district === 'foundry') return rng.pick([6, 3, 0, 7, 6]);
     // The four blocks that frame Luna Plaza stay warm and masonry-heavy, so
     // the fountain reads against brick and ribbon glass rather than a wall of
     // lit teal squares.
@@ -758,18 +998,31 @@ export class World {
     return rng.pick([0, 2, 4, 6, 7, 3, 1]);
   }
 
-  buildBlock(cx, cz) {
+  buildBlock(cx, cz, { district = null, mergeBuildings = false } = {}) {
     const rng = this.rng;
-    const east = clamp((cx + 142) / 338, 0, 1);
-    const core = 1 - clamp((Math.abs(cx - 70) + Math.abs(cz - 55)) / 280, 0, 1);
-    const downtown = clamp(east * 0.7 + core * 0.3, 0, 1);
-    const height = 8 + downtown * (26 + rng.range(0, 34));
-    const split = rng.chance(downtown > 0.45 ? 0.26 : 0.38);
-    const styleA = this.styleFor(cx, cz, rng);
-    const styleB = this.styleFor(cx, cz, rng);
+    let height;
+    let split;
+    if (district === 'oldtown') {
+      height = 7 + rng.range(0, 7);
+      split = rng.chance(0.22);
+    } else if (district === 'foundry') {
+      height = 8 + rng.range(0, 8);
+      split = rng.chance(0.7);
+    } else {
+      const east = clamp((cx + 142) / 338, 0, 1);
+      const core = 1 - clamp((Math.abs(cx - 70) + Math.abs(cz - 55)) / 280, 0, 1);
+      const downtown = clamp(east * 0.7 + core * 0.3, 0, 1);
+      height = 8 + downtown * (26 + rng.range(0, 34));
+      split = rng.chance(downtown > 0.45 ? 0.26 : 0.38);
+    }
+    const styleA = this.styleFor(cx, cz, rng, district);
+    const styleB = this.styleFor(cx, cz, rng, district);
+    const options = { district, mergeBuildings };
 
     if (split) {
-      const alongX = rng.chance(0.5);
+      // Foundry warehouses split front-to-back so two wide, shallow sheds
+      // face the street; the other districts keep the existing coin toss.
+      const alongX = district === 'foundry' ? false : rng.chance(0.5);
       const gap = 1.8;
       if (alongX) {
         const width = (WORLD.blockSize - 8 - gap) / 2;
@@ -782,6 +1035,7 @@ export class World {
           Math.max(7, height * rng.range(0.42, 0.68)),
           styleA,
           rng,
+          options,
         );
         this.buildTower(
           cx + 4 + width / 2 + gap / 2,
@@ -791,6 +1045,7 @@ export class World {
           height,
           styleB,
           rng,
+          options,
         );
       } else {
         const depth = (WORLD.blockSize - 8 - gap) / 2;
@@ -803,6 +1058,7 @@ export class World {
           Math.max(7, height * rng.range(0.42, 0.68)),
           styleA,
           rng,
+          options,
         );
         this.buildTower(
           cx,
@@ -812,16 +1068,18 @@ export class World {
           height,
           styleB,
           rng,
+          options,
         );
       }
     } else {
       const width = rng.range(29, 32.5);
       const depth = rng.range(29, 32.5);
-      this.buildTower(cx, cz, width, depth, height, styleA, rng);
+      this.buildTower(cx, cz, width, depth, height, styleA, rng, options);
     }
   }
 
-  buildTower(cx, cz, width, depth, height, styleIndex, rng) {
+  buildTower(cx, cz, width, depth, height, styleIndex, rng, options = {}) {
+    const { district = null, mergeBuildings = false } = options;
     const x0 = cx - width / 2;
     const x1 = cx + width / 2;
     const z0 = cz - depth / 2;
@@ -831,10 +1089,18 @@ export class World {
     const style = this.facadeStyles[styleIndex % this.facadeStyles.length];
 
     const mesh = makeBuildingMesh(width, h, depth, style);
-    mesh.position.set(cx, y0 + h / 2, cz);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    this.root.add(mesh);
+    if (mergeBuildings) {
+      this.extensionParts.push({
+        styleIndex: styleIndex % this.facadeStyles.length,
+        geometry: mesh.geometry,
+        matrix: matrixFor(cx, y0 + h / 2, cz),
+      });
+    } else {
+      mesh.position.set(cx, y0 + h / 2, cz);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.root.add(mesh);
+    }
 
     this.roofParts.push({
       geometry: new THREE.BoxGeometry(width + 0.3, 0.42, depth + 0.3),
@@ -842,6 +1108,7 @@ export class World {
       color: 0x2b2430,
     });
     this.addStorefront(cx, cz, width, depth);
+    if (district === 'oldtown') this.addAwnings(cx, cz, width, depth, rng);
 
     const building = { cx, cz, x0, x1, z0, z1, baseY: y0, height: h, styleIndex };
     this.buildings.push(building);
@@ -876,10 +1143,18 @@ export class World {
       const ux = cx + offsetX;
       const uz = cz + offsetZ;
       const upper = makeBuildingMesh(upperWidth, upperHeight, upperDepth, style);
-      upper.position.set(ux, topY + upperHeight / 2, uz);
-      upper.castShadow = true;
-      upper.receiveShadow = true;
-      this.root.add(upper);
+      if (mergeBuildings) {
+        this.extensionParts.push({
+          styleIndex: styleIndex % this.facadeStyles.length,
+          geometry: upper.geometry,
+          matrix: matrixFor(ux, topY + upperHeight / 2, uz),
+        });
+      } else {
+        upper.position.set(ux, topY + upperHeight / 2, uz);
+        upper.castShadow = true;
+        upper.receiveShadow = true;
+        this.root.add(upper);
+      }
       this.roofParts.push({
         geometry: new THREE.BoxGeometry(upperWidth + 0.25, 0.38, upperDepth + 0.25),
         matrix: matrixFor(ux, topY + upperHeight + 0.18, uz),
@@ -894,10 +1169,12 @@ export class World {
       topY += upperHeight;
       topW = upperWidth;
       topD = upperDepth;
-      this.addRoofProps(ux, uz, upperWidth, upperDepth, topY, rng);
-    } else {
+      if (district === null) this.addRoofProps(ux, uz, upperWidth, upperDepth, topY, rng);
+    } else if (district === null) {
       this.addRoofProps(cx, cz, width, depth, topY, rng);
     }
+    if (district === 'oldtown') this.addOldTownRoof(cx, cz, width, depth, topY, rng);
+    if (district === 'foundry') this.addFoundryYard(cx, cz, width, depth, topY, rng);
 
     if (topW > 8 && topD > 8 && building.height > 50 && rng.chance(0.22)) {
       const mastHeight = rng.range(8, 17);
@@ -924,6 +1201,159 @@ export class World {
         matrix: matrixFor(face.x, y, face.z, { ry: face.ry }),
       });
     }
+  }
+
+  // Old Town's street wall wears canvas awnings: one striped box per storefront
+  // bay, angled over the pavement, merged into the city's roof batch.
+  addAwnings(cx, cz, width, depth, rng) {
+    const colors = [0x8d3d43, 0x356a63, 0x7d5b2d, 0xa4585c];
+    const y = WORLD.sidewalkHeight + 3.28;
+    const faces = [
+      { length: width, x: cx, z: cz + depth / 2, ry: 0 },
+      { length: width, x: cx, z: cz - depth / 2, ry: Math.PI },
+      { length: depth, x: cx + width / 2, z: cz, ry: Math.PI / 2 },
+      { length: depth, x: cx - width / 2, z: cz, ry: -Math.PI / 2 },
+    ];
+    for (const face of faces) {
+      if (rng.chance(0.28)) continue;
+      const segments = Math.max(2, Math.round(face.length / 4.2));
+      const segment = face.length / segments;
+      const nx = Math.sin(face.ry);
+      const nz = Math.cos(face.ry);
+      for (let i = 0; i < segments; i += 1) {
+        const along = -face.length / 2 + segment * (i + 0.5);
+        const px = face.x + Math.cos(face.ry) * along + nx * 0.72;
+        const pz = face.z - Math.sin(face.ry) * along + nz * 0.72;
+        addBox(
+          this.roofParts,
+          segment - 0.12,
+          0.09,
+          1.55,
+          px,
+          y,
+          pz,
+          colors[(i + Math.round(face.ry * 2)) % colors.length],
+          { ry: face.ry, rx: -0.2 },
+        );
+        addBox(this.roofParts, 0.08, 0.62, 0.08, px + nx * 0.62, y - 0.42, pz + nz * 0.62, 0x3a2f2c);
+      }
+    }
+  }
+
+  addOldTownRoof(cx, cz, width, depth, topY, rng) {
+    const chimneys = rng.int(1, 2);
+    for (let i = 0; i < chimneys; i += 1) {
+      const x = cx + rng.range(-width * 0.3, width * 0.3);
+      const z = cz + rng.range(-depth * 0.3, depth * 0.3);
+      const height = rng.range(1.8, 3.4);
+      addBox(this.roofParts, 0.9, height, 0.9, x, topY + height / 2, z, 0x6d4238);
+      addBox(this.roofParts, 1.05, 0.18, 1.05, x, topY + height, z, 0x3b2c2a);
+    }
+    if (rng.chance(0.4)) {
+      addBox(this.roofParts, width * 0.34, 0.12, depth * 0.34, cx, topY + 0.1, cz, 0x5a4038);
+    }
+  }
+
+  // The Foundry: a brick stack with a band and a red aircraft light, plus a
+  // pair of steel rails running along the block's yard.
+  addFoundryYard(cx, cz, width, depth, topY, rng) {
+    if (rng.chance(0.62)) {
+      const sx = cx + (rng.chance(0.5) ? -1 : 1) * (width * 0.32);
+      const sz = cz + (rng.chance(0.5) ? -1 : 1) * (depth * 0.32);
+      const stackHeight = rng.range(16, 26);
+      addCylinder(this.roofParts, 0.85, 1.25, stackHeight, 10, sx, topY + stackHeight / 2, sz, 0x5a4038);
+      addCylinder(this.roofParts, 1.0, 1.0, 0.5, 10, sx, topY + stackHeight - 2.2, sz, 0x8b6a52);
+      addCylinder(this.roofParts, 0.9, 0.9, 0.35, 10, sx, topY + stackHeight - 4.4, sz, 0x8b6a52);
+      this.addBeacon(sx, topY + stackHeight + 0.2, sz, 1.1);
+    }
+    const railColor = 0x6b6772;
+    for (const side of [-1, 1]) {
+      addBox(this.roofParts, 0.12, 0.08, depth + 6, cx + side * 1.2, WORLD.sidewalkHeight + 0.05, cz, railColor);
+    }
+    for (let z = -depth / 2; z <= depth / 2; z += 2.4) {
+      addBox(this.roofParts, 2.9, 0.06, 0.28, cx, WORLD.sidewalkHeight + 0.03, cz + z, 0x3d3230);
+    }
+  }
+
+  // A block-sized market square in Old Town: paving, eight striped stalls, a
+  // central bandstand and a pylon sign. No tower, so the district has an open
+  // public room instead of another street wall.
+  buildMarketSquare(cx, cz) {
+    const rng = this.rng;
+    const stone = canvasTexture(256, 256, (ctx, width, height) => {
+      ctx.fillStyle = '#7d6458';
+      ctx.fillRect(0, 0, width, height);
+      const rngInner = makeRng(0x0a7b);
+      ctx.strokeStyle = 'rgba(38,28,32,0.5)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= width; i += 32) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, height);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, i);
+        ctx.lineTo(width, i);
+        ctx.stroke();
+      }
+      for (let i = 0; i < 500; i += 1) {
+        const shade = rngInner.range(70, 150);
+        ctx.fillStyle = `rgba(${shade},${shade - 18},${shade - 24},${rngInner.range(0.04, 0.2)})`;
+        ctx.fillRect(rngInner.range(0, width), rngInner.range(0, height), rngInner.range(0.6, 2.2), rngInner.range(0.6, 2.2));
+      }
+    }, { repeat: [6, 6] });
+    const paving = new THREE.Mesh(
+      new THREE.CylinderGeometry(17.2, 17.2, 0.1, 40),
+      material(0xffffff, { map: stone, roughness: 0.9, metalness: 0.01 }),
+    );
+    paving.position.set(cx, WORLD.sidewalkHeight + 0.05, cz);
+    paving.receiveShadow = true;
+    this.root.add(paving);
+
+    const canopyColors = [0xc25a52, 0xe0c58f, 0x3f7a70, 0xd9935a];
+    for (let i = 0; i < 8; i += 1) {
+      const angle = (i / 8) * Math.PI * 2 + 0.3;
+      const x = cx + Math.cos(angle) * 11.6;
+      const z = cz + Math.sin(angle) * 11.6;
+      const ry = -angle;
+      addBox(this.roofParts, 2.8, 0.12, 1.9, x, WORLD.sidewalkHeight + 2.45, z, canopyColors[i % canopyColors.length], { ry });
+      addBox(this.roofParts, 2.5, 0.8, 0.45, x, WORLD.sidewalkHeight + 0.55, z, 0x6f4c36, { ry });
+      for (const side of [-1, 1]) {
+        const px = x + Math.cos(angle + Math.PI / 2) * side * 1.15;
+        const pz = z + Math.sin(angle + Math.PI / 2) * side * 1.15;
+        addBox(this.roofParts, 0.1, 2.35, 0.1, px, WORLD.sidewalkHeight + 1.2, pz, 0x4a382c);
+      }
+      this.colliders.push({
+        kind: 'prop',
+        minX: x - 1.5, maxX: x + 1.5,
+        minZ: z - 1.1, maxZ: z + 1.1,
+        minY: 0, maxY: WORLD.sidewalkHeight + 2.5,
+      });
+    }
+
+    addCylinder(this.roofParts, 2.6, 2.9, 0.6, 16, cx, WORLD.sidewalkHeight + 0.3, cz, 0x8b7161);
+    addCylinder(this.roofParts, 0.35, 0.5, 3.1, 8, cx, WORLD.sidewalkHeight + 2.1, cz, 0x5c4a42);
+    addBox(this.roofParts, 2.2, 0.18, 2.2, cx, WORLD.sidewalkHeight + 3.7, cz, 0x40342f);
+    this.colliders.push({
+      kind: 'prop',
+      minX: cx - 2.7, maxX: cx + 2.7,
+      minZ: cz - 2.7, maxZ: cz + 2.7,
+      minY: 0, maxY: WORLD.sidewalkHeight + 1.2,
+    });
+    this.landmarks.market = { x: cx, z: cz };
+    this.buildPylonSign({
+      x: cx, z: cz + 23.4, baseY: WORLD.sidewalkHeight, height: 4.6,
+      title: 'OLD TOWN MARKET', sub: 'STALLS OPEN BEFORE DAWN', color: '#ffc95c', accent: '#ff6f61',
+      width: 9.0,
+    });
+    // Warm string lights over the square, at stall height.
+    for (let i = 0; i < 6; i += 1) {
+      const angle = (i / 6) * Math.PI * 2;
+      const x = cx + Math.cos(angle) * 8.2;
+      const z = cz + Math.sin(angle) * 8.2;
+      addPart(this.roofParts, new THREE.SphereGeometry(0.09, 5, 4), x, WORLD.sidewalkHeight + 3.4, z, 0xffc47a);
+    }
+    this.marketRng = rng;
   }
 
   addRoofProps(cx, cz, width, depth, topY, rng) {
@@ -1414,9 +1844,11 @@ export class World {
     );
     rails.castShadow = true;
     this.root.add(rails);
+    const pierBulbMaterial = basicMaterial(0xffffff, { vertexColors: true });
+    this.pierBulbMaterial = pierBulbMaterial;
     const bulbs = new THREE.Mesh(
       mergeGeometries(bulbParts),
-      basicMaterial(0xffffff, { vertexColors: true }),
+      pierBulbMaterial,
     );
     this.root.add(bulbs);
     this.pierBulbParts = bulbParts;
@@ -1667,8 +2099,8 @@ export class World {
       if (Math.abs(z - DECK.z) < 14) continue;
       addPalm(-146, z, this.beachHeight(-146, z), 0.95);
     }
-    for (const cx of BLOCK_CENTERS) {
-      for (const cz of BLOCK_CENTERS) {
+    for (const cx of BLOCK_CENTERS_X) {
+      for (const cz of BLOCK_CENTERS_Z) {
         if (rng.chance(0.56)) {
           const cornerX = cx + (rng.chance(0.5) ? -1 : 1) * 17.7;
           const cornerZ = cz + (rng.chance(0.5) ? -1 : 1) * 17.7;
@@ -1702,15 +2134,18 @@ export class World {
   buildStreetlights() {
     const entries = [];
     const step = 34;
-    ROADS.forEach((line, lineIndex) => {
-      for (let z = WORLD.cityMin + 16; z < WORLD.cityMax - 10; z += step) {
-        if (ROADS.some((road) => Math.abs(z - road) < 11)) continue;
-        const side = (Math.round((z - WORLD.cityMin) / step) + lineIndex) % 2 === 0 ? 1 : -1;
+    const nearRoad = (value, roads) => roads.some((road) => Math.abs(value - road) < 11);
+    ROADS_X.forEach((line, lineIndex) => {
+      for (let z = WORLD.cityMinZ + 16; z < WORLD.cityMaxZ - 10; z += step) {
+        if (nearRoad(z, ROADS_Z)) continue;
+        const side = (Math.round((z - WORLD.cityMinZ) / step) + lineIndex) % 2 === 0 ? 1 : -1;
         entries.push({ x: line + side * (ROAD_HALF + 1.3), z, y: 0.15, ry: side === 1 ? Math.PI : 0 });
       }
-      for (let x = WORLD.cityMin + 16; x < WORLD.cityMax - 10; x += step) {
-        if (ROADS.some((road) => Math.abs(x - road) < 11)) continue;
-        const side = (Math.round((x - WORLD.cityMin) / step) + lineIndex) % 2 === 0 ? 1 : -1;
+    });
+    ROADS_Z.forEach((line, lineIndex) => {
+      for (let x = WORLD.cityMinX + 16; x < WORLD.cityMaxX - 10; x += step) {
+        if (nearRoad(x, ROADS_X)) continue;
+        const side = (Math.round((x - WORLD.cityMinX) / step) + lineIndex) % 2 === 0 ? 1 : -1;
         entries.push({ x, z: line + side * (ROAD_HALF + 1.3), y: 0.15, ry: side === 1 ? Math.PI / 2 : -Math.PI / 2 });
       }
     });
@@ -1720,6 +2155,7 @@ export class World {
     const lights = new THREE.InstancedMesh(lightGeometry, lightMaterial, entries.length);
     const lampGeometry = makeLampGeometry();
     const lampMaterial = basicMaterial(0xffc37a);
+    this.lampMaterial = lampMaterial;
     const lamps = new THREE.InstancedMesh(lampGeometry, lampMaterial, entries.length);
     const matrix = new THREE.Matrix4();
     const quaternion = new THREE.Quaternion();
@@ -1736,9 +2172,20 @@ export class World {
     lights.receiveShadow = true;
     this.root.add(lights, lamps);
 
+    const lampGlowMaterial = new THREE.SpriteMaterial({
+      map: makeGlowTexture(),
+      color: 0xffb668,
+      transparent: true,
+      opacity: 0.38,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.lampGlowMaterial = lampGlowMaterial;
     entries.forEach((entry, index) => {
       if (index % 5 !== 0) return;
-      const glow = makeGlowSprite(0xffb668, 3.0, 0.38);
+      const glow = new THREE.Sprite(lampGlowMaterial);
+      glow.scale.setScalar(3.0);
       const offsetX = Math.sin(entry.ry + Math.PI / 2) * 0;
       glow.position.set(entry.x + Math.cos(entry.ry) * 1.56, entry.y + 5.94, entry.z - Math.sin(entry.ry) * 1.56 + offsetX);
       this.root.add(glow);
@@ -1761,6 +2208,7 @@ export class World {
       depthWrite: false,
       toneMapped: false,
     });
+    this.streetPoolMaterial = poolMaterial;
     const pools = [];
     for (let i = 0; i < entries.length; i += 2) {
       const entry = entries[i];
@@ -1891,6 +2339,32 @@ export class World {
           bg: '#150e16', accent: '#3fe0cf', width: 1024, height: 227,
         }),
         color: 0xff6f61, glow: 0.9, flicker: 0.16,
+      });
+    }
+
+    const foundrySign = find(270, 0, 10);
+    if (foundrySign) {
+      this.addWallSign({
+        x: foundrySign.cx, y: 8.4, z: foundrySign.z1 + 0.2, ry: 0,
+        width: 16.5, height: 3.6,
+        texture: makeSignTexture({
+          title: 'FOUNDRY', sub: 'STEEL · RAIL · SHIPYARD', color: '#ff8a72',
+          bg: '#150e16', accent: '#ffc95c', width: 1024, height: 223,
+        }),
+        color: 0xff8a72, glow: 0.9, flicker: 0.12,
+      });
+    }
+
+    const oldTownSign = find(54, -216, 7);
+    if (oldTownSign) {
+      this.addWallSign({
+        x: oldTownSign.x0 - 0.16, y: 8.4, z: oldTownSign.cz, ry: -Math.PI / 2,
+        width: 7.6, height: 3.2,
+        texture: makeSignTexture({
+          title: 'OLD TOWN', sub: 'MARKET ROW', color: '#ffc95c',
+          bg: '#170d1c', vertical: true, accent: '#3fe0cf',
+        }),
+        color: 0xffc95c, glow: 0.85, flicker: 0.1,
       });
     }
 
@@ -2161,11 +2635,12 @@ export class World {
       [260, 184, 620, 320, 100],
     ];
     for (const [x, y, z, sx, sy] of positions) {
+      const opacity = rng.range(0.14, 0.28);
       const material = new THREE.SpriteMaterial({
         map: cloudTexture,
         color: 0xffd6bd,
         transparent: true,
-        opacity: rng.range(0.14, 0.28),
+        opacity,
         depthWrite: false,
         fog: false,
         toneMapped: false,
@@ -2175,7 +2650,7 @@ export class World {
       sprite.position.set(x, y, z);
       sprite.scale.set(sx, sy, 1);
       this.root.add(sprite);
-      this.clouds.push({ sprite, baseX: x, phase: rng.range(0, 6.28), speed: rng.range(0.8, 1.8) });
+      this.clouds.push({ sprite, baseX: x, baseOpacity: opacity, phase: rng.range(0, 6.28), speed: rng.range(0.8, 1.8) });
     }
   }
 
@@ -2192,24 +2667,29 @@ export class World {
       this.root.add(roofMesh);
     }
     if (this.crownParts.length > 0) {
+      const crownMaterial = basicMaterial(0xffffff, { vertexColors: true });
+      this.crownMaterial = crownMaterial;
       const crownMesh = new THREE.Mesh(
         mergeGeometries(this.crownParts),
-        basicMaterial(0xffffff, { vertexColors: true }),
+        crownMaterial,
       );
       this.root.add(crownMesh);
     }
     if (this.storefrontParts.length > 0) {
+      const storefrontMaterial = material(0xffffff, {
+        map: this.storefrontTexture,
+        emissiveMap: this.storefrontTexture,
+        emissive: 0xffffff,
+        emissiveIntensity: 0.65,
+        roughness: 0.66,
+        metalness: 0.03,
+        side: THREE.FrontSide,
+      });
+      this.storefrontMaterial = storefrontMaterial;
+      this.storefrontBaseEmissive = 0.65;
       const storefrontMesh = new THREE.Mesh(
         mergeGeometries(this.storefrontParts),
-        material(0xffffff, {
-          map: this.storefrontTexture,
-          emissiveMap: this.storefrontTexture,
-          emissive: 0xffffff,
-          emissiveIntensity: 0.65,
-          roughness: 0.66,
-          metalness: 0.03,
-          side: THREE.FrontSide,
-        }),
+        storefrontMaterial,
       );
       storefrontMesh.receiveShadow = true;
       this.root.add(storefrontMesh);
@@ -2219,9 +2699,9 @@ export class World {
   // ---------------------------------------------------------------- queries
 
   onBlock(x, z) {
-    for (const cx of BLOCK_CENTERS) {
+    for (const cx of BLOCK_CENTERS_X) {
       if (Math.abs(x - cx) > BLOCK_HALF) continue;
-      for (const cz of BLOCK_CENTERS) {
+      for (const cz of BLOCK_CENTERS_Z) {
         if (Math.abs(z - cz) <= BLOCK_HALF) return true;
       }
     }
@@ -2246,7 +2726,7 @@ export class World {
       const t = clamp((DECK.rampMaxX - x) / (DECK.rampMaxX - DECK.rampMinX), 0, 1);
       return lerp(this.beachHeight(x, z), DECK.deckY, t);
     }
-    if (x < WORLD.cityMin) return this.beachHeight(x, z);
+    if (x < WORLD.cityMinX) return this.beachHeight(x, z);
     if (this.onBlock(x, z)) return WORLD.sidewalkHeight;
     return 0;
   }
@@ -2263,6 +2743,37 @@ export class World {
       }
     }
     return false;
+  }
+
+  /**
+   * Pushes a circle out of every building/prop collider it overlaps. The
+   * shortest axis wins, and three passes settle the corners where two boxes
+   * touch. Pedestrians use this before every step so nobody walks through a
+   * wall; a moved result is also the collision test for the step.
+   */
+  resolveCircle(x, z, radius = 0.4) {
+    const bounds = WORLD.bounds;
+    let px = clamp(x, bounds.minX + radius, bounds.maxX - radius);
+    let pz = clamp(z, bounds.minZ + radius, bounds.maxZ - radius);
+    for (let pass = 0; pass < 3; pass += 1) {
+      let moved = false;
+      for (const box of this.colliders) {
+        if (px <= box.minX - radius || px >= box.maxX + radius) continue;
+        if (pz <= box.minZ - radius || pz >= box.maxZ + radius) continue;
+        const left = px - (box.minX - radius);
+        const right = (box.maxX + radius) - px;
+        const bottom = pz - (box.minZ - radius);
+        const top = (box.maxZ + radius) - pz;
+        const least = Math.min(left, right, bottom, top);
+        if (least === left) px = box.minX - radius;
+        else if (least === right) px = box.maxX + radius;
+        else if (least === bottom) pz = box.minZ - radius;
+        else pz = box.maxZ + radius;
+        moved = true;
+      }
+      if (!moved) break;
+    }
+    return { x: px, z: pz };
   }
 
   /**
@@ -2381,8 +2892,9 @@ export class World {
       const pulse = 0.5 + 0.5 * Math.sin(elapsed * (2.4 + sign.flicker * 8) + sign.phase);
       const drop = sign.flicker > 0.28 && Math.sin(elapsed * 0.45 + sign.phase) > 0.985 ? 0.35 : 1;
       const brightness = 0.84 + pulse * 0.16 * (1 - sign.flicker) + drop * 0.15;
-      sign.material.color.setScalar(brightness);
-      if (sign.glowMaterial) sign.glowMaterial.opacity = sign.baseGlow * (0.72 + pulse * 0.28) * drop;
+      const level = this.neonLevel ?? 1;
+      sign.material.color.setScalar(brightness * level);
+      if (sign.glowMaterial) sign.glowMaterial.opacity = sign.baseGlow * (0.72 + pulse * 0.28) * drop * (0.3 + 0.7 * level);
     }
     for (const beacon of this.beacons) {
       const pulse = Math.max(0, Math.sin(elapsed * beacon.speed + beacon.phase));

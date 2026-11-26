@@ -1094,6 +1094,100 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 10: crowd density',
+    shot: 'street',
+    body: function crowdDensity() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const debug = neon && neon.debug;
+      const traffic = debug && debug.traffic;
+      const player = debug && debug.player;
+      const missing = [];
+      if (!neon) missing.push('window.__neon');
+      if (!traffic || typeof traffic.update !== 'function') missing.push('traffic.update');
+      if (!traffic || !traffic.crowd || !traffic.crowd.meshes) missing.push('traffic.crowd');
+      if (!player || !player.position) missing.push('__neon.debug.player');
+      check('test 10: density hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (missing.length > 0) return results;
+
+      check(
+        'test 10: the crowd targets are 96 / 48 / 22 / 18',
+        traffic.maxPeds === 96 && traffic.sidewalkTarget === 48
+          && traffic.beachTarget === 22 && traffic.carTarget === 18,
+        JSON.stringify({
+          maxPeds: traffic.maxPeds,
+          sidewalk: traffic.sidewalkTarget,
+          beach: traffic.beachTarget,
+          cars: traffic.carTarget,
+        }),
+      );
+      check(
+        'test 10: the instanced crowd capacity follows MAX_PEDS',
+        traffic.crowd.capacity === 96 && Object.keys(traffic.crowd.meshes).every(
+          (name) => traffic.crowd.meshes[name].instanceMatrix.count === 96,
+        ),
+        `capacity=${traffic.crowd.capacity}`,
+      );
+
+      const beachAtStart = traffic.peds.filter((ped) => ped.active && ped.mode === 'beach').length;
+      check(
+        'test 10: the beach crowd seeds all 22 walkers',
+        beachAtStart === 22,
+        `beach=${beachAtStart}`,
+      );
+
+      let maxCars = 0;
+      for (let i = 0; i < 180; i += 1) {
+        traffic.update(0.5, i * 0.5);
+        maxCars = Math.max(maxCars, traffic.density.cars);
+      }
+      const active = traffic.peds.filter((ped) => ped.active);
+      const sidewalk = active.filter((ped) => ped.mode !== 'beach').length;
+      const beach = active.filter((ped) => ped.mode === 'beach').length;
+      const slots = new Set(active.map((ped) => ped.slot));
+      check(
+        'test 10: the sidewalk crowd reaches its 48-walker target',
+        sidewalk >= 48,
+        `sidewalk=${sidewalk}`,
+      );
+      check(
+        'test 10: the beach crowd stays at 22 while the sidewalks fill',
+        beach === 22,
+        `beach=${beach}`,
+      );
+      check(
+        'test 10: no two pedestrians share a crowd slot',
+        slots.size === active.length && active.every((ped) => ped.slot >= 0 && ped.slot < 96),
+        `active=${active.length} slots=${slots.size}`,
+      );
+      check(
+        'test 10: the live crowd never exceeds the 96 slot cap',
+        active.length <= 96,
+        `active=${active.length}`,
+      );
+      check(
+        'test 10: the traffic reaches the 18-car target',
+        maxCars === 18,
+        `maxCars=${maxCars}`,
+      );
+      const extra = traffic.spawnPed({
+        x: player.position.x + 6,
+        z: player.position.z,
+        armed: false,
+      });
+      check(
+        'test 10: a free crowd slot is still available after the fill',
+        Boolean(extra),
+        'spawnPed returned null (slot starvation)',
+      );
+      return results;
+    },
+  },
 ];
 
 async function main() {

@@ -426,6 +426,13 @@ export const VEHICLE_TYPES = {
 export const TRAFFIC_MIX = ['sedan', 'sedan', 'taxi', 'sedan', 'van', 'sports', 'pickup', 'sedan', 'muscle', 'taxi'];
 
 const headlightMaterial = new THREE.MeshBasicMaterial({ color: 0xfff0c0, toneMapped: false });
+const HEADLIGHT_COLOR = 0xfff0c0;
+
+/** Day/night headlight level shared by every car through the one material. */
+export function setHeadlightLevel(level) {
+  const amount = Math.min(1, Math.max(0, Number(level) || 0));
+  headlightMaterial.color.setHex(HEADLIGHT_COLOR).multiplyScalar(0.45 + 0.55 * amount);
+}
 const glassMaterial = new THREE.MeshStandardMaterial({
   color: 0x18242f,
   roughness: 0.12,
@@ -911,6 +918,10 @@ export class Vehicles {
     for (const vehicle of [...this.list]) vehicle.dispose();
     this.list.length = 0;
     this.skids.reset();
+  }
+
+  applyEnvironment(palette) {
+    setHeadlightLevel(palette.carLights);
   }
 
   update(dt, elapsed) {
