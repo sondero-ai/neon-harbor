@@ -523,6 +523,25 @@ export class Hud {
       ctx.fill();
     }
 
+    // The Solano Mall footprint and its parking lot, labelled on the scan.
+    const mall = this.world.mall;
+    if (mall) {
+      const bounds = mall.bounds;
+      ctx.fillStyle = 'rgba(255,201,92,0.22)';
+      ctx.fillRect(toX(bounds.minX), toY(bounds.minZ), (bounds.maxX - bounds.minX) * MAP_SCALE, (bounds.maxZ - bounds.minZ) * MAP_SCALE);
+      ctx.strokeStyle = 'rgba(255,201,92,0.82)';
+      ctx.lineWidth = 1.4;
+      ctx.strokeRect(toX(bounds.minX) + 0.5, toY(bounds.minZ) + 0.5, (bounds.maxX - bounds.minX) * MAP_SCALE - 1, (bounds.maxZ - bounds.minZ) * MAP_SCALE - 1);
+      ctx.fillStyle = 'rgba(63,224,207,0.16)';
+      ctx.fillRect(toX(bounds.minX), toY(bounds.minZ - 16), (bounds.maxX - bounds.minX) * MAP_SCALE, 16 * MAP_SCALE);
+      ctx.strokeStyle = 'rgba(63,224,207,0.5)';
+      ctx.strokeRect(toX(bounds.minX) + 0.5, toY(bounds.minZ - 16) + 0.5, (bounds.maxX - bounds.minX) * MAP_SCALE - 1, 16 * MAP_SCALE - 1);
+      ctx.fillStyle = 'rgba(255,232,210,0.92)';
+      ctx.font = '700 9px "Bahnschrift", "Segoe UI", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(mall.label, toX((bounds.minX + bounds.maxX) / 2), toY((bounds.minZ + bounds.maxZ) / 2) + 3);
+    }
+
     // The waterline and a faint scan of city blocks over the whole map.
     ctx.strokeStyle = 'rgba(214, 244, 238, 0.28)';
     ctx.lineWidth = 2;

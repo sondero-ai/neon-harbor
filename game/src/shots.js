@@ -277,6 +277,40 @@ export const SHOTS = {
     objective: START_OBJECTIVE,
     toast: false,
   },
+  // The Solano Mall entrance from Vega Strip, with the lot behind it.
+  mall: {
+    name: 'mall',
+    mode: 'playing',
+    time: 2.6,
+    prewarm: 60,
+    player: {
+      x: 54,
+      z: 27.2,
+      facing: Math.PI,
+      cameraYaw: 0,
+      cameraPitch: 0.12,
+      distance: 6.6,
+    },
+    objective: START_OBJECTIVE,
+    toast: false,
+  },
+  // The hall and food court from the mall's west side.
+  'mall-interior': {
+    name: 'mall-interior',
+    mode: 'playing',
+    time: 2.8,
+    prewarm: 70,
+    player: {
+      x: 52,
+      z: 6,
+      facing: 0.5,
+      cameraYaw: 0.5 + Math.PI,
+      cameraPitch: 0.1,
+      distance: 7.0,
+    },
+    objective: START_OBJECTIVE,
+    toast: false,
+  },
 };
 
 export function readShot(search = window.location.search) {

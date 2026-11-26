@@ -33,6 +33,7 @@ import {
   mergeGeometries,
 } from './geo.js';
 import { GlowField } from './glow-field.js';
+import { buildMall } from './mall.js';
 import { makeRng } from './random.js';
 import {
   addBox,
@@ -114,6 +115,7 @@ export class World {
     // the mall. Each seat is { x, z, y, yaw, kind, occupant }; occupant is
     // 'player' or a crowd pedestrian, and a free seat has occupant null.
     this.seats = [];
+    this.mall = null;
     this.buildings = [];
     this.neonSigns = [];
     this.beacons = [];
@@ -956,6 +958,12 @@ export class World {
         }
         if (cx === 162 && cz === 0) {
           this.buildMotorRow(cx, cz);
+          continue;
+        }
+        if (cx === 54 && cz === 0) {
+          // The enterable Solano Mall replaces the generic block; its parking
+          // lot is built by parking.js once the scene is alive.
+          this.mall = buildMall(this);
           continue;
         }
         if (cx === -54 && cz === -108) {
@@ -2840,6 +2848,10 @@ export class World {
    */
   vehicleBlocked(x, z, isPlayer = false) {
     if (this.onPierDeck(x, z) || this.onRamp(x, z)) return true;
+    if (this.mall) {
+      const bounds = this.mall.bounds;
+      if (x > bounds.minX && x < bounds.maxX && z > bounds.minZ && z < bounds.maxZ) return true;
+    }
     if (x < WORLD.cityMinX && !isPlayer) return true;
     return false;
   }

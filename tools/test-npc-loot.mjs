@@ -2961,6 +2961,125 @@ const TESTS = [
       return results;
     },
   },
+  {
+    name: 'test 23: the Solano Mall shell and interior',
+    shot: 'street',
+    body: function mallShell() {
+      const results = [];
+      const check = (name, ok, detail = '') => {
+        results.push({ name, ok: ok === true, detail: ok === true ? '' : String(detail || '') });
+      };
+
+      const neon = window.__neon;
+      const world = neon?.debug?.world;
+      const player = neon?.debug?.player;
+      const vehicles = neon?.debug?.vehicles;
+      const mall = world?.mall;
+      const missing = [];
+      if (!neon) missing.push('window.__neon');
+      if (!mall) missing.push('world.mall');
+      if (!world || typeof world.vehicleBlocked !== 'function') missing.push('world.vehicleBlocked');
+      if (!world || typeof world.resolveCircle !== 'function') missing.push('world.resolveCircle');
+      if (!player || typeof player.teleport !== 'function') missing.push('player.teleport');
+      if (!neon || !neon.mall) missing.push('__neon.mall');
+      check('test 23: mall hooks are exposed', missing.length === 0, `${missing.join(', ')} missing`);
+      if (!mall || !world) return results;
+
+      const bounds = mall.bounds;
+      player.teleport(54, 8, Math.PI / 2, -Math.PI / 2);
+      check(
+        'test 23: the hall centre is inside the mall bounds',
+        bounds.minX < 54 && bounds.maxX > 54 && bounds.minZ < 8 && bounds.maxZ > 8,
+        JSON.stringify(bounds),
+      );
+      check(
+        'test 23: the hall floor is the block floor',
+        Math.abs(world.groundHeightAt(54, 8) - 0.15) < 1e-6,
+        `ground=${world.groundHeightAt(54, 8)}`,
+      );
+      check(
+        'test 23: the hall centre is walkable',
+        world.collides(54, 8, 0.4) === false,
+        'a collider sits at the hall centre',
+      );
+
+      const wall = world.resolveCircle(46, 16, 0.4);
+      check(
+        'test 23: resolveCircle pushes a point inside a mall wall back out',
+        !world.collides(wall.x, wall.z, 0.4) && (wall.x !== 46 || wall.z !== 16),
+        JSON.stringify(wall),
+      );
+
+      const key = (type, code) => window.dispatchEvent(new KeyboardEvent(type, {
+        code,
+        key: code.replace('Key', '').toLowerCase(),
+        bubbles: true,
+        cancelable: true,
+      }));
+      player.teleport(54, 18, Math.PI, 0);
+      key('keydown', 'KeyW');
+      neon.advance(1.4);
+      key('keyup', 'KeyW');
+      check(
+        'test 23: the main door is walkable from the strip into the hall',
+        player.position.z < 15.5,
+        JSON.stringify({ x: player.position.x, z: player.position.z }),
+      );
+      player.teleport(54, -2, 0, Math.PI);
+      key('keydown', 'KeyW');
+      neon.advance(1.4);
+      key('keyup', 'KeyW');
+      check(
+        'test 23: the lot door is walkable from the parking side into the hall',
+        player.position.z > 0.5,
+        JSON.stringify({ x: player.position.x, z: player.position.z }),
+      );
+
+      if (vehicles) {
+        const car = vehicles.spawn('sedan', { x: 60, z: 16.3, yaw: Math.PI / 2 });
+        const halfWidth = car.halfWidth;
+        car.setPose(60, 16.02 + halfWidth + 0.08, Math.PI / 2);
+        player.teleport(60, 16.32, Math.PI / 2, Math.PI * 1.5);
+        player.velocity.set(0, 0, 0);
+        check(
+          'test 23: the mall squeeze start overlaps the car',
+          car.overlapCircle(player.position.x, player.position.z, 0.46).penetration > 0,
+          JSON.stringify(car.overlapCircle(player.position.x, player.position.z, 0.46)),
+        );
+        player.resolveVehicleContacts();
+        const overlap = car.overlapCircle(player.position.x, player.position.z, 0.46);
+        check(
+          'test 23: the mall squeeze leaves the player outside the car body',
+          overlap.penetration === 0,
+          JSON.stringify({ overlap, x: player.position.x, z: player.position.z }),
+        );
+        check(
+          'test 23: the mall squeeze leaves the player outside the wall',
+          world.collides(player.position.x, player.position.z, 0.46) === false,
+          JSON.stringify({ x: player.position.x, z: player.position.z }),
+        );
+        vehicles.remove(car);
+      }
+
+      check('test 23: the mall blocks vehicles', world.vehicleBlocked(54, 8, false) === true);
+      check('test 23: the mall blocks a player-driven car too', world.vehicleBlocked(54, 8, true) === true);
+      check('test 23: the parking lot stays drivable', world.vehicleBlocked(54, -8, false) === false);
+
+      const seats = mall.seats ?? [];
+      check('test 23: the mall owns at least 24 seats', seats.length >= 24, `seats=${seats.length}`);
+      const outside = seats.filter((seat) => seat.x < bounds.minX || seat.x > bounds.maxX || seat.z < bounds.minZ || seat.z > bounds.maxZ);
+      check('test 23: every mall seat is inside the hall bounds', outside.length === 0, JSON.stringify(outside));
+      const registered = seats.every((seat) => Array.isArray(world.seats) && world.seats.includes(seat));
+      check('test 23: every mall seat is in the shared registry', registered);
+      check(
+        'test 23: the minimap state carries the mall label and footprint',
+        mall.label === 'SOLANO MALL' && neon.mall?.label === mall.label
+          && neon.mall?.bounds?.minX === bounds.minX && neon.mall?.bounds?.maxZ === bounds.maxZ,
+        JSON.stringify({ label: mall.label, state: neon.mall }),
+      );
+      return results;
+    },
+  },
 ];
 
 async function main() {

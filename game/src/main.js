@@ -915,6 +915,9 @@ class Game {
       period: this.environment.period,
       district: districtAt(player.position.x, player.position.z),
       street: streetAt(player.position.x, player.position.z),
+      mall: this.world.mall
+        ? { label: this.world.mall.label, bounds: this.world.mall.bounds }
+        : null,
       missionCard: this.shot?.missionCard ?? this.missions.hudCard,
       missionActive: Boolean(this.missions.active),
       missionFailed: Boolean(this.missions.failure),
@@ -1255,6 +1258,7 @@ class Game {
         // composition renders at the same minute on every machine.
         if (!this.shot) this.environment.advance(dt);
         this.environment.apply(this.environmentTargets());
+        this.world.mall?.update(dt, this.player);
         this.world.focusAt(this.player.position.x, this.player.position.z);
         this.signals.update(this.simTime);
         const notice = this.police.consumeNotice();
@@ -1496,6 +1500,18 @@ try {
         buildings: game.world.buildings.length,
         streetlights: game.world.streetlightCount,
         beacons: game.world.beacons.length,
+      };
+    },
+    get mall() {
+      const mall = game.world.mall;
+      if (!mall) return null;
+      return {
+        label: mall.label,
+        bounds: mall.bounds,
+        seats: mall.seats.length,
+        freeSeats: mall.seats.filter((seat) => !seat.occupant).length,
+        doors: mall.doors.map((door) => door.name),
+        register: mall.register,
       };
     },
     get story() {
