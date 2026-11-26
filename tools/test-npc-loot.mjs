@@ -187,6 +187,8 @@ const TESTS = [
 
       const bystander = traffic.spawnPed({ x: ped.x, z: ped.z + 2 });
       check('test 1: bystander spawns', Boolean(bystander), 'spawnPed returned null (no free crowd slot)');
+      const resumeTarget = { x: bystander ? bystander.x + 5 : 0, z: bystander ? bystander.z : 0 };
+      if (bystander) bystander.target = { x: resumeTarget.x, z: resumeTarget.z };
 
       const beforeKill = neon.pedestrians;
       traffic.applyPlayerHit(hit, 34);
@@ -205,6 +207,14 @@ const TESTS = [
       traffic.update(0.5, 0);
       check('test 1: the corpse falls', ped.fall > 0, `fall=${ped.fall}`);
       check('test 1: the crowd panics', neon.pedestrians.fleeing >= 1, `fleeing=${neon.pedestrians.fleeing}`);
+
+      traffic.update(4.5, 0);
+      const resumed = neon.debug.traffic.peds.find((entry) => entry === bystander);
+      check(
+        'test 1: panic resumes the previous target',
+        Boolean(resumed) && resumed.target.x === resumeTarget.x && resumed.target.z === resumeTarget.z,
+        JSON.stringify(resumed && resumed.target),
+      );
 
       traffic.update(9, 0);
       check('test 1: the corpse despawns after eight seconds', ped.active === false, `active=${ped.active}`);

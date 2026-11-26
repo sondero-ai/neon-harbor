@@ -589,6 +589,7 @@ export class Traffic {
       fleeTimer: 0,
       fleeFromX: 0,
       fleeFromZ: 0,
+      fleeResumeTarget: null,
       mode,
       target: target ?? { x, z },
       anchor: anchor ?? { x, z },
@@ -701,6 +702,7 @@ export class Traffic {
     for (const other of this.peds) {
       if (other === ped || !other.active || other.dead) continue;
       if (Math.hypot(other.x - ped.x, other.z - ped.z) < 9) {
+        if (!other.fleeResumeTarget) other.fleeResumeTarget = { x: other.target.x, z: other.target.z };
         other.fleeTimer = 4;
         other.fleeFromX = ped.x;
         other.fleeFromZ = ped.z;
@@ -750,7 +752,12 @@ export class Traffic {
         ped.phase += dt * 7;
         ped.motion = damp(ped.motion, 1, 8, dt);
         ped.y = damp(ped.y, this.world.groundHeightAt(ped.x, ped.z), 15, dt);
-        if (ped.fleeTimer <= 0) this.setNextCorner(ped);
+        if (ped.fleeTimer <= 0) {
+          if (ped.fleeResumeTarget) {
+            ped.target = { ...ped.fleeResumeTarget };
+            ped.fleeResumeTarget = null;
+          }
+        }
         continue;
       }
       const ground = this.world.groundHeightAt(ped.x, ped.z);
