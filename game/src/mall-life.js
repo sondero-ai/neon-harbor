@@ -171,7 +171,8 @@ export class MallLife {
   update(dt, clockMinutes) {
     const target = this.targetFor(clockMinutes);
     this.target = target;
-    const seek = this.lastMinutes === null || Math.abs(clockMinutes - this.lastMinutes) > 5;
+    const delta = this.lastMinutes === null ? Infinity : Math.abs(clockMinutes - this.lastMinutes);
+    const seek = delta > 90 || clockMinutes < this.lastMinutes - 1;
     this.lastMinutes = clockMinutes;
     if (seek) {
       this.settle(target);

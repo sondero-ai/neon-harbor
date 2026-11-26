@@ -113,15 +113,6 @@ export class Interactions {
         }
         return false;
       }
-      if (this.parking.atValetZone(player.position)) {
-        this.prompt = { action: 'valet', label: 'VALET', detail: 'PARK THE CAR' };
-        if (input.wasPressed('KeyE')) {
-          input.consumePressed('KeyE');
-          this.parking.parkValet(player.driving);
-          return true;
-        }
-        return false;
-      }
       if (this.parking.atPodium(player.position, PODIUM_REACH)) {
         this.prompt = { action: 'retrieve', label: 'RETRIEVE', detail: 'VALET CAR' };
         if (input.wasPressed('KeyE')) {

@@ -670,7 +670,7 @@ export class Traffic {
 
   // ---------------------------------------------------------------- pedestrians
 
-  spawnPed({ x, z, yaw = 0, mode = 'loop', target = null, anchor = null, phase = null, armed = null, guard = false, bag = false }) {
+  spawnPed({ x, z, yaw = 0, mode = 'loop', target = null, anchor = null, phase = null, armed = null, guard = false, bag = false, valet = false }) {
     let slot = -1;
     for (let i = 0; i < MAX_PEDS; i += 1) {
       if (!this.peds.some((ped) => ped.active && ped.slot === i)) {
@@ -697,6 +697,10 @@ export class Traffic {
       spec.pants = 0x141821;
       spec.hair = 0x1a161c;
       spec.hatColor = 0x10141b;
+    } else if (valet) {
+      spec.cloth = 0x2f6f6a;
+      spec.pants = 0x141821;
+      spec.hatColor = 0x1d3d3a;
     } else if (isArmed) {
       spec.cloth = ARMED_JACKET;
     }
@@ -725,6 +729,7 @@ export class Traffic {
       hostileTime: 0,
       shootTimer: 0,
       guard: Boolean(guard),
+      valet: Boolean(valet),
       bag: Boolean(bag),
       sitting: false,
       seat: null,

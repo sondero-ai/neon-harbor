@@ -2900,13 +2900,36 @@ const TESTS = [
       const beforeX = player.position.x;
       const beforeZ = player.position.z;
       key('keydown', 'KeyW');
+      neon.advance(1 / 60);
+      key('keyup', 'KeyW');
+      check(
+        'test 22: a movement key stands the seated player',
+        player.sitting === false && player.seat === null && seat.occupant === null,
+        JSON.stringify({ sitting: player.sitting, occupant: seat.occupant }),
+      );
+      check(
+        'test 22: the first movement frame does not slide the seated player',
+        Math.hypot(player.position.x - beforeX, player.position.z - beforeZ) < 0.05,
+        JSON.stringify({ x: player.position.x, z: player.position.z, beforeX, beforeZ }),
+      );
+      const standX = player.position.x;
+      const standZ = player.position.z;
+      key('keydown', 'KeyW');
       neon.advance(0.5);
       key('keyup', 'KeyW');
       check(
-        'test 22: a movement key for half a second does not move a seated player',
-        player.position.x === beforeX && player.position.z === beforeZ && player.sitting === true,
-        JSON.stringify({ x: player.position.x, z: player.position.z, beforeX, beforeZ, sitting: player.sitting }),
+        'test 22: the player walks after standing',
+        Math.hypot(player.position.x - standX, player.position.z - standZ) > 0.2,
+        JSON.stringify({ x: player.position.x, z: player.position.z, standX, standZ }),
       );
+
+      // Re-seat for the E stand check.
+      player.teleport(seat.x, seat.z, seat.yaw, seat.yaw + Math.PI);
+      neon.advance(1 / 60);
+      key('keydown', 'KeyE');
+      neon.advance(1 / 60);
+      key('keyup', 'KeyE');
+      check('test 22: E seats the player again', player.sitting === true, JSON.stringify({ sitting: player.sitting }));
 
       key('keydown', 'KeyE');
       neon.advance(1 / 60);
@@ -3143,6 +3166,27 @@ const TESTS = [
         cancelable: true,
       }));
 
+      // Dusk is the busiest lot; the stall in front of the lot door must stay
+      // empty or the only way between the mall and the parking lot is blocked.
+      const doorSlot = parking.slots.find((entry) => entry.key === 'B-6');
+      settle(18 * 60);
+      check(
+        'test 24: the stall in front of the lot door stays clear at dusk',
+        Boolean(doorSlot) && doorSlot.doorClear === true && doorSlot.occupied === false
+          && world.collides(54, -2.5, 0.4) === false,
+        JSON.stringify(doorSlot ? { key: doorSlot.key, doorClear: doorSlot.doorClear, occupied: doorSlot.occupied } : null),
+      );
+      player.teleport(54, -2, 0, Math.PI);
+      neon.advance(1 / 60);
+      key('keydown', 'KeyW');
+      neon.advance(1.4);
+      key('keyup', 'KeyW');
+      check(
+        'test 24: the lot door is walkable at 90% occupancy',
+        player.position.z > 0.5,
+        JSON.stringify({ x: player.position.x, z: player.position.z }),
+      );
+
       const slot = parking.slots.find((entry) => entry.static && entry.occupied && !entry.stolen);
       check('test 24: an occupied static stall exists for the theft', Boolean(slot), 'no static occupied slot');
       if (slot) {
@@ -3199,6 +3243,14 @@ const TESTS = [
       neon.advance(1 / 60);
       check(
         'test 24: the prompt leaves VALET once the car is parked',
+        interactions.prompt?.action !== 'valet',
+        JSON.stringify(interactions.prompt),
+      );
+
+      player.teleport((zone.minX + zone.maxX) / 2, (zone.minZ + zone.maxZ) / 2, 0, Math.PI);
+      neon.advance(1 / 60);
+      check(
+        'test 24: on foot in the valet zone does not prompt to park',
         interactions.prompt?.action !== 'valet',
         JSON.stringify(interactions.prompt),
       );

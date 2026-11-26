@@ -187,6 +187,9 @@ export class ParkingLot {
           color,
           real,
           static: !real,
+          // Keep the stall in front of the lot door clear at every occupancy
+          // level: a car parked there would block the mall's only lot exit.
+          doorClear: key === 'B-6',
           occupied: false,
           reserved: false,
           stolen: false,
@@ -277,7 +280,7 @@ export class ParkingLot {
 
   setSlotOccupied(slot, occupied) {
     if (occupied) {
-      if (slot.occupied || slot.stolen || slot.reserved || slot.real) return;
+      if (slot.occupied || slot.stolen || slot.reserved || slot.real || slot.doorClear) return;
       slot.occupied = true;
       this.addSlotCollider(slot);
     } else {
@@ -299,7 +302,7 @@ export class ParkingLot {
 
   settle(minutes) {
     const target = this.staticTarget(minutes);
-    const candidates = this.slots.filter((slot) => slot.static && !slot.stolen && !slot.reserved);
+    const candidates = this.slots.filter((slot) => slot.static && !slot.stolen && !slot.reserved && !slot.doorClear);
     for (const slot of candidates) {
       if (slot.occupied) this.setSlotOccupied(slot, false);
     }
@@ -360,6 +363,7 @@ export class ParkingLot {
         mode: 'idle',
         anchor: { x, z },
         phase: i * 1.7,
+        valet: true,
       });
       if (!ped) continue;
       ped.speed = 1.05;
@@ -409,7 +413,7 @@ export class ParkingLot {
     let best = null;
     let bestDistance = reach;
     for (const slot of this.slots) {
-      if (!slot.static || !slot.occupied || slot.stolen) continue;
+      if (!slot.static || !slot.occupied || slot.stolen || slot.doorClear) continue;
       const distance = Math.hypot(slot.x - point.x, slot.z - point.z);
       if (distance < bestDistance) {
         best = slot;
@@ -431,7 +435,7 @@ export class ParkingLot {
   // ---------------------------------------------------------------- theft
 
   steal(slot) {
-    if (!slot || !slot.static || !slot.occupied || slot.stolen) return null;
+    if (!slot || !slot.static || !slot.occupied || slot.stolen || slot.doorClear) return null;
     slot.occupied = false;
     slot.stolen = true;
     this.removeSlotCollider(slot);
@@ -456,7 +460,7 @@ export class ParkingLot {
     const player = this.player;
     if (!car || !player || player.driving !== car) return false;
     if (!this.atValetZone(car.position) || Math.abs(car.speed) >= 0.5) return false;
-    const slot = this.slots.find((entry) => entry.static && !entry.occupied && !entry.stolen && !entry.reserved);
+    const slot = this.slots.find((entry) => entry.static && !entry.occupied && !entry.stolen && !entry.reserved && !entry.doorClear);
     if (!slot) return false;
     const type = car.type;
     const color = car.color;
@@ -511,7 +515,7 @@ export class ParkingLot {
     if (this.changeTimer <= 0) {
       this.changeTimer = 0.15;
       const target = this.staticTarget(this.clockMinutes);
-      const candidates = this.slots.filter((slot) => slot.static && !slot.stolen && !slot.reserved);
+      const candidates = this.slots.filter((slot) => slot.static && !slot.stolen && !slot.reserved && !slot.doorClear);
       const filled = candidates.filter((slot) => slot.occupied).length;
       if (filled < target) {
         const slot = candidates.find((entry) => !entry.occupied);

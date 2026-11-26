@@ -248,7 +248,8 @@ git commit -m "Speed the in-game clock to five minutes per two seconds"
 ```js
 // world.seats has at least one plaza seat, one pier seat and one beach seat.
 // Teleport to a free seat; press E; player.sitting === true and seat.occupant
-// is 'player'; a movement key for 0.5 s does not change x/z.
+// is 'player'; the first frame after a movement key does not slide the player,
+// and the next frames stand the player and walk.
 // Press E again; player.sitting === false and the seat is free.
 // The interactions prompt reads { action: 'sit', ... } when standing beside it.
 // A car placed against a known city building wall with the player between it

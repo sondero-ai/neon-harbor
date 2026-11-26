@@ -11,7 +11,7 @@ end-to-end suite. Run them from the repository root.
 ```bash
 node --test test/loot.test.mjs     # 4 tests
 node --test test/radio.test.mjs    # 5 tests
-node tools/test-npc-loot.mjs       # 341 E2E checks
+node tools/test-npc-loot.mjs       # 347 E2E checks
 MAKEFUN_OUTPUT_DIR=out node main.ts --check
 ```
 
@@ -30,12 +30,12 @@ Checks the six-station order, the three unique tracks each, every file path
 against the prompt pack, the OGG headers and the 36 MB audio budget, and that
 `MUSIC.md` credits every track and the 2026-11-26 generation date. No browser.
 
-### End to end (`tools/test-npc-loot.mjs`, 341 checks)
+### End to end (`tools/test-npc-loot.mjs`, 347 checks)
 
 The harness serves `game/`, launches headless Chrome, drives the frozen
 `?shot=street` and `?shot=blockade` scenes through `window.__neon`, and prints
 one `ok`/`not ok` line per check. The last run printed
-`PASS: all checks passed` with 341 `ok` lines. The twenty-six groups are:
+`PASS: all checks passed` with 347 `ok` lines. The twenty-six groups are:
 
 1. **pedestrians** — chest hitbox, damage and death, the fall state, corpse
    cleanup, the 14 m panic radius and 6 s flee/recovery, loot pickup and the
@@ -98,16 +98,17 @@ one `ok`/`not ok` line per check. The last run printed
     deck; a blocked cruiser force-dismounts its officers; the heist positions
     and shot cruisers stay clear; 50 pier wander targets land on open planks.
 22. **seats and the contextual E layer** — plaza, pier and beach seats; E sits
-    and stands, a seated player cannot move, the prompt reads SIT, and a car
-    squeezed against a building wall never leaves the player inside either
-    body.
+    and stands, a movement key stands the player and then walks, the prompt
+    reads SIT, and a car squeezed against a building wall never leaves the
+    player inside either body.
 23. **the Solano Mall shell and interior** — bounds, floor, walkable hall,
     wall push-out, both doors walkable, the mall wall squeeze, vehicle blocking,
     24 mall seats registered, and the minimap label/footprint.
 24. **the parking lot, theft and valet** — 26 stalls in bounds, 20/90/65%
-    occupancy at night/dusk/day within one stall, a static car steals into a
-    real Vehicle and loses its collider, and the valet parks and returns a car
-    while F still exits.
+    occupancy at night/dusk/day within one stall, the stall in front of the
+    lot door stays clear and the door stays walkable at 90%, a static car
+    steals into a real Vehicle and loses its collider, and the valet parks and
+    returns a car while F still exits.
 25. **mall life follows the clock** — 30 shoppers at dusk, 4 at 02:00, at
     least four seated with no shared chair, all chairs inside the mall, and no
     stale occupant after the shrink.

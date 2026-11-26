@@ -280,7 +280,12 @@ export class Player {
       if (mouse.wheel !== 0) {
         this.cameraDistance = clamp(this.cameraDistance + mouse.wheel * 0.0035, CAMERA.minDistance, CAMERA.maxDistance);
       }
-      if (!this.inputBlocked && input.wasPressed('Space')) this.stand();
+      const axes = this.inputBlocked ? { forward: 0, strafe: 0 } : input.moveAxis();
+      // E/Space stand through the interaction layer; a movement key stands too,
+      // as the design promises. Movement resumes on the next frame.
+      if (!this.inputBlocked && (axes.forward !== 0 || axes.strafe !== 0 || input.wasPressed('Space'))) {
+        this.stand();
+      }
       this.velocity.set(0, 0, 0);
       this.speed = 0;
       this.nearVehicle = null;
