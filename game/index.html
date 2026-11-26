@@ -447,6 +447,17 @@
     .panel-controls { width: calc(100vw - 30px); }
   }
   @media (max-height: 800px) {
+    /* The Audio row adds a fifth stack to the title column; trim the heading
+       and menu a little so the mast and kicker stay clear at 720p. */
+    .title-wrap { margin-bottom: 30px; }
+    .title-wrap h1 { font-size: clamp(64px, 10.2vw, 132px); }
+    .lede { margin: 16px 0 10px; font-size: 14px; line-height: 1.5; }
+    .chapter-line { margin-bottom: 14px; padding-top: 9px; }
+    .menu { gap: 6px; }
+    .menu-btn { min-height: 44px; }
+    .menu-btn.ghost { min-height: 38px; }
+    .audio-row { margin-top: 6px; padding: 6px 9px 6px 11px; }
+    .title-hint { margin-top: 10px; }
     .panel-controls { padding: 22px 32px 20px; }
     .panel-controls h2 { font-size: clamp(40px, 5.4vw, 54px); }
     .controls-grid { gap: 5px 28px; margin-top: 10px; }
