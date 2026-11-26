@@ -138,6 +138,21 @@ export const WEAPONS = {
     kick: 0.006,
     auto: true,
   },
+  // Melee: no spread, magazine, reserve or reload, and no tracer. The 2.1 m
+  // reach is measured from Rae's chest along the camera's forward direction.
+  knife: {
+    name: 'Street Knife',
+    short: 'CQC',
+    melee: true,
+    damage: 60,
+    fireRate: 1.8,
+    range: 2.1,
+    spread: 0,
+    movingSpread: 0,
+    tracer: null,
+    kick: 0,
+    auto: false,
+  },
 };
 
 export const POLICE = {

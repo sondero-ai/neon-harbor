@@ -376,6 +376,8 @@ class Game {
     this.player.weaponKey = 'pistol';
     this.player.weapons.pistol = { owned: true, ammo: 12, reserve: 60 };
     this.player.weapons.smg = { owned: false, ammo: 0, reserve: 0 };
+    this.player.weapons.knife = { owned: true };
+    this.player.meleeSwing = 0;
     this.player.syncGunModel();
     this.player.gun.visible = false;
     this.police.resetAfterDown();
@@ -1179,13 +1181,15 @@ try {
       return game.down ? { type: game.down.type, timer: Math.round(game.down.timer * 100) / 100 } : null;
     },
     get combat() {
+      const state = game.player.combatState;
       return {
         health: game.player.health,
         armor: game.player.armor,
         cash: game.player.cash,
         weapon: game.player.weaponKey,
-        ammo: game.player.weaponAmmo.ammo,
-        reserve: game.player.weaponAmmo.reserve,
+        ammo: state.ammo,
+        reserve: state.reserve,
+        melee: state.melee,
       };
     },
     get audio() {

@@ -1676,7 +1676,7 @@ export class Hud {
         weight: active ? 800 : 700,
       });
       let ammoText = '—';
-      if (slot.melee) ammoText = '∞';
+      if (slot.melee) ammoText = '--';
       else if (!slot.locked) ammoText = `${slot.ammo ?? 0}/${slot.reserve ?? 0}`;
       label(ctx, ammoText, x + width - 14, centerY + 4, {
         size: slot.melee ? 13 : 11,
@@ -1692,6 +1692,14 @@ export class Hud {
         size: 10,
         color: TEAL,
         spacing: '1.2px',
+        weight: 800,
+      });
+    } else if (weapons.melee) {
+      label(ctx, 'STREET KNIFE · CQC', x + width - 14, y + height - 7, {
+        size: 10.5,
+        color: GOLD,
+        spacing: '0.8px',
+        align: 'right',
         weight: 800,
       });
     } else {
@@ -1715,16 +1723,27 @@ export class Hud {
     ctx.strokeStyle = weapons.aiming ? 'rgba(247,232,210,0.92)' : 'rgba(247,232,210,0.55)';
     ctx.fillStyle = weapons.aiming ? 'rgba(255,201,92,0.95)' : 'rgba(247,232,210,0.7)';
     ctx.lineWidth = 1.2;
-    const tick = weapons.aiming ? 5 : 3.5;
-    ctx.beginPath();
-    ctx.moveTo(cx - gap - tick, cy); ctx.lineTo(cx - gap, cy);
-    ctx.moveTo(cx + gap, cy); ctx.lineTo(cx + gap + tick, cy);
-    ctx.moveTo(cx, cy - gap - tick); ctx.lineTo(cx, cy - gap);
-    ctx.moveTo(cx, cy + gap); ctx.lineTo(cx, cy + gap + tick);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(cx, cy, 1.4, 0, Math.PI * 2);
-    ctx.fill();
+    if (weapons.melee) {
+      // The knife keeps one fixed reticle: no spread, no bloom, no ticks.
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 2.4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, cy, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      const tick = weapons.aiming ? 5 : 3.5;
+      ctx.beginPath();
+      ctx.moveTo(cx - gap - tick, cy); ctx.lineTo(cx - gap, cy);
+      ctx.moveTo(cx + gap, cy); ctx.lineTo(cx + gap + tick, cy);
+      ctx.moveTo(cx, cy - gap - tick); ctx.lineTo(cx, cy - gap);
+      ctx.moveTo(cx, cy + gap); ctx.lineTo(cx, cy + gap + tick);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, cy, 1.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     if (weapons.hitMarker > 0.02) {
       const a = Math.min(1, weapons.hitMarker);
