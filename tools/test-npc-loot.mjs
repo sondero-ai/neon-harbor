@@ -1030,6 +1030,32 @@ const TESTS = [
         `hostile=${armed.hostile} health ${healthBefore} -> ${player.health}`,
       );
 
+      // The next shot is gated by the 1.2 s fire interval, so 1.0 s later the
+      // health is untouched and the 0.25 s step after that fires again.
+      const healthAfterFirst = player.health;
+      try {
+        Math.random = () => 0;
+        traffic.update(1.0, 0);
+      } finally {
+        Math.random = originalRandom;
+      }
+      check(
+        'test 9: the armed witness waits out the 1.2 s fire interval',
+        player.health === healthAfterFirst,
+        `health ${healthAfterFirst} -> ${player.health}`,
+      );
+      try {
+        Math.random = () => 0;
+        traffic.update(0.25, 0);
+      } finally {
+        Math.random = originalRandom;
+      }
+      check(
+        'test 9: the next shot lands once the interval elapses',
+        player.health === healthAfterFirst - 9,
+        `health ${healthAfterFirst} -> ${player.health}`,
+      );
+
       player.teleport(baseX + 50, baseZ, Math.PI, 0);
       traffic.update(0.06, 0);
       check(
