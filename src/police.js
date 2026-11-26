@@ -641,6 +641,9 @@ export class Police {
     this.bustTimer = 0;
     this.down = null;
     this.notice = null;
+    // One queued civilian 911 report. A second witnessed murder refreshes the
+    // same slot instead of stacking a second call.
+    this.witnessReport = null;
     this.staged = false;
     this.sightTimer = 0;
     this.playerVisible = false;
@@ -703,6 +706,7 @@ export class Police {
     this.bustTimer = 0;
     this.searchTimer = 0;
     this.decayTimer = 0;
+    this.witnessReport = null;
     this.clearUnits();
     this.clearOfficers();
     this.roadblock = null;
@@ -721,6 +725,64 @@ export class Police {
       this.lastSeen = this.time;
       this.lastKnown.set(x, 0, z);
       this.status = 'pursuit';
+      this.decayTimer = 0;
+    }
+  }
+
+  /** A civilian died from player damage. Police see it or the street calls 911. */
+  reportCivilianDeath(x, z, { witnesses = 0 } = {}) {
+    if (this.down) return;
+    let policeWitness = false;
+    for (const officer of this.officers) {
+      if (officer.dead || officer.removed) continue;
+      if (Math.hypot(officer.x - x, officer.z - z) < 70) {
+        policeWitness = true;
+        break;
+      }
+    }
+    if (!policeWitness) {
+      for (const unit of this.units) {
+        if (!unit.car || unit.car.removed) continue;
+        if (unit.car.position.distanceTo(this.player.position) < 90) {
+          policeWitness = true;
+          break;
+        }
+      }
+    }
+    if (!policeWitness && this.air) {
+      const air = this.air.group.position;
+      if (Math.hypot(air.x - x, air.z - z) < 90) policeWitness = true;
+    }
+    if (policeWitness) {
+      if (this.wanted === 0) {
+        this.addWanted(1, 'Civilian Killed');
+      } else {
+        this.lastSeen = this.time;
+        this.lastKnown.set(x, 0, z);
+        this.status = 'pursuit';
+        this.searchTimer = 0;
+        this.decayTimer = 0;
+      }
+      return;
+    }
+    if (witnesses > 0) this.witnessReport = { x, z, timer: 3 };
+  }
+
+  /** Civilian witnesses only raise heat after the 3 s 911 call. */
+  updateWitnessReport(dt) {
+    if (!this.witnessReport) return;
+    this.witnessReport.timer -= dt;
+    if (this.witnessReport.timer > 0) return;
+    const { x, z } = this.witnessReport;
+    this.witnessReport = null;
+    if (this.down) return;
+    if (this.wanted === 0) {
+      this.addWanted(1, 'Witness Called 911');
+    } else {
+      this.lastSeen = this.time;
+      this.lastKnown.set(x, 0, z);
+      this.status = 'pursuit';
+      this.searchTimer = 0;
       this.decayTimer = 0;
     }
   }
@@ -988,6 +1050,7 @@ export class Police {
     }
     this.wantedFlash = Math.max(0, this.wantedFlash - dt * 1.7);
     this.ramFlash = Math.max(0, this.ramFlash - dt * 3);
+    this.updateWitnessReport(dt);
 
     this.sightTimer -= dt;
     if (this.sightTimer <= 0) {
@@ -1483,6 +1546,7 @@ export class Police {
     if (this.down) return;
     this.down = type;
     this.bustTimer = 0;
+    this.witnessReport = null;
     for (const unit of this.units) {
       if (!unit.car) continue;
       unit.car.controls.throttle = 0;
@@ -1504,6 +1568,7 @@ export class Police {
     this.searchTimer = 0;
     this.decayTimer = 0;
     this.lastSeen = -99;
+    this.witnessReport = null;
     this.staged = false;
     this.sirenLevel = 0;
     this.roadblock = null;

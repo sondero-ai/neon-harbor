@@ -55,14 +55,17 @@ export class Player {
     this.driveLookHold = 0;
 
     // Combat. The pistol is Rae's; the SMG is found in the city. Ammo is kept
-    // per weapon so switching never silently shares a magazine.
+    // per weapon so switching never silently shares a magazine. The knife is
+    // always on the belt and never has ammo to spend.
     this.weaponKey = 'pistol';
     this.weapons = {
       pistol: { owned: true, ammo: WEAPONS.pistol.mag, reserve: WEAPONS.pistol.reserve },
       smg: { owned: false, ammo: 0, reserve: 0 },
+      knife: { owned: true },
     };
     this.aiming = false;
     this.fireCooldown = 0;
+    this.meleeSwing = 0;
     this.reloadTimer = 0;
     this.reloadTotal = 0;
     this.recoil = 0;
@@ -110,6 +113,9 @@ export class Player {
     this.wanted = save.wanted;
     this.mission = save.mission;
     this.playSeconds = save.playSeconds;
+    // Old saves predate the knife; it is always on the belt and never saved as
+    // a consumable.
+    this.weapons.knife = { owned: true };
     if (save.weapons) {
       const pistol = save.weapons.pistol;
       const smg = save.weapons.smg;
@@ -123,9 +129,11 @@ export class Player {
         ammo: clamp(Math.round(Number(smg?.ammo) || 0), 0, WEAPONS.smg.mag),
         reserve: clamp(Math.round(Number(smg?.reserve) || 0), 0, 999),
       };
-      this.weaponKey = save.weaponKey === 'smg' && this.weapons.smg.owned ? 'smg' : 'pistol';
-      this.syncGunModel();
     }
+    this.weaponKey = save.weaponKey === 'smg' && this.weapons.smg.owned
+      ? 'smg'
+      : save.weaponKey === 'knife' ? 'knife' : 'pistol';
+    this.syncGunModel();
     this.cameraYaw = save.cameraYaw;
     this.cameraPitch = clamp(save.cameraPitch, CAMERA.minPitch, CAMERA.maxPitch);
     this.facing = this.cameraYaw - Math.PI;
@@ -160,9 +168,23 @@ export class Player {
     smgSight.position.set(0, 0.085, 0.26);
     this.smgModel.add(smgBody, smgStock, smgMag, smgSight);
 
+    // A small fixed blade in the right hand. The whole group swings on the
+    // melee timer instead of adding per-swing meshes.
+    this.knifeModel = new THREE.Group();
+    const knifeBlade = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.045, 0.3), steel);
+    knifeBlade.position.set(0, 0.02, 0.2);
+    const knifeTip = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.04, 0.1), steel);
+    knifeTip.position.set(0, 0.02, 0.38);
+    knifeTip.rotation.x = -0.32;
+    const knifeHandle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.14), dark);
+    knifeHandle.position.set(0, 0.01, -0.02);
+    const knifeGuard = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.022, 0.022), accent);
+    knifeGuard.position.set(0, 0.015, 0.065);
+    this.knifeModel.add(knifeBlade, knifeTip, knifeHandle, knifeGuard);
+
     this.inputBlocked = false;
     this.gun = new THREE.Group();
-    this.gun.add(this.pistolModel, this.smgModel);
+    this.gun.add(this.pistolModel, this.smgModel, this.knifeModel);
     this.gun.position.set(0, -0.37, 0.055);
     this.gun.visible = false;
     this.humanoid.arms.right.elbowPivot.add(this.gun);
@@ -175,6 +197,7 @@ export class Player {
   syncGunModel() {
     this.pistolModel.visible = this.weaponKey === 'pistol';
     this.smgModel.visible = this.weaponKey === 'smg';
+    this.knifeModel.visible = this.weaponKey === 'knife';
   }
 
   applyTransform() {
@@ -350,22 +373,25 @@ export class Player {
   get combatState() {
     const spec = this.weaponSpec;
     const ammo = this.weaponAmmo;
+    const melee = Boolean(spec.melee);
     const moveBloom = Math.min(16, this.speed * 1.5);
     const baseBloom = this.aiming ? 2.5 : 8;
     return {
       key: this.weaponKey,
+      weaponKey: this.weaponKey,
       name: spec.name,
       short: spec.short,
-      ammo: ammo.ammo,
-      mag: spec.mag,
-      reserve: ammo.reserve,
+      melee,
+      ammo: melee ? null : ammo.ammo,
+      mag: melee ? 0 : spec.mag,
+      reserve: melee ? null : ammo.reserve,
       ownedSmg: this.weapons.smg.owned,
       reloading: this.reloadTimer > 0,
       reloadProgress: this.reloadTimer > 0 ? 1 - this.reloadTimer / Math.max(0.01, this.reloadTotal) : 1,
       aiming: this.aiming,
       hitMarker: this.hitMarker,
       damageFlash: this.damageFlash,
-      crosshair: spec.spread * 620 + baseBloom + moveBloom,
+      crosshair: melee ? 4 : spec.spread * 620 + baseBloom + moveBloom,
       dead: this.dead,
       // The five-slot strip in the HUD. The knife is always on Rae's belt;
       // the SMG is only live once it has been picked up or issued by a job.
@@ -435,7 +461,7 @@ export class Player {
   startReload() {
     const spec = this.weaponSpec;
     const ammo = this.weaponAmmo;
-    if (this.reloadTimer > 0 || ammo.ammo >= spec.mag || ammo.reserve <= 0) return;
+    if (!spec || spec.melee || this.reloadTimer > 0 || ammo.ammo >= spec.mag || ammo.reserve <= 0) return;
     this.reloadTimer = spec.reload;
     this.reloadTotal = spec.reload;
     if (this.audio) this.audio.reload();
@@ -456,12 +482,18 @@ export class Player {
       return;
     }
     this.fireCooldown = Math.max(0, this.fireCooldown - dt);
+    this.meleeSwing = Math.max(0, this.meleeSwing - dt);
     this.hitMarker = Math.max(0, this.hitMarker - dt * 5.5);
     this.damageFlash = Math.max(0, this.damageFlash - dt * 2.2);
     this.recoil = Math.max(0, this.recoil - dt * 0.24);
+    if (this.knifeModel) {
+      const swing = this.meleeSwing > 0 ? 1 - this.meleeSwing / 0.28 : 0;
+      this.knifeModel.rotation.x = -Math.sin(swing * Math.PI) * 1.15;
+    }
 
     if (input.wasPressed('Digit1')) this.selectWeapon('pistol');
     if (input.wasPressed('Digit2')) this.selectWeapon('smg');
+    if (input.wasPressed('Digit3')) this.selectWeapon('knife');
     if (input.wasPressed('KeyR')) this.startReload();
 
     if (this.reloadTimer > 0) {
@@ -481,7 +513,9 @@ export class Player {
       return;
     }
 
-    this.gun.visible = this.aiming || this.fireCooldown > 0.16;
+    // The knife stays in hand while selected; the guns only come up when
+    // aiming or just after a shot.
+    this.gun.visible = Boolean(this.weaponSpec.melee) || this.aiming || this.fireCooldown > 0.16;
     this.gun.rotation.x = damp(this.gun.rotation.x, this.aiming ? Math.PI / 2 : 0, 18, dt);
     const wantsFire = this.weaponSpec.auto ? input.isMouseDown(0) : input.wasMousePressed(0);
     if (wantsFire) this.fireWeapon(camera);
@@ -491,6 +525,10 @@ export class Player {
     const spec = this.weaponSpec;
     const ammo = this.weaponAmmo;
     if (this.reloadTimer > 0 || this.fireCooldown > 0) return;
+    if (spec.melee) {
+      this.meleeAttack(camera);
+      return;
+    }
     if (ammo.ammo <= 0) {
       if (this.audio) this.audio.uiClick();
       this.startReload();
@@ -553,6 +591,45 @@ export class Player {
     if (this.audio) this.audio.gunshot(this.weaponKey);
     if (this.police) this.police.reportGunfire(this.position.x, this.position.z);
     if (this.weaponAmmo.ammo <= 0 && this.weaponAmmo.reserve > 0) this.startReload();
+  }
+
+  /** A 2.1 m silent swing. No ammo, no gunshot and no gunfire report. */
+  meleeAttack(camera) {
+    const spec = this.weaponSpec;
+    if (!spec.melee || this.fireCooldown > 0) return;
+    this.fireCooldown = 1 / spec.fireRate;
+    this.meleeSwing = 0.28;
+    this.facing = this.cameraYaw - Math.PI;
+    this.humanoid.setFacing(this.facing);
+
+    // The reach is measured from Rae's chest along the chase camera's forward
+    // direction; a camera-origin ray could never touch anything in front of her.
+    const origin = new THREE.Vector3(this.position.x, this.position.y + 1.2, this.position.z);
+    const direction = camera.getWorldDirection(new THREE.Vector3());
+    const worldHit = this.world.raycast(origin, direction, spec.range);
+    const maxDistance = worldHit ? Math.min(spec.range, worldHit.distance) : spec.range;
+    const policeTarget = this.police ? this.police.traceShot(origin, direction, maxDistance) : null;
+    const missionTarget = this.missions ? this.missions.traceShot(origin, direction, maxDistance) : null;
+    const pedTarget = this.traffic ? this.traffic.traceShot(origin, direction, maxDistance) : null;
+    let target = policeTarget;
+    if (missionTarget && (!target || missionTarget.distance < target.distance)) target = missionTarget;
+    if (pedTarget && (!target || pedTarget.distance < target.distance)) target = pedTarget;
+    if (!target) return;
+
+    this.hitMarker = 1;
+    const meleeTarget = { ...target, headshot: false };
+    if (target.enemy && this.missions) {
+      this.missions.applyPlayerHit(meleeTarget, spec.damage, { weapon: 'knife' });
+    } else if (target.type === 'ped' && this.traffic) {
+      this.traffic.applyPlayerHit(meleeTarget, spec.damage);
+    } else if (this.police) {
+      this.police.applyPlayerHit(meleeTarget, spec.damage, { weapon: 'knife' });
+    }
+    if (this.effects) {
+      this.effects.impact(target.point, null, 'metal');
+      this.effects.shake(0.1);
+    }
+    if (this.audio) this.audio.knife();
   }
 
   applyDamage(amount, fromX = null, fromZ = null) {

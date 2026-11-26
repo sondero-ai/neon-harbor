@@ -20,6 +20,17 @@ const MAX_PEDS = 48;
 const SIDEWALK_TARGET = 24;
 const BEACH_TARGET = 11;
 const CAR_TARGET = 13;
+const PANIC_RADIUS = 14;
+const PANIC_SECONDS = 6;
+const FLEE_SPEED = 1.6;
+const ARMED_JACKET = 0x6b1e29;
+const ARMED_CHANCE = 0.15;
+const ARMED_DRAW_SECONDS = 0.9;
+const ARMED_FIRE_SECONDS = 1.2;
+const ARMED_RANGE = 30;
+const ARMED_GIVE_UP_RANGE = 45;
+const ARMED_GIVE_UP_SECONDS = 12;
+const ARMED_DAMAGE = 9;
 
 const CORNERS = [
   [CORNER, CORNER],
@@ -205,7 +216,10 @@ export class Traffic {
     this.world = world;
     this.vehicles = vehicles;
     this.player = player;
+    this.police = null;
     this.onPedDeath = null;
+    this.onArmedHostile = null;
+    this.armedAlertShown = false;
     this.rng = makeRng(0x51ee7);
     this.cars = [];
     this.peds = [];
@@ -237,6 +251,7 @@ export class Traffic {
     this.peds.length = 0;
     this.spawnTimer = 0;
     this.pedTimer = 0;
+    this.armedAlertShown = false;
     if (spawnBeach) this.spawnBeachCrowd();
   }
 
@@ -554,7 +569,7 @@ export class Traffic {
 
   // ---------------------------------------------------------------- pedestrians
 
-  spawnPed({ x, z, yaw = 0, mode = 'loop', target = null, anchor = null, phase = null }) {
+  spawnPed({ x, z, yaw = 0, mode = 'loop', target = null, anchor = null, phase = null, armed = null }) {
     let slot = -1;
     for (let i = 0; i < MAX_PEDS; i += 1) {
       if (!this.peds.some((ped) => ped.active && ped.slot === i)) {
@@ -564,6 +579,9 @@ export class Traffic {
     }
     if (slot === -1) return null;
 
+    // Only block-loop walkers carry a pistol; an explicit option from a shot or
+    // a test always wins, and beach and crosswalk pedestrians stay unarmed.
+    const isArmed = armed === null ? mode === 'loop' && this.rng.chance(ARMED_CHANCE) : Boolean(armed);
     const spec = {
       cloth: clothing[Math.floor(this.rng() * clothing.length) % clothing.length],
       pants: pants[Math.floor(this.rng() * pants.length) % pants.length],
@@ -571,6 +589,7 @@ export class Traffic {
       hair: hairs[Math.floor(this.rng() * hairs.length) % hairs.length],
       hatColor: this.rng.pick([0x2d2a36, 0x7a3e35, 0x3f5a5e, 0xd6c6a4]),
     };
+    if (isArmed) spec.cloth = ARMED_JACKET;
     const ped = {
       active: true,
       slot,
@@ -590,6 +609,11 @@ export class Traffic {
       fleeFromX: 0,
       fleeFromZ: 0,
       fleeResumeTarget: null,
+      armed: isArmed,
+      hostile: false,
+      hostileDraw: 0,
+      hostileTime: 0,
+      shootTimer: 0,
       mode,
       target: target ?? { x, z },
       anchor: anchor ?? { x, z },
@@ -701,16 +725,26 @@ export class Traffic {
     ped.health = 0;
     // A corpse is not fleeing; stop it counting as panicked after death.
     ped.fleeTimer = 0;
+    let witnesses = 0;
     for (const other of this.peds) {
       if (other === ped || !other.active || other.dead) continue;
-      if (Math.hypot(other.x - ped.x, other.z - ped.z) < 9) {
-        if (!other.fleeResumeTarget) other.fleeResumeTarget = { x: other.target.x, z: other.target.z };
-        other.fleeTimer = 4;
-        other.fleeFromX = ped.x;
-        other.fleeFromZ = ped.z;
+      if (Math.hypot(other.x - ped.x, other.z - ped.z) >= PANIC_RADIUS) continue;
+      witnesses += 1;
+      if (!other.fleeResumeTarget) other.fleeResumeTarget = { x: other.target.x, z: other.target.z };
+      if (other.armed) {
+        // An armed witness stops running and reaches for the pistol.
+        other.fleeTimer = 0;
+        if (!other.hostile && other.hostileDraw <= 0) {
+          other.hostileDraw = ARMED_DRAW_SECONDS;
+          other.shootTimer = 0;
+        }
+        continue;
       }
+      other.fleeTimer = PANIC_SECONDS;
+      other.fleeFromX = ped.x;
+      other.fleeFromZ = ped.z;
     }
-    this.onPedDeath?.(ped);
+    this.onPedDeath?.(ped, { witnesses });
   }
 
   pickBeachTarget(ped) {
@@ -744,13 +778,17 @@ export class Traffic {
         if (ped.deadTimer <= 0) this.despawnPed(ped);
         continue;
       }
+      if (ped.armed && (ped.hostile || ped.hostileDraw > 0)) {
+        this.updateArmedPed(ped, dt);
+        continue;
+      }
       if (ped.fleeTimer > 0) {
         ped.fleeTimer -= dt;
         const dx = ped.x - ped.fleeFromX;
         const dz = ped.z - ped.fleeFromZ;
         const distance = Math.hypot(dx, dz) || 1;
         ped.target = { x: ped.x + (dx / distance) * 12, z: ped.z + (dz / distance) * 12 };
-        this.walkToward(ped, ped.speed * 1.6, dt);
+        this.walkToward(ped, ped.speed * FLEE_SPEED, dt);
         ped.phase += dt * 7;
         ped.motion = damp(ped.motion, 1, 8, dt);
         ped.y = damp(ped.y, this.world.groundHeightAt(ped.x, ped.z), 15, dt);
@@ -812,6 +850,103 @@ export class Traffic {
       }
       if (this.peds.length > 64) this.peds = this.peds.filter((ped) => ped.active);
     }
+  }
+
+  // An armed witness plants its feet, faces Rae, and fires after the draw.
+  updateArmedPed(ped, dt) {
+    const player = this.player;
+    if (!player || player.dead) {
+      ped.hostile = false;
+      ped.hostileDraw = 0;
+      return;
+    }
+    const dx = player.position.x - ped.x;
+    const dz = player.position.z - ped.z;
+    const distance = Math.hypot(dx, dz);
+    const targetYaw = Math.atan2(dx, dz);
+    ped.yaw += Math.atan2(Math.sin(targetYaw - ped.yaw), Math.cos(targetYaw - ped.yaw)) * (1 - Math.exp(-12 * dt));
+    ped.y = damp(ped.y, this.world.groundHeightAt(ped.x, ped.z), 15, dt);
+    ped.motion = damp(ped.motion, 0.22, 8, dt);
+
+    if (!ped.hostile) {
+      ped.hostileDraw -= dt;
+      if (ped.hostileDraw > 0) return;
+      ped.hostileDraw = 0;
+      ped.hostile = true;
+      ped.hostileTime = 0;
+      ped.shootTimer = 0;
+      if (!this.armedAlertShown) {
+        this.armedAlertShown = true;
+        this.onArmedHostile?.(ped);
+      }
+    }
+
+    ped.hostileTime += dt;
+    if (distance > ARMED_GIVE_UP_RANGE || ped.hostileTime > ARMED_GIVE_UP_SECONDS) {
+      this.sendPedFleeing(ped, player.position.x, player.position.z);
+      return;
+    }
+
+    ped.shootTimer -= dt;
+    if (ped.shootTimer > 0) return;
+    if (distance > ARMED_RANGE) {
+      ped.shootTimer = 0.25;
+      return;
+    }
+    const blocked = this.world.lineBlocked(
+      ped.x,
+      ped.y + 1.3,
+      ped.z,
+      player.position.x,
+      player.position.y + 1.2,
+      player.position.z,
+      0.2,
+    );
+    if (blocked) {
+      ped.shootTimer = 0.25;
+      return;
+    }
+    ped.shootTimer = ARMED_FIRE_SECONDS;
+    this.armedPedShoot(ped);
+  }
+
+  sendPedFleeing(ped, fromX, fromZ) {
+    ped.hostile = false;
+    ped.hostileDraw = 0;
+    ped.hostileTime = 0;
+    ped.shootTimer = 0;
+    if (!ped.fleeResumeTarget) ped.fleeResumeTarget = { x: ped.target.x, z: ped.target.z };
+    ped.fleeTimer = PANIC_SECONDS;
+    ped.fleeFromX = fromX;
+    ped.fleeFromZ = fromZ;
+  }
+
+  armedPedShoot(ped) {
+    const player = this.player;
+    if (!player) return;
+    const muzzle = new THREE.Vector3(
+      ped.x + Math.sin(ped.yaw) * 0.42,
+      ped.y + 1.32,
+      ped.z + Math.cos(ped.yaw) * 0.42,
+    );
+    const target = new THREE.Vector3(player.position.x, player.position.y + 1.12, player.position.z);
+    const direction = target.clone().sub(muzzle).normalize();
+    const hit = Math.random() < 0.6;
+    const endpoint = new THREE.Vector3();
+    if (hit) {
+      endpoint.set(player.position.x, player.position.y + 1.05, player.position.z);
+      if (this.police) this.police.damagePlayer(ARMED_DAMAGE, ped.x, ped.z, 'witness');
+      else player.applyDamage(ARMED_DAMAGE, ped.x, ped.z);
+    } else {
+      endpoint.copy(muzzle).addScaledVector(direction, 30);
+      const worldHit = this.world.raycast(muzzle, direction, 30);
+      if (worldHit) endpoint.copy(worldHit.point);
+    }
+    if (player.effects) {
+      player.effects.muzzle(muzzle.x, muzzle.y, muzzle.z, 0xffd59a);
+      player.effects.tracer(muzzle, endpoint, 0xffcf8a);
+    }
+    if (player.audio) player.audio.gunshot('pistol');
   }
 
   walkToward(ped, speed, dt) {

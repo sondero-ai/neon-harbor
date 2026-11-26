@@ -128,6 +128,7 @@ class Game {
       onDown: (type) => this.beginDown(type),
     });
     this.player.police = this.police;
+    this.traffic.police = this.police;
     this.pickups = new Pickups(this.scene, this.world, this.effects, {
       audio: this.audio,
       onPickup: (message) => {
@@ -158,7 +159,14 @@ class Game {
       ...opts,
       smgOwned: this.player.weapons.smg.owned,
     });
-    this.traffic.onPedDeath = (ped) => lootFrom(ped.x, ped.z);
+    this.traffic.onPedDeath = (ped, { witnesses = 0 } = {}) => {
+      lootFrom(ped.x, ped.z);
+      this.police.reportCivilianDeath(ped.x, ped.z, { witnesses });
+    };
+    this.traffic.onArmedHostile = () => {
+      if (this.hud.suppressToasts) return;
+      this.hud.toast = { title: 'Armed Witness', sub: 'RETURN FIRE', life: 3.0 };
+    };
     this.police.onHumanDeath = lootFrom;
     this.missions.onHumanDeath = lootFrom;
     this.activities = new Activities(this.scene, this.world, this.vehicles, this.player, this.police, this.effects, this.audio, {
@@ -368,6 +376,8 @@ class Game {
     this.player.weaponKey = 'pistol';
     this.player.weapons.pistol = { owned: true, ammo: 12, reserve: 60 };
     this.player.weapons.smg = { owned: false, ammo: 0, reserve: 0 };
+    this.player.weapons.knife = { owned: true };
+    this.player.meleeSwing = 0;
     this.player.syncGunModel();
     this.player.gun.visible = false;
     this.police.resetAfterDown();
@@ -1171,13 +1181,15 @@ try {
       return game.down ? { type: game.down.type, timer: Math.round(game.down.timer * 100) / 100 } : null;
     },
     get combat() {
+      const state = game.player.combatState;
       return {
         health: game.player.health,
         armor: game.player.armor,
         cash: game.player.cash,
         weapon: game.player.weaponKey,
-        ammo: game.player.weaponAmmo.ammo,
-        reserve: game.player.weaponAmmo.reserve,
+        ammo: state.ammo,
+        reserve: state.reserve,
+        melee: state.melee,
       };
     },
     get audio() {

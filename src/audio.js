@@ -402,6 +402,14 @@ export class AudioSystem {
     });
   }
 
+  /** A short blade whoosh, only played when the swing connects. */
+  knife() {
+    if (!this.ctx) return;
+    const time = this.ctx.currentTime;
+    this.noiseHit({ time, duration: 0.1, gain: 0.07, highpass: 2600 });
+    this.note({ type: 'triangle', frequency: 280, time, duration: 0.08, gain: 0.03, filter: 1600 });
+  }
+
   impact(strength = 1) {
     if (!this.ctx) return;
     const time = this.ctx.currentTime;
