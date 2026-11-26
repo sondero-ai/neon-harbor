@@ -9,8 +9,7 @@ import * as THREE from '../vendor/three.module.js';
 import {
   CAMERA,
   DAY,
-  HOURS,
-  MINUTES,
+  NEW_GAME_CLOCK,
   PALETTE,
   PLAYER,
   QUALITY_PRESETS,
@@ -19,6 +18,8 @@ import {
   districtAt,
   streetAt,
 } from './config.js';
+import { CLOCK_MINUTES_PER_SECOND, Environment, SHOT_CLOCK, parseTimeParam } from './environment.js';
+import { TrafficSignals } from './traffic-signals.js';
 import { World } from './world.js';
 import { Player } from './player.js';
 import { Vehicles } from './vehicles.js';
@@ -36,7 +37,6 @@ import { Activities } from './activities.js';
 
 const STEP = 1 / 60;
 const MAX_STEPS = 5;
-const GAME_MINUTES_PER_SECOND = 1 / 45;
 
 const DEFAULT_TITLE_VIEW = {
   position: [132, 64, 156],
@@ -85,8 +85,8 @@ class Game {
     this.simTime = 0;
     this.accumulator = 0;
     this.lastFrame = 0;
-    this.clockMinutes = HOURS * 60 + MINUTES;
-    this.day = DAY;
+    this.timeOverride = parseTimeParam();
+    this.environment = new Environment({ clockMinutes: NEW_GAME_CLOCK, day: DAY });
     this.objective = START_OBJECTIVE;
     this.titleView = DEFAULT_TITLE_VIEW;
     this.lastHudState = null;
@@ -117,6 +117,7 @@ class Game {
     this.camera = new THREE.PerspectiveCamera(CAMERA.fov, 16 / 9, CAMERA.near, CAMERA.far);
     this.world = new World(this.scene, { quality: this.quality });
     this.world.setObjectiveMarker(START_OBJECTIVE.marker.x, START_OBJECTIVE.marker.z);
+    this.signals = new TrafficSignals(this.scene);
     this.effects = new Effects(this.scene, { quality: this.quality });
     this.vehicles = new Vehicles(this.scene, this.world);
     this.player = new Player(this.scene, this.world, this.vehicles);
@@ -181,6 +182,7 @@ class Game {
     });
     this.objective = this.missions.objective;
     this.audio.setRadio(this.radioEnabled, this.radioIndex);
+    this.environment.apply(this.environmentTargets(), { force: true });
 
     this.bindScreens();
     this.bindWindow();
@@ -195,6 +197,9 @@ class Game {
     if (shot) {
       document.body.classList.add('shot');
       this.applyShot(shot);
+    } else if (this.timeOverride !== null) {
+      this.environment.setClock(this.timeOverride);
+      this.environment.apply(this.environmentTargets(), { force: true });
     }
 
     this.frame = this.frame.bind(this);
@@ -259,10 +264,23 @@ class Game {
     if (this.ui.pauseQualityNote) this.ui.pauseQualityNote.textContent = text;
   }
 
+  environmentTargets() {
+    return {
+      scene: this.scene,
+      renderer: this.renderer,
+      world: this.world,
+      effects: this.effects,
+      vehicles: this.vehicles,
+      signals: this.signals,
+    };
+  }
+
   saveProgress() {
     const state = this.player.saveState;
     state.mission = this.missions.index;
     state.storyDone = this.missions.storyDone;
+    state.clockMinutes = this.environment.minutes;
+    state.day = this.environment.day;
     SaveStore.write(state);
     this.updateContinueButton();
     return state;
@@ -300,7 +318,7 @@ class Game {
   updatePauseStats() {
     if (this.ui.pauseCash) this.ui.pauseCash.textContent = formatCash(this.player.cash);
     if (this.ui.pauseDistrict) this.ui.pauseDistrict.textContent = districtAt(this.player.position.x, this.player.position.z);
-    if (this.ui.pauseClock) this.ui.pauseClock.textContent = this.clockString();
+    if (this.ui.pauseClock) this.ui.pauseClock.textContent = this.environment.clock;
     if (this.ui.pauseMission) {
       this.ui.pauseMission.textContent = this.missions.storyDone
         ? 'Story complete'
@@ -354,6 +372,9 @@ class Game {
   }
 
   startNewGame() {
+    // Leaving the title (or a QA new game from a shot page) ends capture mode,
+    // so the clock and simulation run normally from here.
+    this.shot = null;
     this.hud.suppressToasts = false;
     this.hud.reward = null;
     this.hud.ending = null;
@@ -382,7 +403,9 @@ class Game {
     this.player.gun.visible = false;
     this.police.resetAfterDown();
     this.pickups.reset();
-    this.clockMinutes = HOURS * 60 + MINUTES;
+    this.environment.setClock(NEW_GAME_CLOCK);
+    this.environment.setDay(DAY);
+    this.environment.apply(this.environmentTargets(), { force: true });
     this.player.teleport(PLAYER.spawn.x, PLAYER.spawn.z, PLAYER.spawnFacing, PLAYER.spawnCameraYaw);
     this.player.cameraPitch = CAMERA.pitch;
     this.player.cameraDistance = CAMERA.distance;
@@ -395,6 +418,7 @@ class Game {
   startContinue() {
     const save = SaveStore.load();
     if (!save) return;
+    this.shot = null;
     this.hud.suppressToasts = false;
     this.hud.reward = null;
     this.hud.ending = null;
@@ -408,7 +432,9 @@ class Game {
     this.missions.reset({ index: save.mission, storyDone: save.storyDone });
     this.activities.reset();
     this.objective = this.missions.objective;
-    this.clockMinutes = HOURS * 60 + MINUTES + save.playSeconds * GAME_MINUTES_PER_SECOND;
+    this.environment.setClock(save.clockMinutes);
+    this.environment.setDay(save.day);
+    this.environment.apply(this.environmentTargets(), { force: true });
     this.resetCityLife();
     if (save.wanted > 0) this.police.setWanted(save.wanted, { silent: true });
     this.player.updateCamera(this.camera, 0, true);
@@ -635,13 +661,6 @@ class Game {
     this.refreshQualityLabel();
   }
 
-  clockString() {
-    const total = Math.min(1439, Math.max(0, Math.floor(this.clockMinutes))) % 1440;
-    const hours = String(Math.floor(total / 60)).padStart(2, '0');
-    const minutes = String(total % 60).padStart(2, '0');
-    return `${hours}:${minutes}`;
-  }
-
   // Respect is a readout of the run, not a second progression system: cash
   // earned and story chapters cleared move it up the Strip's ladder.
   respectState() {
@@ -713,8 +732,9 @@ class Game {
       player,
       objective: this.objective,
       radio: this.radioState(),
-      clock: this.clockString(),
-      day: this.day,
+      clock: this.environment.clock,
+      day: this.environment.day,
+      period: this.environment.period,
       district: districtAt(player.position.x, player.position.z),
       street: streetAt(player.position.x, player.position.z),
       missionCard: this.shot?.missionCard ?? this.missions.hudCard,
@@ -782,7 +802,8 @@ class Game {
       this.refreshQualityLabel();
     }
     this.simTime = shot.time ?? 0;
-    this.clockMinutes = HOURS * 60 + MINUTES;
+    this.environment.setClock(this.timeOverride ?? SHOT_CLOCK);
+    this.environment.apply(this.environmentTargets(), { force: true });
     this.hud.suppressToasts = true;
     this.hud.toast = null;
     const steps = Math.max(0, shot.prewarm ?? 0);
@@ -1043,8 +1064,12 @@ class Game {
         this.audio.setEngine(car
           ? { ...car.engineState, speed: car.speed }
           : { on: false, rpm: 0, load: 0, speed: 0 });
-        this.clockMinutes += dt * GAME_MINUTES_PER_SECOND;
+        // A capture freezes the clock at the shot's pinned time so the same
+        // composition renders at the same minute on every machine.
+        if (!this.shot) this.environment.advance(dt);
+        this.environment.apply(this.environmentTargets());
         this.world.focusAt(this.player.position.x, this.player.position.z);
+        this.signals.update(this.simTime);
         const notice = this.police.consumeNotice();
         if (notice && !this.hud.suppressToasts) this.hud.toast = notice;
         if (input.wasPressed('Escape', 'KeyP')) this.pause();
@@ -1165,6 +1190,11 @@ try {
       police: game.police,
       missions: game.missions,
       world: game.world,
+      environment: game.environment,
+      renderer: game.renderer,
+      vehicles: game.vehicles,
+      effects: game.effects,
+      signals: game.signals,
     },
     get police() {
       const hud = game.police.hudState;
@@ -1204,6 +1234,55 @@ try {
     },
     get draws() {
       return game.renderer.info.render.calls;
+    },
+    get time() {
+      const palette = game.environment.palette;
+      return {
+        clock: game.environment.clock,
+        day: game.environment.day,
+        state: game.environment.state,
+        period: game.environment.period,
+        minutes: Math.round(game.environment.minutes * 1000) / 1000,
+        rate: CLOCK_MINUTES_PER_SECOND,
+        palette: {
+          state: palette.state,
+          skyFrom: palette.skyFrom,
+          skyTo: palette.skyTo,
+          skyBlend: Math.round(palette.skyBlend * 1000) / 1000,
+          fog: palette.fog,
+          sunIntensity: palette.sunIntensity,
+          hemiIntensity: palette.hemiIntensity,
+          window: palette.window,
+          neon: palette.neon,
+          street: palette.street,
+          carLights: palette.carLights,
+          stars: palette.stars,
+          exposure: palette.exposure,
+          sun: palette.sun,
+          moon: palette.moon,
+        },
+      };
+    },
+    get signals() {
+      return {
+        intersections: game.signals.intersections,
+        state: game.signals.state,
+        at: (x, z) => game.signals.at(Number(x), Number(z)),
+        lamps: (axis) => game.signals.lamps(axis === 'z' ? 'z' : 'x'),
+        stateAt: (elapsed) => game.signals.stateAt(Number(elapsed) || 0),
+        setTime: (elapsed) => {
+          game.signals.update(Number(elapsed) || 0, true);
+          return game.signals.state;
+        },
+      };
+    },
+    get city() {
+      return {
+        blocks: game.world.blocks,
+        buildings: game.world.buildings.length,
+        streetlights: game.world.streetlightCount,
+        beacons: game.world.beacons.length,
+      };
     },
     get story() {
       const objective = game.missions.objective;
@@ -1293,6 +1372,37 @@ try {
       for (let i = 0; i < steps; i += 1) game.tick(1 / 60);
       game.renderer.render(game.scene, game.camera);
       return { steps, simTime: game.simTime, mode: game.mode };
+    },
+    // A tight render loop with a one-pixel read-back, so the caller measures a
+    // real GPU frame rather than requestAnimationFrame pacing in a headless
+    // window. Used by the performance checks; never called by gameplay.
+    measureFrames(count = 60) {
+      const frames = Math.max(1, Math.min(600, Math.round(Number(count) || 60)));
+      const gl = game.renderer.getContext();
+      const pixel = new Uint8Array(4);
+      const samples = [];
+      for (let i = 0; i < frames; i += 1) {
+        const start = performance.now();
+        game.renderer.render(game.scene, game.camera);
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+        samples.push(performance.now() - start);
+      }
+      return { frames, samples, draws: game.renderer.info.render.calls };
+    },
+    // Draw calls split into the main pass and the shadow-map pass. The
+    // performance budget in the plan counts the main pass; both numbers are
+    // reported so a comparison can never mix the two.
+    renderStats() {
+      const renderer = game.renderer;
+      const shadows = renderer.shadowMap.enabled;
+      renderer.render(game.scene, game.camera);
+      const total = renderer.info.render.calls;
+      renderer.shadowMap.enabled = false;
+      renderer.render(game.scene, game.camera);
+      const main = renderer.info.render.calls;
+      renderer.shadowMap.enabled = shadows;
+      renderer.render(game.scene, game.camera);
+      return { total, main, shadow: Math.max(0, total - main), triangles: renderer.info.render.triangles };
     },
     setWanted(stars) {
       game.police.setWanted(stars, { silent: true });

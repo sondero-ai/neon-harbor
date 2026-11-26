@@ -426,6 +426,13 @@ export const VEHICLE_TYPES = {
 export const TRAFFIC_MIX = ['sedan', 'sedan', 'taxi', 'sedan', 'van', 'sports', 'pickup', 'sedan', 'muscle', 'taxi'];
 
 const headlightMaterial = new THREE.MeshBasicMaterial({ color: 0xfff0c0, toneMapped: false });
+const HEADLIGHT_COLOR = 0xfff0c0;
+
+/** Day/night headlight level shared by every car through the one material. */
+export function setHeadlightLevel(level) {
+  const amount = Math.min(1, Math.max(0, Number(level) || 0));
+  headlightMaterial.color.setHex(HEADLIGHT_COLOR).multiplyScalar(0.45 + 0.55 * amount);
+}
 const glassMaterial = new THREE.MeshStandardMaterial({
   color: 0x18242f,
   roughness: 0.12,
@@ -445,6 +452,15 @@ export function pickVehicleColor(rng, type) {
 }
 
 const _local = new THREE.Vector3();
+const _wheelMatrix = new THREE.Matrix4();
+const _wheelPosition = new THREE.Vector3();
+const _wheelScale = new THREE.Vector3();
+const _wheelQuaternion = new THREE.Quaternion();
+const _wheelSteer = new THREE.Quaternion();
+const _wheelSpinQuat = new THREE.Quaternion();
+const _wheelIdentity = new THREE.Quaternion();
+const _wheelAxisY = new THREE.Vector3(0, 1, 0);
+const _wheelAxisX = new THREE.Vector3(1, 0, 0);
 
 export class Vehicle {
   constructor(type, { x = 0, z = 0, yaw = 0, color = null } = {}) {
@@ -538,21 +554,26 @@ export class Vehicle {
       this.lightbarBase.add(this.lightGlowRed, this.lightGlowBlue);
     }
 
-    this.wheels = [];
-    this.frontPivots = [];
+    // Four wheels, one instanced draw per car. Steering is a Y rotation on the
+    // front instances and spin is an X rotation on all four.
+    this.wheelLayout = [];
+    this.wheelScale = shape.wheelRadius / 0.36;
+    this.wheelMesh = new THREE.InstancedMesh(getWheelGeometry(), getWheelMaterial(), 4);
+    this.wheelMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.wheelMesh.castShadow = true;
+    this.wheelMesh.receiveShadow = true;
+    this.wheelMesh.frustumCulled = false;
+    this.group.add(this.wheelMesh);
     for (const zSide of [1, -1]) {
       for (const xSide of [-1, 1]) {
-        const pivot = new THREE.Group();
-        pivot.position.set(xSide * shape.wheelHalfTrack, shape.wheelRadius, zSide * shape.wheelbase / 2);
-        const wheel = new THREE.Mesh(getWheelGeometry(), getWheelMaterial());
-        wheel.scale.setScalar(shape.wheelRadius / 0.36);
-        wheel.castShadow = true;
-        pivot.add(wheel);
-        this.group.add(pivot);
-        this.wheels.push(wheel);
-        if (zSide === 1) this.frontPivots.push(pivot);
+        this.wheelLayout.push({
+          x: xSide * shape.wheelHalfTrack,
+          z: zSide * shape.wheelbase / 2,
+          front: zSide === 1,
+        });
       }
     }
+    this.updateWheels();
 
     this.position.y = 0;
     this.group.position.copy(this.position);
@@ -602,6 +623,22 @@ export class Vehicle {
 
   get halfWidth() {
     return this.shape.width / 2;
+  }
+
+  updateWheels() {
+    if (!this.wheelMesh) return;
+    const steer = this.driver ? this.steerAngle : 0;
+    _wheelSteer.setFromAxisAngle(_wheelAxisY, steer);
+    _wheelSpinQuat.setFromAxisAngle(_wheelAxisX, this.wheelSpin);
+    _wheelScale.setScalar(this.wheelScale);
+    for (let i = 0; i < this.wheelLayout.length; i += 1) {
+      const wheel = this.wheelLayout[i];
+      _wheelPosition.set(wheel.x, this.shape.wheelRadius, wheel.z);
+      _wheelQuaternion.copy(wheel.front ? _wheelSteer : _wheelIdentity).multiply(_wheelSpinQuat);
+      _wheelMatrix.compose(_wheelPosition, _wheelQuaternion, _wheelScale);
+      this.wheelMesh.setMatrixAt(i, _wheelMatrix);
+    }
+    this.wheelMesh.instanceMatrix.needsUpdate = true;
   }
 
   setPose(x, z, yaw = this.yaw) {
@@ -831,9 +868,7 @@ export class Vehicle {
   animate(dt, elapsed) {
     const forwardSpeed = this.speed;
     this.wheelSpin += (forwardSpeed / Math.max(0.12, this.shape.wheelRadius)) * dt;
-    for (const wheel of this.wheels) wheel.rotation.x = this.wheelSpin;
-    const visualSteer = this.driver ? this.steerAngle : 0;
-    for (const pivot of this.frontPivots) pivot.rotation.y = visualSteer;
+    this.updateWheels();
 
     const braking = Boolean(this.driver) && (this.controls.brake > 0.35
       || (this.controls.throttle < 0 && forwardSpeed > 0.2)
@@ -911,6 +946,10 @@ export class Vehicles {
     for (const vehicle of [...this.list]) vehicle.dispose();
     this.list.length = 0;
     this.skids.reset();
+  }
+
+  applyEnvironment(palette) {
+    setHeadlightLevel(palette.carLights);
   }
 
   update(dt, elapsed) {

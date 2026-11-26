@@ -5,9 +5,9 @@
 // same arcade physics and collisions as the player's car.
 
 import * as THREE from '../vendor/three.module.js';
-import { POLICE, ROADS, WORLD } from './config.js';
+import { POLICE, ROADS_X, ROADS_Z, WORLD } from './config.js';
 import { makeRng } from './random.js';
-import { makeGlowSprite } from './geo.js';
+import { makeGlowSprite, mergeGeometries } from './geo.js';
 
 const clamp = THREE.MathUtils.clamp;
 const damp = THREE.MathUtils.damp;
@@ -41,10 +41,10 @@ function makeAirDecal() {
   return texture;
 }
 
-function nearestRoad(value) {
-  let best = ROADS[0];
+function nearestRoad(value, roads) {
+  let best = roads[0];
   let bestDistance = Infinity;
-  for (const road of ROADS) {
+  for (const road of roads) {
     const distance = Math.abs(value - road);
     if (distance < bestDistance) {
       bestDistance = distance;
@@ -55,49 +55,50 @@ function nearestRoad(value) {
 }
 
 function nearestNode(x, z) {
-  const roadX = nearestRoad(x);
-  const roadZ = nearestRoad(z);
-  return { x: roadX, z: roadZ, i: ROADS.indexOf(roadX), j: ROADS.indexOf(roadZ) };
+  const roadX = nearestRoad(x, ROADS_X);
+  const roadZ = nearestRoad(z, ROADS_Z);
+  return { x: roadX, z: roadZ, i: ROADS_X.indexOf(roadX), j: ROADS_Z.indexOf(roadZ) };
 }
 
-// Breadth-first route over the 7x7 intersection grid. Fifty nodes: cheap enough
+// Breadth-first route over the intersection grid. A hundred nodes: cheap enough
 // to rebuild for every cruiser twice a second and guaranteed to follow asphalt.
 function roadRoute(fromX, fromZ, toX, toZ) {
-  const size = ROADS.length;
+  const sizeX = ROADS_X.length;
+  const sizeZ = ROADS_Z.length;
   const start = nearestNode(fromX, fromZ);
   const goal = nearestNode(toX, toZ);
   if (start.i === goal.i && start.j === goal.j) return [{ x: goal.x, z: goal.z }];
-  const total = size * size;
+  const total = sizeX * sizeZ;
   const previous = new Int16Array(total).fill(-1);
   const seen = new Uint8Array(total);
-  const queue = [start.i + start.j * size];
+  const queue = [start.i + start.j * sizeX];
   const startIndex = queue[0];
   seen[startIndex] = 1;
   let head = 0;
   while (head < queue.length) {
     const index = queue[head];
     head += 1;
-    const i = index % size;
-    const j = Math.floor(index / size);
+    const i = index % sizeX;
+    const j = Math.floor(index / sizeX);
     if (i === goal.i && j === goal.j) break;
     const neighbors = [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]];
     for (const [ni, nj] of neighbors) {
-      if (ni < 0 || ni >= size || nj < 0 || nj >= size) continue;
-      const next = ni + nj * size;
+      if (ni < 0 || ni >= sizeX || nj < 0 || nj >= sizeZ) continue;
+      const next = ni + nj * sizeX;
       if (seen[next]) continue;
       seen[next] = 1;
       previous[next] = index;
       queue.push(next);
     }
   }
-  const goalIndex = goal.i + goal.j * size;
+  const goalIndex = goal.i + goal.j * sizeX;
   if (!seen[goalIndex]) return [{ x: goal.x, z: goal.z }];
   const path = [];
   let cursor = goalIndex;
   while (cursor !== -1 && cursor !== startIndex) {
-    const i = cursor % size;
-    const j = Math.floor(cursor / size);
-    path.push({ x: ROADS[i], z: ROADS[j] });
+    const i = cursor % sizeX;
+    const j = Math.floor(cursor / sizeX);
+    path.push({ x: ROADS_X[i], z: ROADS_Z[j] });
     cursor = previous[cursor];
   }
   path.reverse();
@@ -287,8 +288,19 @@ class Officer {
       const step = speed * dt;
       const nx = this.x + (dx / Math.max(0.001, distance)) * step;
       const nz = this.z + (dz / Math.max(0.001, distance)) * step;
-      if (!this.world.collides(nx, this.z, 0.38)) this.x = nx;
-      if (!this.world.collides(this.x, nz, 0.38)) this.z = nz;
+      const full = this.world.resolveCircle(nx, nz, 0.38);
+      if (Math.hypot(full.x - nx, full.z - nz) < 0.01) {
+        this.x = full.x;
+        this.z = full.z;
+      } else {
+        const slideX = this.world.resolveCircle(nx, this.z, 0.38);
+        if (Math.abs(slideX.x - nx) < 0.01 && Math.abs(slideX.z - this.z) < 0.01) {
+          this.x = slideX.x;
+        } else {
+          const slideZ = this.world.resolveCircle(this.x, nz, 0.38);
+          if (Math.abs(slideZ.z - nz) < 0.01 && Math.abs(slideZ.x - this.x) < 0.01) this.z = slideZ.z;
+        }
+      }
     } else if (!police.down && distance < 12) {
       // Hold the perimeter but keep shuffling so they are not statues.
       this.phase += dt * 3.2;
@@ -346,8 +358,17 @@ class AirUnit {
     const red = new THREE.MeshBasicMaterial({ color: 0xff3526, toneMapped: false });
     const blue = new THREE.MeshBasicMaterial({ color: 0x3d63ff, toneMapped: false });
 
+    // Static boxwork is merged per material, so the whole airframe costs four
+    // draws instead of one per box; the rotors and glow sprites stay separate.
+    const staticParts = new Map([[navy, []], [dark, []], [trim, []], [gold, []]]);
     const box = (width, height, depth, material, x, y, z, parent = this.group) => {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+      const geometry = new THREE.BoxGeometry(width, height, depth);
+      if (parent === this.group && staticParts.has(material)) {
+        geometry.translate(x, y, z);
+        staticParts.get(material).push(geometry);
+        return null;
+      }
+      const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(x, y, z);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -400,12 +421,16 @@ class AirUnit {
     this.rotor = new THREE.Group();
     this.rotor.position.set(0, 1.02, 0);
     this.group.add(this.rotor);
+    const bladeParts = [];
     for (let i = 0; i < 4; i += 1) {
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.035, 5.7), dark);
-      blade.rotation.y = (i * Math.PI) / 4;
-      blade.position.y = i % 2 === 0 ? 0.02 : -0.02;
-      this.rotor.add(blade);
+      const geometry = new THREE.BoxGeometry(0.16, 0.035, 5.7);
+      geometry.rotateY((i * Math.PI) / 4);
+      geometry.translate(0, i % 2 === 0 ? 0.02 : -0.02, 0);
+      bladeParts.push({ geometry });
     }
+    const rotorBlades = new THREE.Mesh(mergeGeometries(bladeParts), dark);
+    rotorBlades.castShadow = true;
+    this.rotor.add(rotorBlades);
     const blur = new THREE.Mesh(
       new THREE.CircleGeometry(2.85, 32),
       new THREE.MeshBasicMaterial({
@@ -425,11 +450,15 @@ class AirUnit {
     this.tailRotor = new THREE.Group();
     this.tailRotor.position.set(0.22, 0.56, -4.22);
     this.group.add(this.tailRotor);
+    const tailParts = [];
     for (let i = 0; i < 2; i += 1) {
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.5, 0.11), dark);
-      blade.rotation.x = (i * Math.PI) / 2;
-      this.tailRotor.add(blade);
+      const geometry = new THREE.BoxGeometry(0.04, 1.5, 0.11);
+      geometry.rotateX((i * Math.PI) / 2);
+      tailParts.push({ geometry });
     }
+    const tailBlades = new THREE.Mesh(mergeGeometries(tailParts), dark);
+    tailBlades.castShadow = true;
+    this.tailRotor.add(tailBlades);
 
     // The light bar and the searchlight housing under the nose.
     box(0.22, 0.08, 0.22, red, -0.24, -0.6, 0.55);
@@ -444,6 +473,13 @@ class AirUnit {
     housing.rotation.x = Math.PI / 2;
     housing.position.set(0, -0.52, 1.16);
     this.group.add(housing);
+    for (const [material, parts] of staticParts) {
+      if (parts.length === 0) continue;
+      const mesh = new THREE.Mesh(mergeGeometries(parts.map((geometry) => ({ geometry }))), material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.group.add(mesh);
+    }
     this.lens = makeGlowSprite(0xfff1c4, 1.8, 0.95);
     this.lens.position.set(0, -0.7, 1.36);
     this.group.add(this.lens);
@@ -972,8 +1008,8 @@ export class Police {
     const pz = this.player.position.z;
     let best = null;
     let bestScore = -Infinity;
-    for (const roadX of ROADS) {
-      for (const roadZ of ROADS) {
+    for (const roadX of ROADS_X) {
+      for (const roadZ of ROADS_Z) {
         const distance = Math.hypot(roadX - px, roadZ - pz);
         if (distance < 62 || distance > 165) continue;
         if (this.units.some((unit) => unit.car && !unit.car.removed && Math.hypot(unit.car.position.x - roadX, unit.car.position.z - roadZ) < 18)) continue;
@@ -1138,10 +1174,10 @@ export class Police {
     const dirZ = Math.cos(car.yaw);
     let blockX = car.position.x + dirX * 92;
     let blockZ = car.position.z + dirZ * 92;
-    const roadHorizontal = Math.abs(nearestRoad(car.position.z) - car.position.z) < 8;
+    const roadHorizontal = Math.abs(nearestRoad(car.position.z, ROADS_Z) - car.position.z) < 8;
     if (roadHorizontal) {
-      blockZ = nearestRoad(car.position.z);
-      blockX = clamp(blockX, WORLD.cityMin + 10, WORLD.cityMax - 10);
+      blockZ = nearestRoad(car.position.z, ROADS_Z);
+      blockX = clamp(blockX, WORLD.cityMinX + 10, WORLD.cityMaxX - 10);
       for (let i = 0; i < 2; i += 1) {
         const unit = this.spawnCruiserAt(blockX, blockZ + (i === 0 ? -2.3 : 2.3), 0, 'block');
         if (unit) {
@@ -1152,8 +1188,8 @@ export class Police {
       this.spawnOfficerAt(blockX - dirX * 7 - 2.4, blockZ - 3.4, Math.PI);
       this.spawnOfficerAt(blockX - dirX * 7 + 2.4, blockZ + 3.4, Math.PI);
     } else {
-      blockX = nearestRoad(car.position.x);
-      blockZ = clamp(blockZ, WORLD.cityMin + 10, WORLD.cityMax - 10);
+      blockX = nearestRoad(car.position.x, ROADS_X);
+      blockZ = clamp(blockZ, WORLD.cityMinZ + 10, WORLD.cityMaxZ - 10);
       for (let i = 0; i < 2; i += 1) {
         const unit = this.spawnCruiserAt(blockX + (i === 0 ? -2.3 : 2.3), blockZ, Math.PI / 2, 'block');
         if (unit) {

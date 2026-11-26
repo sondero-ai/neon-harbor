@@ -3,24 +3,32 @@
 
 export const SEED = 20261119;
 
-// Road centerlines. The same seven values run in both axes, giving six blocks
-// between them and a 14 m road corridor at every line.
-export const ROADS = [-135, -81, -27, 27, 81, 135, 189];
-export const BLOCK_CENTERS = ROADS.slice(0, -1).map((value, index) => (value + ROADS[index + 1]) / 2);
+// Road centerlines. The original seven-line core runs in both axes; the east
+// extension adds three avenue lines and the north/south extension adds two
+// lines below and one above, giving nine blocks on each side of the grid.
+export const CORE_ROADS = [-135, -81, -27, 27, 81, 135, 189];
+export const ROADS_X = [...CORE_ROADS, 243, 297, 351];
+export const ROADS_Z = [-243, -189, ...CORE_ROADS, 243];
+export const BLOCK_CENTERS_X = ROADS_X.slice(0, -1).map((value, index) => (value + ROADS_X[index + 1]) / 2);
+export const BLOCK_CENTERS_Z = ROADS_Z.slice(0, -1).map((value, index) => (value + ROADS_Z[index + 1]) / 2);
+/** The original six-by-six core, kept in its old order for deterministic builds. */
+export const CORE_BLOCK_CENTERS = [-108, -54, 0, 54, 108, 162];
 
 export const WORLD = {
   roadWidth: 14,
   blockSize: 40,
   sidewalkHeight: 0.15,
-  cityMin: -142,
-  cityMax: 196,
+  cityMinX: -142,
+  cityMaxX: 358,
+  cityMinZ: -250,
+  cityMaxZ: 250,
   beachMinX: -248,
   beachMaxX: -142,
   shorelineX: -232,
   beachMinZ: -260,
   beachMaxZ: 260,
   /** Player movement limits, generous enough to include the pier. */
-  bounds: { minX: -326, maxX: 200, minZ: -198, maxZ: 202 },
+  bounds: { minX: -326, maxX: 356, minZ: -248, maxZ: 248 },
   pier: {
     z: 70,
     minX: -316,
@@ -183,13 +191,20 @@ export const PICKUPS = [
   { kind: 'pistol', x: 108, z: 36.4, label: 'Solano 9' },
 ];
 
-// The story opens late on the fourth night: the Strip is still awake, the
-// radio is on, and the Harbor PD air unit is already overhead.
+// The story still opens late on the fourth night for old saves; a New Game now
+// starts at dusk, 18:00, and the clock runs one in-game minute per two real
+// seconds (48 real minutes for a full day).
 export const DAY = 4;
 export const HOURS = 23;
 export const MINUTES = 41;
+export const NEW_GAME_CLOCK = 18 * 60;
+export const CLOCK_MINUTES_PER_SECOND = 0.5;
+export const DAY_MINUTES = 24 * 60;
 
 const STREET_NAMES_X = {
+  351: 'FOUNDRY GATE',
+  297: 'SMELTER ST',
+  243: 'RAIL SPUR',
   189: 'EAST YARD',
   135: 'SUNSET ROW',
   81: 'MOTOR ROW',
@@ -200,6 +215,7 @@ const STREET_NAMES_X = {
 };
 
 const STREET_NAMES_Z = {
+  243: 'FOUNDRY SOUTH',
   189: 'EAST YARD',
   135: 'SUNSET ROW',
   81: 'PIER 9 APPROACH',
@@ -207,12 +223,14 @@ const STREET_NAMES_Z = {
   [-27]: 'LOT 9',
   [-81]: 'CASA LUNA DR',
   [-135]: 'NORTH POINT DR',
+  [-189]: 'MARKET ROW',
+  [-243]: 'OLD TOWN NORTH',
 };
 
-function nearestRoad(value) {
-  let best = ROADS[0];
+function nearestRoad(value, roads) {
+  let best = roads[0];
   let bestDistance = Infinity;
-  for (const road of ROADS) {
+  for (const road of roads) {
     const distance = Math.abs(value - road);
     if (distance < bestDistance) {
       bestDistance = distance;
@@ -227,8 +245,8 @@ export function streetAt(x, z) {
   if (x < -144 && z > 20 && z < 130) return 'PIER 9 DECK';
   if (x < -144) return 'CASA LUNA DR';
   if (Math.abs(x) < 38 && Math.abs(z) < 38) return 'FOUNTAIN WALK';
-  const roadZ = nearestRoad(z);
-  const roadX = nearestRoad(x);
+  const roadZ = nearestRoad(z, ROADS_Z);
+  const roadX = nearestRoad(x, ROADS_X);
   const useZ = Math.abs(z - roadZ) <= Math.abs(x - roadX);
   return useZ ? STREET_NAMES_Z[roadZ] : STREET_NAMES_X[roadX];
 }
@@ -268,6 +286,8 @@ export function roadHalf() {
 export function districtAt(x, z) {
   if (x < -144 && z > 20 && z < 130) return 'Pier 9';
   if (x < -144) return 'Casa Luna Beach';
+  if (x > 196) return 'Foundry';
+  if (z < -142) return 'Old Town';
   if (z < -90 && x < 20) return 'North Point';
   if (x > 120) return 'Motor Row';
   if (z > 110) return 'Sunset Row';

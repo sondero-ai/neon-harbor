@@ -3,7 +3,7 @@
 // a handful of bars, and one very cheap arrow. Everything here is presentation:
 // player.js supplies the numbers, main.js decides when the HUD is on screen.
 
-import { PALETTE, ROADS, WORLD } from './config.js';
+import { BLOCK_CENTERS_X, BLOCK_CENTERS_Z, PALETTE, ROADS_X, ROADS_Z, WORLD } from './config.js';
 
 const DISPLAY = '"Bahnschrift SemiCondensed", "Bahnschrift", "Arial Narrow", sans-serif';
 const UI = '"Bahnschrift", "Segoe UI", sans-serif';
@@ -19,9 +19,9 @@ const INK_DEEP = 'rgba(10, 7, 18, 0.88)';
 const LINE = 'rgba(247, 232, 210, 0.17)';
 
 const MAP_MIN_X = -340;
-const MAP_MAX_X = 210;
-const MAP_MIN_Z = -210;
-const MAP_MAX_Z = 210;
+const MAP_MAX_X = 375;
+const MAP_MIN_Z = -270;
+const MAP_MAX_Z = 270;
 const MAP_SCALE = 2;
 
 function chamferPath(ctx, x, y, width, height, cut = 12) {
@@ -414,13 +414,13 @@ export class Hud {
 
     // Sand runs from the waterline to the city's western edge.
     ctx.fillStyle = '#a9855f';
-    ctx.fillRect(toX(WORLD.shorelineX), toY(WORLD.beachMinZ), (WORLD.cityMin - WORLD.shorelineX) * MAP_SCALE, (WORLD.beachMaxZ - WORLD.beachMinZ) * MAP_SCALE);
+    ctx.fillRect(toX(WORLD.shorelineX), toY(WORLD.beachMinZ), (WORLD.cityMinX - WORLD.shorelineX) * MAP_SCALE, (WORLD.beachMaxZ - WORLD.beachMinZ) * MAP_SCALE);
     ctx.fillStyle = '#17151f';
-    ctx.fillRect(toX(WORLD.cityMin), toY(WORLD.cityMin), (WORLD.cityMax - WORLD.cityMin) * MAP_SCALE, (WORLD.cityMax - WORLD.cityMin) * MAP_SCALE);
+    ctx.fillRect(toX(WORLD.cityMinX), toY(WORLD.cityMinZ), (WORLD.cityMaxX - WORLD.cityMinX) * MAP_SCALE, (WORLD.cityMaxZ - WORLD.cityMinZ) * MAP_SCALE);
 
     // Blocks first, then the road channels between them.
-    for (const cx of [-108, -54, 0, 54, 108, 162]) {
-      for (const cz of [-108, -54, 0, 54, 108, 162]) {
+    for (const cx of BLOCK_CENTERS_X) {
+      for (const cz of BLOCK_CENTERS_Z) {
         ctx.fillStyle = '#38303f';
         ctx.fillRect(toX(cx - 20), toY(cz - 20), 40 * MAP_SCALE, 40 * MAP_SCALE);
         ctx.strokeStyle = 'rgba(255,236,210,0.08)';
@@ -431,26 +431,30 @@ export class Hud {
     ctx.strokeStyle = '#292633';
     ctx.lineCap = 'butt';
     ctx.lineWidth = WORLD.roadWidth * MAP_SCALE;
-    for (const line of ROADS) {
+    for (const line of ROADS_X) {
       ctx.beginPath();
-      ctx.moveTo(toX(line), toY(WORLD.cityMin));
-      ctx.lineTo(toX(line), toY(WORLD.cityMax));
+      ctx.moveTo(toX(line), toY(WORLD.cityMinZ));
+      ctx.lineTo(toX(line), toY(WORLD.cityMaxZ));
       ctx.stroke();
+    }
+    for (const line of ROADS_Z) {
       ctx.beginPath();
-      ctx.moveTo(toX(WORLD.cityMin), toY(line));
-      ctx.lineTo(toX(WORLD.cityMax), toY(line));
+      ctx.moveTo(toX(WORLD.cityMinX), toY(line));
+      ctx.lineTo(toX(WORLD.cityMaxX), toY(line));
       ctx.stroke();
     }
     ctx.strokeStyle = 'rgba(255,236,210,0.12)';
     ctx.lineWidth = 1;
-    for (const line of ROADS) {
+    for (const line of ROADS_X) {
       ctx.beginPath();
-      ctx.moveTo(toX(line), toY(WORLD.cityMin));
-      ctx.lineTo(toX(line), toY(WORLD.cityMax));
+      ctx.moveTo(toX(line), toY(WORLD.cityMinZ));
+      ctx.lineTo(toX(line), toY(WORLD.cityMaxZ));
       ctx.stroke();
+    }
+    for (const line of ROADS_Z) {
       ctx.beginPath();
-      ctx.moveTo(toX(WORLD.cityMin), toY(line));
-      ctx.lineTo(toX(WORLD.cityMax), toY(line));
+      ctx.moveTo(toX(WORLD.cityMinX), toY(line));
+      ctx.lineTo(toX(WORLD.cityMaxX), toY(line));
       ctx.stroke();
     }
 
@@ -825,7 +829,7 @@ export class Hud {
       weight: 800,
       font: MONO,
     });
-    label(ctx, 'NIGHT SHIFT', x + width - 14, y + 123, {
+    label(ctx, `${state.period ?? 'NIGHT'} SHIFT`, x + width - 14, y + 123, {
       size: 10,
       color: 'rgba(63,224,207,0.72)',
       spacing: '1.4px',
