@@ -37,6 +37,9 @@ export class Humanoid {
     // Knife swing progress, 0..1. Applied on top of the walk and aim poses so
     // the right arm and hand thrust forward instead of only the blade.
     this.melee = 0;
+    // Seated overrides the leg/arm/torso pose after the walk and aim blocks and
+    // drops the rig so the hips sit at bench height with the feet on the floor.
+    this.seated = false;
 
     const jacket = material(0xdf5961, { roughness: 0.72 });
     const jacketDark = material(0x9c3b45, { roughness: 0.8 });
@@ -252,5 +255,29 @@ export class Humanoid {
     this.torso.rotation.z = Math.sin(this.phase) * 0.026 * stride;
     this.head.rotation.x = -stride * 0.04 + Math.sin(this.phase * 0.5) * 0.012;
     this.head.rotation.y = Math.sin(this.idleTime * 0.42) * 0.055 * (1 - clamp(this.motion, 0, 1));
+
+    // Seated: thighs forward and shins down, hands resting on the knees, and
+    // the whole rig lowered so the hips land on a ~0.6 m seat with the feet on
+    // the ground. This runs last so it wins over walk, aim and melee.
+    if (this.seated) {
+      this.group.position.y = -0.36;
+      this.legs.left.hipPivot.rotation.x = -1.5;
+      this.legs.right.hipPivot.rotation.x = -1.5;
+      this.legs.left.kneePivot.rotation.x = 1.42;
+      this.legs.right.kneePivot.rotation.x = 1.42;
+      this.arms.left.shoulderPivot.rotation.x = -0.62;
+      this.arms.right.shoulderPivot.rotation.x = -0.62;
+      this.arms.left.shoulderPivot.rotation.z = 0.16;
+      this.arms.right.shoulderPivot.rotation.z = -0.16;
+      this.arms.left.elbowPivot.rotation.x = -0.56;
+      this.arms.right.elbowPivot.rotation.x = -0.56;
+      this.torso.position.y = this.baseTorsoY - 0.02;
+      this.torso.rotation.x = -0.04;
+      this.torso.rotation.y = 0;
+      this.torso.rotation.z = 0;
+      this.head.rotation.x = 0.02;
+    } else {
+      this.group.position.y = 0;
+    }
   }
 }

@@ -24,11 +24,15 @@ import { TrafficSignals } from './traffic-signals.js';
 import { World } from './world.js';
 import { Player } from './player.js';
 import { Vehicles } from './vehicles.js';
+import { Interactions } from './interactions.js';
 import { Traffic } from './traffic.js';
+import { MallLife } from './mall-life.js';
+import { ParkingLot } from './parking.js';
+import { MallRobbery } from './robbery.js';
 import { Input } from './input.js';
 import { Hud } from './hud.js';
 import { SaveStore } from './save.js';
-import { readShot } from './shots.js';
+import { SHOTS, readShot } from './shots.js';
 import { Effects } from './effects.js';
 import { AudioSystem } from './audio.js';
 import { RadioPlayer } from './radio.js';
@@ -134,19 +138,43 @@ class Game {
     this.player = new Player(this.scene, this.world, this.vehicles);
     this.player.effects = this.effects;
     this.player.audio = this.audio;
+    this.interactions = new Interactions({
+      player: this.player,
+      world: this.world,
+      vehicles: this.vehicles,
+    });
     this.traffic = new Traffic(this.scene, this.world, this.vehicles, this.player);
     this.player.traffic = this.traffic;
+    this.mallLife = new MallLife(this.traffic, this.world.mall, this.environment);
+    this.traffic.mallLife = this.mallLife;
     this.police = new Police(this.scene, this.world, this.vehicles, this.player, this.traffic, this.effects, this.audio, {
       onDown: (type) => this.beginDown(type),
     });
     this.player.police = this.police;
     this.traffic.police = this.police;
+    this.parking = new ParkingLot(this.world, this.vehicles, this.traffic, this.player, this.world.mall);
+    this.parking.onToast = (toast) => {
+      if (!this.hud.suppressToasts) this.hud.toast = toast;
+    };
+    this.interactions.parking = this.parking;
     this.pickups = new Pickups(this.scene, this.world, this.effects, {
       audio: this.audio,
       onPickup: (message) => {
         if (!this.hud.suppressToasts) this.hud.toast = { title: message, sub: 'COLLECTED', life: 2.2 };
       },
     });
+    this.robbery = new MallRobbery({
+      mall: this.world.mall,
+      player: this.player,
+      police: this.police,
+      traffic: this.traffic,
+      pickups: this.pickups,
+      audio: this.audio,
+      onToast: (toast) => {
+        if (!this.hud.suppressToasts) this.hud.toast = toast;
+      },
+    });
+    this.interactions.robbery = this.robbery;
     this.input = new Input(this.canvas);
     this.input.allowLock = false;
     this.hud = new Hud(this.ui.hud, this.world);
@@ -509,6 +537,9 @@ class Game {
     this.traffic.reset({ spawnBeach });
     this.spawnOpeningCars();
     this.traffic.seedAmbient(this.player, { spawnBeach });
+    this.mallLife?.reset();
+    this.robbery?.reset();
+    this.parking?.reset(this.environment.minutes);
   }
 
   spawnOpeningCars() {
@@ -909,6 +940,12 @@ class Game {
       period: this.environment.period,
       district: districtAt(player.position.x, player.position.z),
       street: streetAt(player.position.x, player.position.z),
+      mall: this.world.mall
+        ? { label: this.world.mall.label, bounds: this.world.mall.bounds }
+        : null,
+      parking: this.parking
+        ? { occupied: this.parking.occupied, slots: this.parking.slots.length, valet: Boolean(this.parking.valet) }
+        : null,
       missionCard: this.shot?.missionCard ?? this.missions.hudCard,
       missionActive: Boolean(this.missions.active),
       missionFailed: Boolean(this.missions.failure),
@@ -928,6 +965,7 @@ class Game {
       vehicles: blips,
       density: this.traffic.density,
       vehiclePrompt,
+      contextPrompt: this.interactions.prompt,
       police,
       weapons: this.player.combatState,
       down: this.down,
@@ -1206,7 +1244,8 @@ class Game {
         this.updateLookHint();
       } else {
         const wasDriving = this.player.driving;
-        this.player.handleVehicleInput(input);
+        const consumedE = this.interactions.update(dt, input);
+        this.player.handleVehicleInput(input, { allowE: !consumedE });
         let carjacked = false;
         if (wasDriving !== this.player.driving && this.player.driving) {
           this.effects.registerVehicle(this.player.driving);
@@ -1227,7 +1266,10 @@ class Game {
         if (input.wasPressed('Minus')) this.changeVolume(-0.08);
         if (input.wasPressed('Equal')) this.changeVolume(0.08);
         this.player.update(dt, input);
+        this.mallLife.update(dt, this.environment.minutes);
         this.traffic.update(dt, this.simTime);
+        this.parking.update(dt, this.environment.minutes);
+        this.robbery.update(dt);
         this.police.update(dt, this.simTime);
         this.player.wanted = this.police.wanted;
         this.vehicles.update(dt, this.simTime);
@@ -1247,6 +1289,7 @@ class Game {
         // composition renders at the same minute on every machine.
         if (!this.shot) this.environment.advance(dt);
         this.environment.apply(this.environmentTargets());
+        this.world.mall?.update(dt, this.player);
         this.world.focusAt(this.player.position.x, this.player.position.z);
         this.signals.update(this.simTime);
         const notice = this.police.consumeNotice();
@@ -1320,6 +1363,11 @@ try {
     get shot() {
       return game.shot?.name ?? null;
     },
+    // The staged shot table, read-only, so the E2E suite can validate a frozen
+    // composition (cruiser placement, crowd targets) without a screenshot.
+    get shots() {
+      return SHOTS;
+    },
     get player() {
       return {
         x: game.player.position.x,
@@ -1369,6 +1417,10 @@ try {
       player: game.player,
       camera: game.camera,
       pickups: game.pickups,
+      interactions: game.interactions,
+      parking: game.parking,
+      mallLife: game.mallLife,
+      robbery: game.robbery,
       police: game.police,
       missions: game.missions,
       world: game.world,
@@ -1482,6 +1534,41 @@ try {
         buildings: game.world.buildings.length,
         streetlights: game.world.streetlightCount,
         beacons: game.world.beacons.length,
+      };
+    },
+    get mall() {
+      const mall = game.world.mall;
+      if (!mall) return null;
+      return {
+        label: mall.label,
+        bounds: mall.bounds,
+        seats: mall.seats.length,
+        freeSeats: mall.seats.filter((seat) => !seat.occupant).length,
+        doors: mall.doors.map((door) => door.name),
+        register: mall.register,
+        shoppers: game.mallLife ? game.mallLife.activeShoppers.length : 0,
+        seated: mall.seats.filter((seat) => seat.occupant && seat.occupant !== 'player').length,
+      };
+    },
+    get robbery() {
+      const robbery = game.robbery;
+      return {
+        robbed: robbery.robbed,
+        guards: robbery.liveGuards.length,
+        cash: robbery.drop?.amount ?? 0,
+        wanted: game.police.wanted,
+      };
+    },
+    get parking() {
+      const lot = game.parking;
+      if (!lot) return null;
+      return {
+        slots: lot.slots.length,
+        occupied: lot.occupied,
+        stolen: lot.slots.filter((slot) => slot.stolen).length,
+        valet: lot.valet ? { type: lot.valet.type, color: lot.valet.color } : null,
+        zone: lot.valetZone,
+        podium: lot.podium,
       };
     },
     get story() {

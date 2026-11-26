@@ -1256,6 +1256,26 @@ export class Police {
         unit.dismountTimer = 1.2;
       }
 
+      // The pier, the sand and (later) the mall block vehicles outright. The
+      // 28 m dismount cannot fire from the far side of that line, so a cruiser
+      // held at a blocked edge deploys its officers at once and they take over
+      // on foot. A unit still driving on open road is never touched here.
+      if (!unit.deployed && this.wanted >= POLICE.officersFromStars && distance < 110
+        && typeof this.world.vehicleBlocked === 'function') {
+        const carBlocked = this.world.vehicleBlocked(car.position.x, car.position.z, false);
+        const aheadBlocked = this.world.vehicleBlocked(
+          car.position.x + Math.sin(car.yaw) * 7,
+          car.position.z + Math.cos(car.yaw) * 7,
+          false,
+        );
+        const playerBlocked = this.world.vehicleBlocked(this.player.position.x, this.player.position.z, false);
+        if ((carBlocked || aheadBlocked) && playerBlocked
+          && (!this.player.driving || Math.abs(this.player.driving.speed) < 2.5)) {
+          unit.dismountTimer = 0;
+          this.dismount(unit);
+        }
+      }
+
       const holdingUp = !this.player.driving && Math.abs(this.player.speed) < 1.2 && !this.player.aiming;
       if (this.wanted >= POLICE.shootFromStars && distance < 44 && unit.shootTimer <= 0 && this.playerVisible
         && !(holdingUp && distance < 8)) {

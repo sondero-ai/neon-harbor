@@ -326,6 +326,16 @@ function geometryFor(type) {
   return geometryCache.get(type);
 }
 
+/** The merged paint geometry for a class, used by instanced parked cars. */
+export function vehicleBodyGeometry(type) {
+  return geometryFor(type).paint;
+}
+
+/** The measured body dimensions and wheel layout for a class. */
+export function vehicleShape(type) {
+  return geometryFor(type);
+}
+
 const paintPalettes = {
   sedan: [0x8a3b45, 0x2f5964, 0xd9c9ad, 0x40364e, 0x9a5a34, 0x6f7c74, 0x252a36],
   taxi: [0xe0a92f],
@@ -751,10 +761,12 @@ export class Vehicle {
       [this.halfWidth, -this.halfLength * 0.82],
       [-this.halfWidth, -this.halfLength * 0.82],
     ];
+    const isPlayer = this.driver === 'player';
     for (const [side, forward] of probes) {
       const px = x + forwardX * forward + sideX * side;
       const pz = z + forwardZ * forward + sideZ * side;
       if (world.collides(px, pz, 0.2)) return true;
+      if (typeof world.vehicleBlocked === 'function' && world.vehicleBlocked(px, pz, isPlayer)) return true;
     }
     return false;
   }

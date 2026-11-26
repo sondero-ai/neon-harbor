@@ -221,9 +221,11 @@ export const SHOTS = {
     },
     police: {
       wanted: 3,
+      // Cruisers hold the city-side approach: the pier deck and ramp are
+      // closed to vehicles, so the officers (below) are the ones on the planks.
       units: [
-        { x: -171, z: 66.5, yaw: 0, mode: 'block', callsign: 'UNIT 12', shootTimer: 1.2 },
-        { x: -171, z: 73.5, yaw: 0, mode: 'block', callsign: 'UNIT 07', shootTimer: 1.4 },
+        { x: -138, z: 66.5, yaw: 0, mode: 'block', callsign: 'UNIT 12', shootTimer: 1.2 },
+        { x: -138, z: 73.5, yaw: 0, mode: 'block', callsign: 'UNIT 07', shootTimer: 1.4 },
       ],
       officers: [
         { x: -177, z: 67.8, yaw: -Math.PI / 2, callsign: 'UNIT 33', shootTimer: 0.7 },
@@ -271,6 +273,40 @@ export const SHOTS = {
       cameraYaw: -Math.PI / 2,
       cameraPitch: 0.12,
       distance: 5.4,
+    },
+    objective: START_OBJECTIVE,
+    toast: false,
+  },
+  // The Solano Mall entrance from Vega Strip, with the lot behind it.
+  mall: {
+    name: 'mall',
+    mode: 'playing',
+    time: 2.6,
+    prewarm: 60,
+    player: {
+      x: 54,
+      z: 27.2,
+      facing: Math.PI,
+      cameraYaw: 0,
+      cameraPitch: 0.12,
+      distance: 6.6,
+    },
+    objective: START_OBJECTIVE,
+    toast: false,
+  },
+  // The hall and food court from the mall's west side.
+  'mall-interior': {
+    name: 'mall-interior',
+    mode: 'playing',
+    time: 2.8,
+    prewarm: 70,
+    player: {
+      x: 52,
+      z: 8,
+      facing: Math.PI / 2,
+      cameraYaw: -Math.PI / 2,
+      cameraPitch: 0.1,
+      distance: 7.0,
     },
     objective: START_OBJECTIVE,
     toast: false,

@@ -523,6 +523,28 @@ export class Hud {
       ctx.fill();
     }
 
+    // The Solano Mall footprint and its parking lot, labelled on the scan.
+    const mall = this.world.mall;
+    if (mall) {
+      const bounds = mall.bounds;
+      ctx.fillStyle = 'rgba(255,201,92,0.22)';
+      ctx.fillRect(toX(bounds.minX), toY(bounds.minZ), (bounds.maxX - bounds.minX) * MAP_SCALE, (bounds.maxZ - bounds.minZ) * MAP_SCALE);
+      ctx.strokeStyle = 'rgba(255,201,92,0.82)';
+      ctx.lineWidth = 1.4;
+      ctx.strokeRect(toX(bounds.minX) + 0.5, toY(bounds.minZ) + 0.5, (bounds.maxX - bounds.minX) * MAP_SCALE - 1, (bounds.maxZ - bounds.minZ) * MAP_SCALE - 1);
+      ctx.fillStyle = 'rgba(63,224,207,0.16)';
+      ctx.fillRect(toX(bounds.minX), toY(bounds.minZ - 16), (bounds.maxX - bounds.minX) * MAP_SCALE, 16 * MAP_SCALE);
+      ctx.strokeStyle = 'rgba(63,224,207,0.5)';
+      ctx.strokeRect(toX(bounds.minX) + 0.5, toY(bounds.minZ - 16) + 0.5, (bounds.maxX - bounds.minX) * MAP_SCALE - 1, 16 * MAP_SCALE - 1);
+      ctx.fillStyle = 'rgba(255,232,210,0.92)';
+      ctx.font = '700 9px "Bahnschrift", "Segoe UI", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(mall.label, toX((bounds.minX + bounds.maxX) / 2), toY((bounds.minZ + bounds.maxZ) / 2) + 3);
+      ctx.fillStyle = 'rgba(63,224,207,0.9)';
+      ctx.font = '700 8px "Bahnschrift", "Segoe UI", sans-serif';
+      ctx.fillText('PARKING', toX((bounds.minX + bounds.maxX) / 2), toY(bounds.minZ - 8) + 3);
+    }
+
     // The waterline and a faint scan of city blocks over the whole map.
     ctx.strokeStyle = 'rgba(214, 244, 238, 0.28)';
     ctx.lineWidth = 2;
@@ -2164,10 +2186,21 @@ export class Hud {
   }
 
   drawPrompt(ctx, state) {
-    const prompt = state.vehiclePrompt;
+    const context = state.contextPrompt;
+    const vehicle = state.vehiclePrompt;
+    const prompt = context ?? vehicle;
     if (!prompt) return;
-    const action = prompt.action === 'exit' ? 'EXIT VEHICLE' : `ENTER ${prompt.name.toUpperCase()}`;
-    const width = Math.max(250, Math.min(390, 126 + action.length * 7.2));
+    // A contextual action wins over the vehicle prompt, matching the input
+    // precedence in interactions.js: seat > register > car > valet > entry.
+    const isContext = Boolean(context);
+    let action;
+    if (isContext) {
+      const verb = prompt.action === 'stand' ? 'STAND' : prompt.action === 'sit' ? 'SIT' : prompt.label;
+      action = verb;
+    } else {
+      action = prompt.action === 'exit' ? 'EXIT VEHICLE' : `ENTER ${prompt.name.toUpperCase()}`;
+    }
+    const width = Math.max(250, Math.min(390, 126 + action.length * 7.2 + (isContext && prompt.detail ? 92 : 0)));
     const height = 36;
     const x = (this.width - width) / 2;
     const y = 582;
@@ -2175,14 +2208,22 @@ export class Hud {
       cut: 9,
       fill: 'rgba(9,6,16,0.82)',
       stroke: 'rgba(247,232,210,0.2)',
-      accent: prompt.action === 'exit' ? TEAL : GOLD,
+      accent: isContext ? TEAL : prompt.action === 'exit' ? TEAL : GOLD,
     });
     chamferPath(ctx, x + 10, y + 8, 50, 20, 5);
     ctx.fillStyle = 'rgba(247,232,210,0.92)';
     ctx.fill();
-    label(ctx, 'F / E', x + 35, y + 22, { size: 10, color: '#140f1c', spacing: '0.4px', align: 'center', weight: 800 });
+    label(ctx, isContext ? 'E' : 'F / E', x + 35, y + 22, { size: 10, color: '#140f1c', spacing: '0.4px', align: 'center', weight: 800 });
     label(ctx, action, x + 72, y + 23, { size: 11, color: CREAM, spacing: '0.9px', weight: 800 });
-    if (prompt.action === 'enter') {
+    if (isContext && prompt.detail) {
+      label(ctx, String(prompt.detail).toUpperCase(), x + width - 12, y + 23, {
+        size: 10,
+        color: 'rgba(63,224,207,0.7)',
+        spacing: '0.8px',
+        align: 'right',
+        weight: 700,
+      });
+    } else if (prompt.action === 'enter') {
       label(ctx, prompt.distance ? `${Math.round(prompt.distance)} M` : 'NEARBY', x + width - 12, y + 23, {
         size: 10,
         color: 'rgba(247,232,210,0.5)',

@@ -33,7 +33,17 @@ import {
   mergeGeometries,
 } from './geo.js';
 import { GlowField } from './glow-field.js';
+import { buildMall } from './mall.js';
 import { makeRng } from './random.js';
+import {
+  addBox,
+  addCrownBand,
+  addCylinder,
+  addPart,
+  basicMaterial,
+  material,
+  matrixFor,
+} from './world-kit.js';
 
 const ROAD_HALF = WORLD.roadWidth / 2;
 const BLOCK_HALF = WORLD.blockSize / 2;
@@ -57,54 +67,6 @@ function districtForBlock(cx, cz) {
 const _origin = new THREE.Vector3();
 const _direction = new THREE.Vector3();
 const _hit = new THREE.Vector3();
-const _euler = new THREE.Euler();
-const _quaternion = new THREE.Quaternion();
-const _scale = new THREE.Vector3();
-
-function matrixFor(x, y, z, { rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1 } = {}) {
-  _euler.set(rx, ry, rz);
-  _quaternion.setFromEuler(_euler);
-  _scale.set(sx, sy, sz);
-  return new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), _quaternion, _scale);
-}
-
-function addPart(parts, geometry, x, y, z, color, options = {}) {
-  parts.push({ geometry, matrix: matrixFor(x, y, z, options), color });
-}
-
-function addBox(parts, width, height, depth, x, y, z, color, options = {}) {
-  addPart(parts, new THREE.BoxGeometry(width, height, depth), x, y, z, color, options);
-}
-
-function addCylinder(parts, radiusTop, radiusBottom, height, segments, x, y, z, color, options = {}) {
-  addPart(parts, new THREE.CylinderGeometry(radiusTop, radiusBottom, height, segments), x, y, z, color, options);
-}
-
-// A neon crown is an edge band, never a solid lid: from the title camera the
-// old solid box read as a giant coloured roof.
-function addCrownBand(parts, cx, cz, width, depth, y, color, thickness = 0.22) {
-  addBox(parts, width, thickness, 0.24, cx, y, cz - depth / 2, color);
-  addBox(parts, width, thickness, 0.24, cx, y, cz + depth / 2, color);
-  addBox(parts, 0.24, thickness, depth, cx - width / 2, y, cz, color);
-  addBox(parts, 0.24, thickness, depth, cx + width / 2, y, cz, color);
-}
-
-function material(color, options = {}) {
-  return new THREE.MeshStandardMaterial({
-    color,
-    roughness: options.roughness ?? 0.85,
-    metalness: options.metalness ?? 0.03,
-    ...options,
-  });
-}
-
-function basicMaterial(color, options = {}) {
-  return new THREE.MeshBasicMaterial({
-    color,
-    toneMapped: options.toneMapped ?? false,
-    ...options,
-  });
-}
 
 function segmentHit(origin, direction, maxDistance, box, radius) {
   let near = 0;
@@ -149,6 +111,11 @@ export class World {
     scene.add(this.skyRoot);
 
     this.colliders = [];
+    // Sittable anchors shared by the plaza, the beach, the pier and (later)
+    // the mall. Each seat is { x, z, y, yaw, kind, occupant }; occupant is
+    // 'player' or a crowd pedestrian, and a free seat has occupant null.
+    this.seats = [];
+    this.mall = null;
     this.buildings = [];
     this.neonSigns = [];
     this.beacons = [];
@@ -993,6 +960,12 @@ export class World {
           this.buildMotorRow(cx, cz);
           continue;
         }
+        if (cx === 54 && cz === 0) {
+          // The enterable Solano Mall replaces the generic block; its parking
+          // lot is built by parking.js once the scene is alive.
+          this.mall = buildMall(this);
+          continue;
+        }
         if (cx === -54 && cz === -108) {
           this.buildRadioBlock(cx, cz);
           continue;
@@ -1732,6 +1705,15 @@ export class World {
       addBox(this.roofParts, 1.8, 0.16, 0.6, bx, WORLD.sidewalkHeight + 0.55, bz, 0x5b454a, { ry: -angle });
       addBox(this.roofParts, 0.16, 0.45, 0.5, bx - Math.cos(angle) * 0.6, WORLD.sidewalkHeight + 0.3, bz - Math.sin(angle) * 0.6, 0x3b2e35, { ry: -angle });
       addBox(this.roofParts, 0.16, 0.45, 0.5, bx + Math.cos(angle) * 0.6, WORLD.sidewalkHeight + 0.3, bz + Math.sin(angle) * 0.6, 0x3b2e35, { ry: -angle });
+      // Sit facing outward, away from the fountain.
+      this.seats.push({
+        x: bx,
+        z: bz,
+        y: WORLD.sidewalkHeight,
+        yaw: Math.atan2(Math.cos(angle), Math.sin(angle)),
+        kind: 'plaza',
+        occupant: null,
+      });
     }
 
     this.colliders.push({
@@ -1768,6 +1750,14 @@ export class World {
       addPart(parts, new THREE.ConeGeometry(2.45, 0.85, 12), x, y + 2.95, z, color);
       addBox(parts, 1.5, 0.04, 0.85, x + rng.range(-1.6, 1.6), y + 0.05, z + rng.range(-1.5, 1.5), rng.pick([0xe9d8b5, 0xea8d7d, 0x6fd3c7]), { ry: rng.range(-0.8, 0.8) });
       addBox(parts, 0.85, 0.16, 0.85, x + 1.7, y + 0.15, z - 0.7, 0xd7c0a2, { ry: rng.range(-0.5, 0.5) });
+      // A wooden lounger under each umbrella, facing the water. Its low seat
+      // is the beach's sittable anchor.
+      const lx = x - 2.5;
+      const lz = z + 0.4;
+      addBox(parts, 1.9, 0.14, 0.72, lx, y + 0.2, lz, 0x8a6248);
+      addBox(parts, 0.16, 0.58, 0.72, lx + 0.92, y + 0.46, lz, 0x9b7154, { rz: 0.34 });
+      addBox(parts, 0.5, 0.04, 0.5, lx + 0.25, y + 0.29, lz, rng.pick([0xff6f61, 0x3fe0cf, 0xffc95c]), { ry: 0.12 });
+      this.seats.push({ x: lx, z: lz, y, yaw: -Math.PI / 2, kind: 'beach', occupant: null });
     }
 
     // Lifeguard tower, looking north along the beach.
@@ -1929,9 +1919,26 @@ export class World {
       }
     }
 
+    // The pier is pedestrian-only, so every prop, bench, barrel, crate and
+    // railing gets a real collider. Pedestrians, officers and mission enemies
+    // all resolve against the same list, and Vehicle.collidesAt refuses the
+    // whole deck through World.vehicleBlocked.
+    const pierCollider = (cx, cz, width, depth, height = 1.2) => {
+      this.colliders.push({
+        kind: 'prop',
+        minX: cx - width / 2,
+        maxX: cx + width / 2,
+        minZ: cz - depth / 2,
+        maxZ: cz + depth / 2,
+        minY: 0,
+        maxY: DECK.deckY + height,
+      });
+    };
+
     // Crates, benches, barrels and a small bait shack.
     const propParts = [];
     const propRng = makeRng(0xc4a7);
+    this.pierCrates = [];
     for (let i = 0; i < 12; i += 1) {
       const x = propRng.range(DECK.minX + 8, DECK.maxX - 12);
       const side = propRng.chance(0.5) ? -1 : 1;
@@ -1941,6 +1948,8 @@ export class World {
       if (propRng.chance(0.35)) {
         addBox(propParts, size * 0.8, size * 0.8, size * 0.8, x + 0.2, DECK.deckY + size * 1.35, z - 0.1, 0x6f4a35, { ry: propRng.range(0, 1) });
       }
+      this.pierCrates.push({ x, z, size });
+      pierCollider(x, z, size, size, size + 0.4);
     }
     for (let i = 0; i < 5; i += 1) {
       const x = DECK.minX + 18 + i * 24;
@@ -1948,11 +1957,16 @@ export class World {
       addBox(propParts, 2.2, 0.16, 0.62, x, DECK.deckY + 0.55, z, 0x603f2f);
       addBox(propParts, 0.14, 0.5, 0.5, x - 0.8, DECK.deckY + 0.27, z, 0x3f2b22);
       addBox(propParts, 0.14, 0.5, 0.5, x + 0.8, DECK.deckY + 0.27, z, 0x3f2b22);
+      pierCollider(x, z, 2.2, 0.62, 0.8);
+      // The anchor sits on the deck in front of the bench, clear of its
+      // collider, facing out across the planks.
+      this.seats.push({ x, z: z + 0.9, y: DECK.deckY, yaw: 0, kind: 'pier', occupant: null });
     }
     for (let i = 0; i < 4; i += 1) {
       const x = DECK.minX + 34 + i * 27;
       const z = DECK.z + DECK.halfWidth - 2.1;
       addCylinder(propParts, 0.42, 0.48, 1.1, 9, x, DECK.deckY + 0.55, z, 0x76513b);
+      pierCollider(x, z, 0.9, 0.9, 1.1);
     }
     const shackX = -188;
     const shackZ = DECK.z - 4;
@@ -1960,6 +1974,17 @@ export class World {
     addBox(propParts, 6.8, 0.25, 4.8, shackX, DECK.deckY + 2.72, shackZ, 0x3d2c26);
     addBox(propParts, 2.8, 1.05, 0.06, shackX + 0.6, DECK.deckY + 1.6, shackZ + 2.12, 0xffb45f);
     addBox(propParts, 0.06, 1.05, 2.2, shackX - 3.1, DECK.deckY + 1.6, shackZ, 0xffc47a);
+    pierCollider(shackX, shackZ, 6.2, 4.2, 2.6);
+
+    // Thin railing strips: the visual rail is already there; these keep the
+    // player and the crowd on the planks instead of walking through the posts.
+    const deckRailMinX = DECK.minX + 2;
+    const deckRailMaxX = DECK.maxX - 1;
+    for (const side of [-1, 1]) {
+      pierCollider((deckRailMinX + deckRailMaxX) / 2, DECK.z + side * (DECK.halfWidth - 0.4), deckRailMaxX - deckRailMinX, 0.24, 1.2);
+      pierCollider((DECK.rampMinX + DECK.rampMaxX) / 2, DECK.z + side * (DECK.rampHalfWidth - 0.35), DECK.rampMaxX - DECK.rampMinX, 0.22, 1.2);
+    }
+
     const pierProps = new THREE.Mesh(
       mergeGeometries(propParts),
       material(0xffffff, { vertexColors: true, roughness: 0.85 }),
@@ -2813,6 +2838,22 @@ export class World {
     return x > DECK.maxX - 0.2
       && x < DECK.rampMaxX + 0.2
       && Math.abs(z - DECK.z) <= DECK.rampHalfWidth + 0.15;
+  }
+
+  /**
+   * Vehicle-only terrain rule. The pier deck and its ramp are pedestrian-only
+   * for every vehicle; AI cars are also kept off the sand, while a player car
+   * may still be driven onto the beach. Vehicles consult this through
+   * `Vehicle.collidesAt`, never through the pedestrian collider list.
+   */
+  vehicleBlocked(x, z, isPlayer = false) {
+    if (this.onPierDeck(x, z) || this.onRamp(x, z)) return true;
+    if (this.mall) {
+      const bounds = this.mall.bounds;
+      if (x > bounds.minX && x < bounds.maxX && z > bounds.minZ && z < bounds.maxZ) return true;
+    }
+    if (x < WORLD.cityMinX && !isPlayer) return true;
+    return false;
   }
 
   groundHeightAt(x, z) {

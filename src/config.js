@@ -375,13 +375,13 @@ export const PICKUPS = [
 ];
 
 // The story still opens late on the fourth night for old saves; a New Game now
-// starts at dusk, 18:00, and the clock runs one in-game minute per two real
-// seconds (48 real minutes for a full day).
+// starts at dusk, 18:00. 2 real seconds = 5 in-game minutes; 9.6 real minutes
+// per day. The traffic signals keep their own real-time 18 s cycle.
 export const DAY = 4;
 export const HOURS = 23;
 export const MINUTES = 41;
 export const NEW_GAME_CLOCK = 18 * 60;
-export const CLOCK_MINUTES_PER_SECOND = 0.5;
+export const CLOCK_MINUTES_PER_SECOND = 2.5;
 export const DAY_MINUTES = 24 * 60;
 
 const STREET_NAMES_X = {
