@@ -3,7 +3,7 @@
 // sanity-checked: a corrupt save should read as "no save", never take the game
 // down.
 
-import { CAMERA, DAY, DAY_MINUTES, HOURS, MINUTES, PLAYER } from './config.js';
+import { CAMERA, DAY, DAY_MINUTES, HOURS, MINUTES, PLAYER, RADIO, radioStationIndex } from './config.js';
 
 const SAVE_KEY = 'neon-harbor.save.v1';
 const SETTINGS_KEY = 'neon-harbor.settings.v1';
@@ -28,6 +28,10 @@ export const SaveStore = {
       const parsed = JSON.parse(store.getItem(SAVE_KEY) || 'null');
       if (!parsed || parsed.version !== 1 || !parsed.position) return null;
       const position = parsed.position;
+      // Radio fields arrived with the playlist feature. An older save has
+      // none, and lands on the default station, track 0, radio on.
+      const stationIndex = radioStationIndex(parsed.radioStation);
+      const station = RADIO.stations[stationIndex];
       const save = {
         version: 1,
         cash: Math.max(0, finite(parsed.cash, PLAYER.cash)),
@@ -46,6 +50,9 @@ export const SaveStore = {
         savedAt: finite(parsed.savedAt, 0),
         cameraYaw: finite(parsed.cameraYaw, PLAYER.spawnCameraYaw),
         cameraPitch: clamp(finite(parsed.cameraPitch, 0.17), CAMERA.minPitch, CAMERA.maxPitch),
+        radioStation: station.id,
+        radioTrack: clamp(Math.round(finite(parsed.radioTrack, RADIO.defaultTrack ?? 0)), 0, Math.max(0, station.tracks.length - 1)),
+        radioEnabled: parsed.radioEnabled !== false,
         position: {
           x: clamp(finite(position.x, PLAYER.spawn.x), -320, 355),
           y: clamp(finite(position.y, 0), -2, 80),
@@ -84,6 +91,9 @@ export const SaveStore = {
           weapons: progress.weapons ?? null,
           cameraYaw: progress.cameraYaw,
           cameraPitch: progress.cameraPitch,
+          radioStation: progress.radioStation ?? RADIO.defaultStation,
+          radioTrack: progress.radioTrack ?? RADIO.defaultTrack ?? 0,
+          radioEnabled: progress.radioEnabled !== false,
           position: { x: progress.position.x, y: progress.position.y, z: progress.position.z },
           savedAt: Date.now(),
         }),

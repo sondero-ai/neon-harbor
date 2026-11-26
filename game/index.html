@@ -38,6 +38,7 @@
     display: block;
   }
   #hud { pointer-events: none; }
+  #hud.wheel-open { pointer-events: auto; cursor: pointer; }
   .vignette {
     position: fixed;
     inset: 0;
@@ -497,7 +498,8 @@
         <div class="control-row"><span>Drive</span><span class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span></div>
         <div class="control-row"><span>Handbrake / drift</span><span class="keys"><kbd>Space</kbd></span></div>
         <div class="control-row"><span>Horn (behind the wheel)</span><span class="keys"><kbd>LMB</kbd><kbd>H</kbd></span></div>
-        <div class="control-row"><span>Radio / change station</span><span class="keys"><kbd>T</kbd><kbd>[</kbd><kbd>]</kbd></span></div>
+        <div class="control-row"><span>Radio / station / track</span><span class="keys"><kbd>T</kbd><kbd>[</kbd><kbd>]</kbd><kbd>,</kbd><kbd>.</kbd></span></div>
+        <div class="control-row"><span>Radio wheel (hold)</span><span class="keys"><kbd>Tab</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>Enter</kbd></span></div>
         <div class="control-row"><span>Mute / volume</span><span class="keys"><kbd>M</kbd><kbd>-</kbd><kbd>=</kbd></span></div>
         <div class="control-row"><span>Look / camera distance</span><span class="keys"><kbd>Mouse</kbd><kbd>Wheel</kbd></span></div>
         <div class="control-row"><span>Start a mission / retry</span><span class="keys"><kbd>Marker</kbd><kbd>Enter</kbd></span></div>

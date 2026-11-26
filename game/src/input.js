@@ -17,6 +17,11 @@ export class Input {
     this.dragging = false;
     this.lockRequested = false;
     this.allowLock = true;
+    // The hold-Tab radio wheel: capture the browser's Tab focus change while
+    // playing, freeze movement axes, and re-lock on release when it was locked.
+    this.captureTab = false;
+    this.radioWheelOpen = false;
+    this.wheelLockRestore = false;
     this._onKeyDown = this.onKeyDown.bind(this);
     this._onKeyUp = this.onKeyUp.bind(this);
     this._onMouseMove = this.onMouseMove.bind(this);
@@ -43,12 +48,17 @@ export class Input {
     const target = event.target;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
     if (PREVENT_SCROLL.has(event.code)) event.preventDefault();
+    if (event.code === 'Tab' && this.captureTab) event.preventDefault();
     if (!event.repeat) this.pressed.add(event.code);
     this.keys.add(event.code);
   }
 
   onKeyUp(event) {
     this.keys.delete(event.code);
+    if (event.code === 'Tab' && this.wheelLockRestore) {
+      this.wheelLockRestore = false;
+      this.requestLock();
+    }
   }
 
   onMouseMove(event) {
@@ -87,6 +97,7 @@ export class Input {
     this.mousePressed.clear();
     this.dragging = false;
     this.pressed.clear();
+    this.wheelLockRestore = false;
   }
 
   requestLock() {
@@ -109,6 +120,11 @@ export class Input {
 
   wasPressed(...codes) {
     return codes.some((code) => this.pressed.has(code));
+  }
+
+  /** Use a key press here, so a later subsystem does not also act on it. */
+  consumePressed(...codes) {
+    for (const code of codes) this.pressed.delete(code);
   }
 
   wasClicked(button = 0) {
@@ -137,6 +153,7 @@ export class Input {
   }
 
   moveAxis() {
+    if (this.radioWheelOpen) return { forward: 0, strafe: 0 };
     const forward = (this.isDown('KeyW', 'ArrowUp') ? 1 : 0) - (this.isDown('KeyS', 'ArrowDown') ? 1 : 0);
     const strafe = (this.isDown('KeyD', 'ArrowRight') ? 1 : 0) - (this.isDown('KeyA', 'ArrowLeft') ? 1 : 0);
     return { forward, strafe };
